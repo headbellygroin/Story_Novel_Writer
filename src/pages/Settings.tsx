@@ -57,6 +57,8 @@ export default function Settings() {
   const [samplers, setSamplers] = useState<string[]>([]);
   const [workflowText, setWorkflowText] = useState('');
   const [ttsWorkflowText, setTtsWorkflowText] = useState('');
+  const [animationWorkflowText, setAnimationWorkflowText] = useState('');
+  const [lipsyncWorkflowText, setLipsyncWorkflowText] = useState('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
@@ -165,6 +167,26 @@ export default function Settings() {
       const parsed = JSON.parse(ttsWorkflowText);
       setSettings({ ...settings, comfyui_tts_workflow: parsed });
       alert('TTS Workflow imported successfully');
+    } catch {
+      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
+    }
+  }
+
+  function handleAnimationWorkflowImport() {
+    try {
+      const parsed = JSON.parse(animationWorkflowText);
+      setSettings({ ...settings, comfyui_animation_workflow: parsed });
+      alert('Animation workflow imported successfully');
+    } catch {
+      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
+    }
+  }
+
+  function handleLipsyncWorkflowImport() {
+    try {
+      const parsed = JSON.parse(lipsyncWorkflowText);
+      setSettings({ ...settings, comfyui_lipsync_workflow: parsed });
+      alert('Lip-sync workflow imported successfully');
     } catch {
       alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
     }
@@ -804,6 +826,109 @@ export default function Settings() {
                 </div>
                 {settings.comfyui_tts_workflow && (
                   <p className="text-xs text-green-600 mt-2">TTS workflow loaded. Text and speaker will be injected automatically.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-6 mt-6">
+            <h3 className="font-semibold text-slate-900 mb-1">Image Animation (ComfyUI)</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Animate still images with subtle motion (glowing lights, swaying elements, etc.) using a ComfyUI animation workflow.
+              Used by the production pipeline to make images more engaging.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Animation Workflow (ComfyUI API Format)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Paste a ComfyUI workflow that takes an image input and a text prompt, then outputs an animated version.
+                  The system will inject the image URL and animation description automatically.
+                </p>
+                <textarea
+                  value={animationWorkflowText}
+                  onChange={(e) => setAnimationWorkflowText(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
+                  placeholder='{"1": {"class_type": "LoadImage", ...}}'
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleAnimationWorkflowImport}
+                    disabled={!animationWorkflowText.trim()}
+                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    Import Animation Workflow
+                  </button>
+                  {settings.comfyui_animation_workflow && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettings({ ...settings, comfyui_animation_workflow: null });
+                        setAnimationWorkflowText('');
+                      }}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
+                    >
+                      Clear Animation Workflow
+                    </button>
+                  )}
+                </div>
+                {settings.comfyui_animation_workflow && (
+                  <p className="text-xs text-green-600 mt-2">Animation workflow loaded.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-6 mt-6">
+            <h3 className="font-semibold text-slate-900 mb-1">Lip-sync (ComfyUI)</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Generate lip-sync videos from a character image and audio using a ComfyUI workflow.
+              The system injects the character image and TTS audio automatically.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Lip-sync Workflow (ComfyUI API Format)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Paste a ComfyUI workflow that accepts a face/character image and an audio file, then outputs a lip-sync video.
+                </p>
+                <textarea
+                  value={lipsyncWorkflowText}
+                  onChange={(e) => setLipsyncWorkflowText(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
+                  placeholder='{"1": {"class_type": "LoadImage", ...}}'
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleLipsyncWorkflowImport}
+                    disabled={!lipsyncWorkflowText.trim()}
+                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    Import Lip-sync Workflow
+                  </button>
+                  {settings.comfyui_lipsync_workflow && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettings({ ...settings, comfyui_lipsync_workflow: null });
+                        setLipsyncWorkflowText('');
+                      }}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
+                    >
+                      Clear Lip-sync Workflow
+                    </button>
+                  )}
+                </div>
+                {settings.comfyui_lipsync_workflow && (
+                  <p className="text-xs text-green-600 mt-2">Lip-sync workflow loaded.</p>
                 )}
               </div>
             </div>

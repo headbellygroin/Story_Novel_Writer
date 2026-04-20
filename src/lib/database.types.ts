@@ -439,6 +439,8 @@ export interface Database {
           voice_chat_rate: number
           voice_chat_pitch: number
           art_style_presets: Json
+          comfyui_animation_workflow: Json
+          comfyui_lipsync_workflow: Json
           created_at: string
           updated_at: string
         }
@@ -482,6 +484,8 @@ export interface Database {
           voice_chat_rate?: number
           voice_chat_pitch?: number
           art_style_presets?: Json
+          comfyui_animation_workflow?: Json
+          comfyui_lipsync_workflow?: Json
           created_at?: string
           updated_at?: string
         }
@@ -525,6 +529,8 @@ export interface Database {
           voice_chat_rate?: number
           voice_chat_pitch?: number
           art_style_presets?: Json
+          comfyui_animation_workflow?: Json
+          comfyui_lipsync_workflow?: Json
           created_at?: string
           updated_at?: string
         }
@@ -995,6 +1001,132 @@ export interface Database {
           target_id?: string | null
           target_name?: string
           result?: string
+          status?: string
+          created_at?: string
+        }
+      }
+      pipeline_runs: {
+        Row: {
+          id: string
+          project_id: string
+          chapter_id: string
+          current_stage: string
+          status: string
+          lipsync_image_url: string
+          error_message: string
+          notes: string
+          started_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          chapter_id: string
+          current_stage?: string
+          status?: string
+          lipsync_image_url?: string
+          error_message?: string
+          notes?: string
+          started_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          chapter_id?: string
+          current_stage?: string
+          status?: string
+          lipsync_image_url?: string
+          error_message?: string
+          notes?: string
+          started_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      pipeline_images: {
+        Row: {
+          id: string
+          pipeline_run_id: string
+          project_id: string
+          chapter_id: string
+          order_index: number
+          text_anchor: string
+          image_prompt: string
+          animation_prompt: string
+          image_url: string
+          animated_url: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          pipeline_run_id: string
+          project_id: string
+          chapter_id: string
+          order_index?: number
+          text_anchor?: string
+          image_prompt?: string
+          animation_prompt?: string
+          image_url?: string
+          animated_url?: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          pipeline_run_id?: string
+          project_id?: string
+          chapter_id?: string
+          order_index?: number
+          text_anchor?: string
+          image_prompt?: string
+          animation_prompt?: string
+          image_url?: string
+          animated_url?: string
+          status?: string
+          created_at?: string
+        }
+      }
+      pipeline_lipsync_chunks: {
+        Row: {
+          id: string
+          pipeline_run_id: string
+          project_id: string
+          chapter_id: string
+          chunk_index: number
+          tts_audio_url: string
+          video_url: string
+          filename: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          pipeline_run_id: string
+          project_id: string
+          chapter_id: string
+          chunk_index?: number
+          tts_audio_url?: string
+          video_url?: string
+          filename?: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          pipeline_run_id?: string
+          project_id?: string
+          chapter_id?: string
+          chunk_index?: number
+          tts_audio_url?: string
+          video_url?: string
+          filename?: string
           status?: string
           created_at?: string
         }

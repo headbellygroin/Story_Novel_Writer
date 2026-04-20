@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { path: '/logic-checks', label: 'Logic' },
   { path: '/voice-chat', label: 'Voice' },
   { path: '/audiobook', label: 'Audio' },
+  { path: '/pipeline', label: 'Pipeline' },
   { path: '/save-load', label: 'Save/Load' },
   { path: '/export', label: 'Export' },
   { path: '/settings', label: 'Settings' },
