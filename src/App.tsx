@@ -13,6 +13,7 @@ import StyleAnchors from './pages/StyleAnchors';
 import Dossier from './pages/Dossier';
 import ProhibitedWords from './pages/ProhibitedWords';
 import LogicChecks from './pages/LogicChecks';
+import SaveLoad from './pages/SaveLoad';
 
 export default function App() {
   return (
@@ -112,6 +113,14 @@ export default function App() {
           element={
             <Layout>
               <LogicChecks />
+            </Layout>
+          }
+        />
+        <Route
+          path="/save-load"
+          element={
+            <Layout>
+              <SaveLoad />
             </Layout>
           }
         />
