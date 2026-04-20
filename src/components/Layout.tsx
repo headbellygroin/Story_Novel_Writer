@@ -17,7 +17,6 @@ const NAV_ITEMS = [
   { path: '/save-load', label: 'Save/Load' },
   { path: '/export', label: 'Export' },
   { path: '/settings', label: 'Settings' },
-  { path: '/setup-guide', label: 'Guide' },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
