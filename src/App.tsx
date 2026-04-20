@@ -17,6 +17,7 @@ import SaveLoad from './pages/SaveLoad';
 import VoiceChat from './pages/VoiceChat';
 import Audiobook from './pages/Audiobook';
 import Pipeline from './pages/Pipeline';
+import SetupGuide from './pages/SetupGuide';
 
 export default function App() {
   return (
@@ -148,6 +149,14 @@ export default function App() {
           element={
             <Layout>
               <Pipeline />
+            </Layout>
+          }
+        />
+        <Route
+          path="/setup-guide"
+          element={
+            <Layout>
+              <SetupGuide />
             </Layout>
           }
         />
