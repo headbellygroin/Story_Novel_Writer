@@ -6,6 +6,8 @@ import ProjectSelector from '../components/ProjectSelector';
 import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
 import { checkVisionConnection } from '../services/visionService';
 import { checkComfyUIConnection, getAvailableCheckpoints, getAvailableSamplers } from '../services/comfyuiService';
+import { DEFAULT_ART_STYLE_PRESETS, ArtStylePreset } from '../lib/artStylePresets';
+import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
 
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
@@ -35,6 +37,14 @@ export default function Settings() {
     image_cfg_scale: 7.0,
     image_sampler: 'euler_ancestral',
     image_negative_prompt: 'text, watermark, signature, blurry, low quality, deformed, ugly, bad anatomy, extra limbs',
+    comfyui_tts_workflow: null,
+    comfyui_tts_speaker: '',
+    comfyui_tts_sample_rate: 24000,
+    voice_chat_enabled: false,
+    voice_chat_voice: '',
+    voice_chat_rate: 1.0,
+    voice_chat_pitch: 1.0,
+    art_style_presets: [],
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,12 +56,23 @@ export default function Settings() {
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const [samplers, setSamplers] = useState<string[]>([]);
   const [workflowText, setWorkflowText] = useState('');
+  const [ttsWorkflowText, setTtsWorkflowText] = useState('');
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentProjectId) {
       loadSettings();
     }
   }, [currentProjectId]);
+
+  useEffect(() => {
+    if (isSpeechSynthesisSupported()) {
+      const loadVoices = () => setVoices(getAvailableVoices());
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
 
   async function loadSettings() {
     if (!currentProjectId) return;
@@ -137,6 +158,62 @@ export default function Settings() {
       setSamplers(smpls);
     }
     setCheckingComfy(false);
+  }
+
+  function handleTtsWorkflowImport() {
+    try {
+      const parsed = JSON.parse(ttsWorkflowText);
+      setSettings({ ...settings, comfyui_tts_workflow: parsed });
+      alert('TTS Workflow imported successfully');
+    } catch {
+      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
+    }
+  }
+
+  function getArtPresets(): ArtStylePreset[] {
+    const presets = settings.art_style_presets;
+    if (Array.isArray(presets)) return presets as unknown as ArtStylePreset[];
+    return [];
+  }
+
+  function setArtPresets(presets: ArtStylePreset[]) {
+    setSettings({ ...settings, art_style_presets: JSON.parse(JSON.stringify(presets)) });
+  }
+
+  function updateArtPreset(presetId: string, field: keyof ArtStylePreset, value: string | number | null) {
+    const presets = getArtPresets();
+    const updated = presets.map((p) => p.id === presetId ? { ...p, [field]: value } : p);
+    setArtPresets(updated);
+  }
+
+  function addDefaultPresets() {
+    const existing = getArtPresets();
+    const existingIds = new Set(existing.map((p) => p.id));
+    const newPresets = DEFAULT_ART_STYLE_PRESETS.filter((p) => !existingIds.has(p.id));
+    setArtPresets([...existing, ...newPresets]);
+  }
+
+  function removePreset(presetId: string) {
+    const presets = getArtPresets().filter((p) => p.id !== presetId);
+    setArtPresets(presets);
+    if (editingPresetId === presetId) setEditingPresetId(null);
+  }
+
+  function addCustomPreset() {
+    const presets = getArtPresets();
+    const newPreset: ArtStylePreset = {
+      id: `custom-${Date.now()}`,
+      name: 'New Style',
+      checkpoint: '',
+      promptPrefix: '',
+      promptSuffix: '',
+      negativePrompt: '',
+      samplerOverride: '',
+      stepsOverride: null,
+      cfgOverride: null,
+    };
+    setArtPresets([...presets, newPreset]);
+    setEditingPresetId(newPreset.id);
   }
 
   function handleWorkflowImport() {
@@ -489,6 +566,303 @@ export default function Settings() {
                 {settings.comfyui_workflow && (
                   <p className="text-xs text-green-600 mt-2">Custom workflow loaded. Prompt and settings will be injected automatically.</p>
                 )}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-6 mt-6">
+            <h3 className="font-semibold text-slate-900 mb-1">Art Style Presets</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Map art styles to specific checkpoint models and prompt modifiers. When generating scene images,
+              you can pick a style preset to automatically switch the model and adjust prompts.
+            </p>
+
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={addDefaultPresets}
+                  className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  Add Default Presets
+                </button>
+                <button
+                  type="button"
+                  onClick={addCustomPreset}
+                  className="px-3 py-1.5 bg-sky-600 text-white text-xs rounded-lg hover:bg-sky-700 transition-colors"
+                >
+                  Add Custom Preset
+                </button>
+              </div>
+
+              {getArtPresets().length === 0 && (
+                <p className="text-xs text-slate-400 italic">No presets configured. Add default presets or create custom ones.</p>
+              )}
+
+              {getArtPresets().map((preset) => (
+                <div key={preset.id} className="border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-slate-900">{preset.name}</span>
+                      {preset.checkpoint && (
+                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{preset.checkpoint}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingPresetId(editingPresetId === preset.id ? null : preset.id)}
+                        className="px-2 py-1 text-xs text-slate-600 hover:text-slate-800 transition-colors"
+                      >
+                        {editingPresetId === preset.id ? 'Collapse' : 'Edit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removePreset(preset.id)}
+                        className="px-2 py-1 text-xs text-red-600 hover:text-red-800 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  {editingPresetId === preset.id && (
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Style Name</label>
+                        <input
+                          type="text"
+                          value={preset.name}
+                          onChange={(e) => updateArtPreset(preset.id, 'name', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Checkpoint Model</label>
+                        {checkpoints.length > 0 ? (
+                          <select
+                            value={preset.checkpoint}
+                            onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          >
+                            <option value="">Use default checkpoint</option>
+                            {checkpoints.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={preset.checkpoint}
+                            onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="Leave empty to use default, or enter checkpoint filename"
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Prefix</label>
+                        <input
+                          type="text"
+                          value={preset.promptPrefix}
+                          onChange={(e) => updateArtPreset(preset.id, 'promptPrefix', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          placeholder="e.g. epic fantasy illustration, detailed digital painting,"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Suffix</label>
+                        <input
+                          type="text"
+                          value={preset.promptSuffix}
+                          onChange={(e) => updateArtPreset(preset.id, 'promptSuffix', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          placeholder="e.g. cinematic lighting, 8k, highly detailed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Negative Prompt Override</label>
+                        <input
+                          type="text"
+                          value={preset.negativePrompt}
+                          onChange={(e) => updateArtPreset(preset.id, 'negativePrompt', e.target.value)}
+                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                          placeholder="Leave empty to use default negative prompt"
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Steps Override</label>
+                          <input
+                            type="number"
+                            value={preset.stepsOverride ?? ''}
+                            onChange={(e) => updateArtPreset(preset.id, 'stepsOverride', e.target.value ? parseInt(e.target.value) : null)}
+                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="Default"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">CFG Override</label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={preset.cfgOverride ?? ''}
+                            onChange={(e) => updateArtPreset(preset.id, 'cfgOverride', e.target.value ? parseFloat(e.target.value) : null)}
+                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="Default"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Sampler Override</label>
+                          <input
+                            type="text"
+                            value={preset.samplerOverride}
+                            onChange={(e) => updateArtPreset(preset.id, 'samplerOverride', e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            placeholder="Default"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-6 mt-6">
+            <h3 className="font-semibold text-slate-900 mb-1">Text-to-Speech (ComfyUI TTS)</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Use a ComfyUI TTS workflow to generate narration audio from your story text.
+              Import a workflow that has a text input node and produces audio output.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  TTS Speaker / Voice
+                </label>
+                <input
+                  type="text"
+                  value={(settings.comfyui_tts_speaker as string) || ''}
+                  onChange={(e) => setSettings({ ...settings, comfyui_tts_speaker: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  placeholder="e.g. narrator, en_speaker_0"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Speaker name passed to the TTS workflow. Depends on your TTS model.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Sample Rate
+                </label>
+                <input
+                  type="number"
+                  value={(settings.comfyui_tts_sample_rate as number) || 24000}
+                  onChange={(e) => setSettings({ ...settings, comfyui_tts_sample_rate: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  TTS Workflow (ComfyUI API Format)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Paste a ComfyUI API-format workflow that takes text input and produces audio.
+                </p>
+                <textarea
+                  value={ttsWorkflowText}
+                  onChange={(e) => setTtsWorkflowText(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
+                  placeholder='{"1": {"class_type": "TextInput", ...}}'
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleTtsWorkflowImport}
+                    disabled={!ttsWorkflowText.trim()}
+                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    Import TTS Workflow
+                  </button>
+                  {settings.comfyui_tts_workflow && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettings({ ...settings, comfyui_tts_workflow: null });
+                        setTtsWorkflowText('');
+                      }}
+                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
+                    >
+                      Clear TTS Workflow
+                    </button>
+                  )}
+                </div>
+                {settings.comfyui_tts_workflow && (
+                  <p className="text-xs text-green-600 mt-2">TTS workflow loaded. Text and speaker will be injected automatically.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-6 mt-6">
+            <h3 className="font-semibold text-slate-900 mb-1">Voice Chat Settings</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Configure browser-based speech recognition and synthesis for voice chat with your AI assistant.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Response Voice
+                </label>
+                <select
+                  value={(settings.voice_chat_voice as string) || ''}
+                  onChange={(e) => setSettings({ ...settings, voice_chat_voice: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="">System Default</option>
+                  {voices.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Speech Rate ({Number(settings.voice_chat_rate || 1).toFixed(1)}x)
+                  </label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2"
+                    step="0.1"
+                    value={Number(settings.voice_chat_rate) || 1}
+                    onChange={(e) => setSettings({ ...settings, voice_chat_rate: parseFloat(e.target.value) })}
+                    className="w-full accent-sky-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Speech Pitch ({Number(settings.voice_chat_pitch || 1).toFixed(1)})
+                  </label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2"
+                    step="0.1"
+                    value={Number(settings.voice_chat_pitch) || 1}
+                    onChange={(e) => setSettings({ ...settings, voice_chat_pitch: parseFloat(e.target.value) })}
+                    className="w-full accent-sky-600"
+                  />
+                </div>
               </div>
             </div>
           </div>

@@ -11,6 +11,8 @@ const NAV_ITEMS = [
   { path: '/prohibited-words', label: 'Words' },
   { path: '/consistency', label: 'Consistency' },
   { path: '/logic-checks', label: 'Logic' },
+  { path: '/voice-chat', label: 'Voice' },
+  { path: '/audiobook', label: 'Audio' },
   { path: '/save-load', label: 'Save/Load' },
   { path: '/export', label: 'Export' },
   { path: '/settings', label: 'Settings' },

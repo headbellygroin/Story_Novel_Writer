@@ -431,6 +431,14 @@ export interface Database {
           image_cfg_scale: number
           image_sampler: string
           image_negative_prompt: string
+          comfyui_tts_workflow: Json
+          comfyui_tts_speaker: string
+          comfyui_tts_sample_rate: number
+          voice_chat_enabled: boolean
+          voice_chat_voice: string
+          voice_chat_rate: number
+          voice_chat_pitch: number
+          art_style_presets: Json
           created_at: string
           updated_at: string
         }
@@ -466,6 +474,14 @@ export interface Database {
           image_cfg_scale?: number
           image_sampler?: string
           image_negative_prompt?: string
+          comfyui_tts_workflow?: Json
+          comfyui_tts_speaker?: string
+          comfyui_tts_sample_rate?: number
+          voice_chat_enabled?: boolean
+          voice_chat_voice?: string
+          voice_chat_rate?: number
+          voice_chat_pitch?: number
+          art_style_presets?: Json
           created_at?: string
           updated_at?: string
         }
@@ -501,6 +517,14 @@ export interface Database {
           image_cfg_scale?: number
           image_sampler?: string
           image_negative_prompt?: string
+          comfyui_tts_workflow?: Json
+          comfyui_tts_speaker?: string
+          comfyui_tts_sample_rate?: number
+          voice_chat_enabled?: boolean
+          voice_chat_voice?: string
+          voice_chat_rate?: number
+          voice_chat_pitch?: number
+          art_style_presets?: Json
           created_at?: string
           updated_at?: string
         }
@@ -903,6 +927,44 @@ export interface Database {
           status?: string
           created_at?: string
           updated_at?: string
+        }
+      }
+      tts_chunks: {
+        Row: {
+          id: string
+          project_id: string
+          chapter_id: string
+          scene_id: string | null
+          chunk_index: number
+          text_content: string
+          audio_url: string
+          status: string
+          duration_seconds: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          chapter_id: string
+          scene_id?: string | null
+          chunk_index?: number
+          text_content: string
+          audio_url?: string
+          status?: string
+          duration_seconds?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          chapter_id?: string
+          scene_id?: string | null
+          chunk_index?: number
+          text_content?: string
+          audio_url?: string
+          status?: string
+          duration_seconds?: number | null
+          created_at?: string
         }
       }
       logic_checks: {

@@ -14,6 +14,8 @@ import Dossier from './pages/Dossier';
 import ProhibitedWords from './pages/ProhibitedWords';
 import LogicChecks from './pages/LogicChecks';
 import SaveLoad from './pages/SaveLoad';
+import VoiceChat from './pages/VoiceChat';
+import Audiobook from './pages/Audiobook';
 
 export default function App() {
   return (
@@ -121,6 +123,22 @@ export default function App() {
           element={
             <Layout>
               <SaveLoad />
+            </Layout>
+          }
+        />
+        <Route
+          path="/voice-chat"
+          element={
+            <Layout>
+              <VoiceChat />
+            </Layout>
+          }
+        />
+        <Route
+          path="/audiobook"
+          element={
+            <Layout>
+              <Audiobook />
             </Layout>
           }
         />
