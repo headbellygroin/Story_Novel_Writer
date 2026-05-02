@@ -129,15 +129,31 @@ function injectPromptIntoWorkflow(
   return w;
 }
 
-export async function checkComfyUIConnection(endpoint: string): Promise<boolean> {
+export async function checkComfyUIConnection(endpoint: string): Promise<{ ok: boolean; error?: string }> {
   try {
+    const normalizedEndpoint = endpoint.replace(/\/$/, '');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${endpoint}/system_stats`, { signal: controller.signal });
+
+    const res = await fetch(`${normalizedEndpoint}/system_stats`, {
+      signal: controller.signal,
+      mode: 'cors',
+    });
     clearTimeout(timeoutId);
-    return res.ok;
-  } catch {
-    return false;
+
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status}: ${res.statusText}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (errorMsg.includes('AbortError')) {
+      return { ok: false, error: 'Connection timeout (5s)' };
+    }
+    if (errorMsg.includes('fetch')) {
+      return { ok: false, error: `Network error: ${errorMsg}` };
+    }
+    return { ok: false, error: errorMsg };
   }
 }
 

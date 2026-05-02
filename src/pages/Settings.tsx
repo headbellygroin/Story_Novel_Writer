@@ -52,6 +52,7 @@ export default function Settings() {
   const [visionStatus, setVisionStatus] = useState<'unchecked' | 'connected' | 'disconnected'>('unchecked');
   const [checkingVision, setCheckingVision] = useState(false);
   const [comfyStatus, setComfyStatus] = useState<'unchecked' | 'connected' | 'disconnected'>('unchecked');
+  const [comfyError, setComfyError] = useState<string>('');
   const [checkingComfy, setCheckingComfy] = useState(false);
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const [samplers, setSamplers] = useState<string[]>([]);
@@ -147,17 +148,21 @@ export default function Settings() {
 
   async function handleCheckComfyUI() {
     setCheckingComfy(true);
+    setComfyError('');
     const endpoint = (settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188';
-    const connected = await checkComfyUIConnection(endpoint);
-    setComfyStatus(connected ? 'connected' : 'disconnected');
+    const result = await checkComfyUIConnection(endpoint);
 
-    if (connected) {
+    if (result.ok) {
+      setComfyStatus('connected');
       const [ckpts, smpls] = await Promise.all([
         getAvailableCheckpoints(endpoint),
         getAvailableSamplers(endpoint),
       ]);
       setCheckpoints(ckpts);
       setSamplers(smpls);
+    } else {
+      setComfyStatus('disconnected');
+      setComfyError(result.error || 'Unknown error');
     }
     setCheckingComfy(false);
   }
@@ -382,6 +387,11 @@ export default function Settings() {
               Generate images from your scenes using ComfyUI running locally.
               Make sure ComfyUI is running before testing the connection.
             </p>
+            <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+              <p className="font-medium text-slate-700 mb-1">Current Status:</p>
+              <p>Checking endpoint: <code className="bg-white px-1.5 py-0.5 rounded font-mono">{(settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188'}</code></p>
+              <p>Path tested: <code className="bg-white px-1.5 py-0.5 rounded font-mono">/system_stats</code></p>
+            </div>
 
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -400,9 +410,17 @@ export default function Settings() {
                   </p>
                 )}
                 {comfyStatus === 'disconnected' && (
-                  <p className="text-xs text-red-600">
-                    Cannot reach ComfyUI. Make sure it is running at the configured endpoint.
-                  </p>
+                  <div className="text-xs text-red-600">
+                    <p className="font-medium">Cannot reach ComfyUI</p>
+                    {comfyError && <p className="mt-1 text-red-500">{comfyError}</p>}
+                    <p className="mt-2 text-red-600">Troubleshooting:</p>
+                    <ul className="list-disc list-inside mt-1 text-red-600 space-y-0.5">
+                      <li>Ensure ComfyUI is running: <code className="bg-red-50 px-1">python main.py</code></li>
+                      <li>Verify the endpoint URL is correct</li>
+                      <li>Check that ComfyUI is listening on the configured port</li>
+                      <li>Try <code className="bg-red-50 px-1">http://localhost:8188</code> instead of <code className="bg-red-50 px-1">127.0.0.1</code></li>
+                    </ul>
+                  </div>
                 )}
               </div>
 
