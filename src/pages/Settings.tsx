@@ -60,14 +60,6 @@ function ConnDot({ status }: { status: ConnStatus }) {
   return <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />;
 }
 
-function WorkflowLoaded({ label }: { label: string }) {
-  return (
-    <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-      {label} loaded
-    </span>
-  );
-}
-
 // ---------------------------------------------------------------------------
 
 export default function Settings() {
@@ -119,13 +111,7 @@ export default function Settings() {
   const [comfyQueue, setComfyQueue] = useState<QueueStatus | null>(null);
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
 
-  // Workflow import buffers
-  const [ttsWorkflowText, setTtsWorkflowText] = useState('');
-  const [animationWorkflowText, setAnimationWorkflowText] = useState('');
-  const [lipsyncWorkflowText, setLipsyncWorkflowText] = useState('');
 
-  // Inline import feedback
-  const [importMsg, setImportMsg] = useState<Record<string, string>>({});
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
@@ -238,28 +224,6 @@ export default function Settings() {
   // ---------------------------------------------------------------------------
   // Workflow imports
   // ---------------------------------------------------------------------------
-
-  function importWorkflow(
-    key: string,
-    json: string,
-    settingField: keyof GenerationSettings,
-    label: string
-  ) {
-    try {
-      const parsed = JSON.parse(json);
-      setSettings({ ...settings, [settingField]: parsed });
-      setImportMsg({ ...importMsg, [key]: `${label} imported successfully.` });
-      setTimeout(() => setImportMsg((m) => ({ ...m, [key]: '' })), 4000);
-    } catch {
-      setImportMsg({ ...importMsg, [key]: 'Invalid JSON — paste a valid ComfyUI API-format workflow.' });
-      setTimeout(() => setImportMsg((m) => ({ ...m, [key]: '' })), 5000);
-    }
-  }
-
-  function clearWorkflow(settingField: keyof GenerationSettings, textSetter: (v: string) => void) {
-    setSettings({ ...settings, [settingField]: null });
-    textSetter('');
-  }
 
   // ---------------------------------------------------------------------------
   // Art style preset helpers
@@ -900,8 +864,7 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Text-to-Speech (ComfyUI TTS)"
-          description="Generate narration audio from story text using a ComfyUI TTS workflow."
-          badge={settings.comfyui_tts_workflow ? <WorkflowLoaded label="TTS" /> : undefined}
+          description="Generate narration audio from story text using the built-in ComfyUI TTS workflow."
         >
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -925,18 +888,6 @@ export default function Settings() {
               />
             </div>
           </div>
-          <WorkflowImportBlock
-            label="TTS Workflow"
-            hint="Paste a ComfyUI API-format workflow that takes text input and produces audio."
-            placeholder='{"1": {"class_type": "TextInput", ...}}'
-            value={ttsWorkflowText}
-            onChange={setTtsWorkflowText}
-            loaded={!!settings.comfyui_tts_workflow}
-            loadedLabel="TTS workflow"
-            message={importMsg['tts']}
-            onImport={() => importWorkflow('tts', ttsWorkflowText, 'comfyui_tts_workflow', 'TTS workflow')}
-            onClear={() => clearWorkflow('comfyui_tts_workflow', setTtsWorkflowText)}
-          />
         </Section>
 
         {/* ------------------------------------------------------------------ */}
@@ -944,22 +895,8 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Image Animation (ComfyUI)"
-          description="Animate still images using the LTX 2.3 Text2Video workflow. Generates at 30 fps / 5 seconds and outputs a .gif for use in audiobooks and exports."
-          badge={settings.comfyui_animation_workflow ? <WorkflowLoaded label="Animation" /> : undefined}
+          description="Animate still images using the built-in LTX 2.3 Text2Video workflow. Generates at 30 fps / 5 seconds and outputs a .gif for use in audiobooks and exports."
         >
-          <WorkflowImportBlock
-            label="Animation Workflow"
-            hint="Paste the AI Playground – Text2Video (LTX 2.3) ComfyUI workflow in API format."
-            placeholder='{"1": {"class_type": "LoadImage", ...}}'
-            value={animationWorkflowText}
-            onChange={setAnimationWorkflowText}
-            loaded={!!settings.comfyui_animation_workflow}
-            loadedLabel="Animation workflow"
-            message={importMsg['animation']}
-            onImport={() => importWorkflow('animation', animationWorkflowText, 'comfyui_animation_workflow', 'Animation workflow')}
-            onClear={() => clearWorkflow('comfyui_animation_workflow', setAnimationWorkflowText)}
-          />
-
           {/* --- Prompt Fields --- */}
           <div>
             <p className="text-sm font-medium text-slate-700 mb-1">Animation Prompt</p>
@@ -1050,7 +987,6 @@ export default function Settings() {
         <Section
           title="Lip-sync (ComfyUI LTX 2.3)"
           description="Generate a video from a character image and audio. Story Forge uploads your image and audio to ComfyUI and retrieves the generated video automatically."
-          badge={settings.comfyui_lipsync_workflow ? <WorkflowLoaded label="Workflow loaded" /> : undefined}
         >
           {/* --- Orientation --- */}
           <div>
@@ -1175,19 +1111,6 @@ export default function Settings() {
             </ul>
           </div>
 
-          {/* --- Workflow import --- */}
-          <WorkflowImportBlock
-            label="LTX 2.3 Lipsync Workflow (ComfyUI API Format)"
-            hint='Export from ComfyUI using "Save (API Format)". Required models: ltx-2.3-22b-dev-fp8, ltx-2.3-22b-distilled-lora, ltx-2.3-spatial-upscaler-x2.'
-            placeholder='{"269": {"class_type": "LoadImage", ...}}'
-            value={lipsyncWorkflowText}
-            onChange={setLipsyncWorkflowText}
-            loaded={!!settings.comfyui_lipsync_workflow}
-            loadedLabel="Lip-sync workflow"
-            message={importMsg['lipsync']}
-            onImport={() => importWorkflow('lipsync', lipsyncWorkflowText, 'comfyui_lipsync_workflow', 'Lip-sync workflow')}
-            onClear={() => clearWorkflow('comfyui_lipsync_workflow', setLipsyncWorkflowText)}
-          />
         </Section>
 
         {/* ------------------------------------------------------------------ */}
@@ -1288,61 +1211,3 @@ export default function Settings() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Reusable workflow import block
-// ---------------------------------------------------------------------------
-function WorkflowImportBlock({
-  label, hint, placeholder, value, onChange, loaded, loadedLabel, message, onImport, onClear,
-}: {
-  label: string;
-  hint: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  loaded: boolean;
-  loadedLabel: string;
-  message?: string;
-  onImport: () => void;
-  onClear: () => void;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
-      <p className="text-xs text-slate-400 mb-2">{hint}</p>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={3}
-        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono text-xs"
-        placeholder={placeholder}
-      />
-      <div className="flex items-center gap-2 mt-2 flex-wrap">
-        <button
-          type="button"
-          onClick={onImport}
-          disabled={!value.trim()}
-          className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
-        >
-          Import
-        </button>
-        {loaded && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="px-3 py-1.5 bg-red-50 text-red-700 text-xs rounded-lg hover:bg-red-100 border border-red-200 transition-colors"
-          >
-            Clear
-          </button>
-        )}
-        {loaded && !message && (
-          <span className="text-xs text-emerald-600">{loadedLabel} active</span>
-        )}
-        {message && (
-          <span className={`text-xs ${message.includes('nvalid') || message.includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
-            {message}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
