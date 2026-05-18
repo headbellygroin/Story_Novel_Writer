@@ -442,97 +442,188 @@ function PipelineSection() {
   return (
     <>
       <Card>
-        <H2>Production Pipeline</H2>
+        <H2>Production Pipeline — How It Works</H2>
         <P>
-          The Pipeline converts a finished chapter into all the media assets needed for an audiobook-style
-          video. Select a chapter, then run the five stages in order. Each stage has a review gate — you
-          inspect the output before proceeding. All output files are stored in ComfyUI's output folder
-          and referenced by URL.
+          The Pipeline page converts a finished chapter into all the media assets needed for an
+          audiobook-style video. It runs five stages in order. Each stage submits jobs to ComfyUI
+          one at a time, monitors them automatically, and retrieves the output files when they finish.
+          You watch Story Forge's progress bar — not the ComfyUI UI.
         </P>
 
-        <div className="space-y-4 mt-6">
-          <StageCard
-            number={1}
-            color="sky"
-            title="Analyse & Generate Images"
-            what="The LLM reads your chapter and identifies the key visual moments — dramatic reveals, location changes, action peaks, emotional beats. It decides how many images are needed (typically 3–12) and generates a Stable Diffusion prompt for each moment. ComfyUI then generates those images one at a time using your configured checkpoint, orientation, and conditioning prompts."
-            review="Review all images before proceeding. If the results are poor, adjust the conditioning prompts in Settings or re-run. You can select an Art Style Preset per image to override the checkpoint and style for individual scenes."
-          />
-          <StageCard
-            number={2}
-            color="teal"
-            title="Animate Images"
-            what="Each generated scene image is sent to ComfyUI with the built-in LTX 2.3 Text2Video workflow. The animation prompt (configured in Settings) guides what kind of motion is added — flickering light, swaying foliage, atmospheric haze, subtle character movement. Output is a .gif at 30 fps / 5 seconds per image."
-            review="Review the animations. This stage is optional — if you prefer still images, skip it and proceed to Stage 3."
-          />
-          <StageCard
-            number={3}
-            color="sky"
-            title="Generate TTS Audio"
-            what="The chapter text is split into chunks at sentence boundaries (approximately 1000 characters per chunk). Each chunk is sent to ComfyUI with the built-in TTS workflow using your configured speaker voice and sample rate. Each chunk produces a separate audio file. The pipeline tracks which text each audio segment corresponds to."
-            review="Listen to the audio chunks for quality. Check for mispronunciations of character or place names — add phonetic spellings to the chapter text if needed."
-          />
-          <StageCard
-            number={4}
-            color="emerald"
-            title="Export Assembly Data"
-            what="Exports a structured JSON file containing all image/animation URLs, all TTS audio URLs in order, and the text anchors that map each image to the narration passage it illustrates. This is the data file you use to assemble the final video outside Story Forge."
-            review="This is a data export step, not a ComfyUI job. Use the JSON to drive your video assembly tool — images change on screen when the narration reaches the matched text passage."
-          />
-          <StageCard
-            number={5}
-            color="rose"
-            title="Lip-sync Generation"
-            what="You select a character face image. The system takes each TTS audio chunk and sends it to ComfyUI with the built-in LTX 2.3 LipSync workflow along with the character image. Each chunk produces a lip-sync video clip. Output files are tracked sequentially (ch01_lipsync_001.mp4, ch01_lipsync_002.mp4, etc.)."
-            review="Stitch the clips together in filename order using an external tool. The assembled lip-sync video shows the character speaking the narration throughout the chapter."
-          />
+        <H3>Job Monitoring — What Story Forge Does Automatically</H3>
+        <P>
+          When Story Forge sends a job to ComfyUI it does the following without any manual input:
+        </P>
+        <ol className="space-y-2 text-sm text-slate-700 mb-4">
+          <li className="flex items-start gap-2">
+            <span className="bg-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
+            <span><strong>Submits the workflow</strong> — sends the built-in workflow JSON (with your prompts, settings, and image/audio references injected) to ComfyUI's <Code>/prompt</Code> endpoint. ComfyUI returns a <Code>prompt_id</Code>.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="bg-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+            <span><strong>Polls for completion</strong> — repeatedly queries ComfyUI's <Code>/history/&#123;prompt_id&#125;</Code> endpoint until the job shows <Code>completed: true</Code>. You will see the ComfyUI output panel show the job running and then completing.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="bg-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+            <span><strong>Retrieves the output file</strong> — reads the filename from the history response and constructs the <Code>/view?filename=...&type=output</Code> URL. Saves this URL to the database.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="bg-slate-200 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
+            <span><strong>Moves to the next item</strong> — submits the next image/chunk and repeats. Only one job is in ComfyUI's queue at any time.</span>
+          </li>
+        </ol>
+
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
+          <p className="text-sm font-semibold text-slate-800 mb-2">The Story Forge progress bar tells you where you are</p>
+          <p className="text-sm text-slate-600 mb-1">
+            While a stage is running you will see: <em>Generating image 3 of 8...</em> with a progress bar
+            and a live item counter. When all items are done, the stage button disappears and the next stage's
+            button appears. This is your cue to review and then proceed.
+          </p>
+          <p className="text-sm text-slate-600">
+            You can optionally watch the ComfyUI output panel on your AI machine to see the actual generation
+            happening in real time — useful for debugging if something stalls or produces bad results. But
+            you do not need to interact with ComfyUI at all during a normal run.
+          </p>
+        </div>
+
+        <Note color="amber">
+          <strong>If a job stalls:</strong> check the ComfyUI output panel on your AI machine. If ComfyUI
+          shows an error node (red border), the workflow has a problem. Fix it in Settings or restart ComfyUI.
+          Story Forge will surface the error and stop the stage.
+        </Note>
+      </Card>
+
+      <Card>
+        <H2>The Five Stages</H2>
+
+        <div className="space-y-5">
+
+          {/* Stage 1 */}
+          <div className="rounded-lg border border-sky-200 bg-sky-50 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-sky-200">
+              <span className="w-7 h-7 rounded-full bg-sky-200 text-sky-800 flex items-center justify-center text-sm font-bold flex-shrink-0">1</span>
+              <span className="font-semibold text-slate-900">Analyse & Generate Images</span>
+              <span className="ml-auto text-xs text-sky-700 font-medium">LM Studio + ComfyUI (NetaYume workflow)</span>
+            </div>
+            <div className="p-4 space-y-2 text-sm text-slate-700">
+              <p><strong>What happens:</strong> The LLM reads your full chapter text and identifies 3–12 key visual moments — dramatic reveals, location introductions, action peaks, emotional beats. For each moment it writes a detailed Stable Diffusion prompt and a short animation description. Then ComfyUI generates the images one at a time using the built-in NetaYume Lumina workflow with your configured checkpoint, orientation, and conditioning prompts.</p>
+              <p><strong>Story Forge shows:</strong> <em>"Analyzing chapter for visual moments..."</em> then <em>"Generating image 1 of N..."</em> through <em>"Generating image N of N."</em></p>
+              <p><strong>ComfyUI output panel shows:</strong> Each image job appearing in the queue, rendering progress, then completing. One job at a time.</p>
+              <p><strong>When done:</strong> The image grid appears below. Review all images. If any are wrong, click <strong>New Run</strong> to start over — this discards the current run's images and begins fresh.</p>
+              <p className="text-xs text-slate-500"><strong>Review gate:</strong> The Stage 2 button only appears after Stage 1 completes. You decide when to proceed.</p>
+            </div>
+          </div>
+
+          {/* Stage 2 */}
+          <div className="rounded-lg border border-teal-200 bg-teal-50 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-teal-200">
+              <span className="w-7 h-7 rounded-full bg-teal-200 text-teal-800 flex items-center justify-center text-sm font-bold flex-shrink-0">2</span>
+              <span className="font-semibold text-slate-900">Animate Images</span>
+              <span className="ml-auto text-xs text-teal-700 font-medium">ComfyUI (LTX 2.3 Text2Video workflow)</span>
+            </div>
+            <div className="p-4 space-y-2 text-sm text-slate-700">
+              <p><strong>What happens:</strong> Each generated scene image is sent to ComfyUI's LTX 2.3 Text2Video workflow along with the animation description the LLM wrote in Stage 1. ComfyUI produces a short animated GIF (30 fps, 5 seconds) with subtle motion — flickering light, swaying foliage, atmospheric haze, gentle character breathing.</p>
+              <p><strong>Story Forge shows:</strong> <em>"Animating image 1 of N..."</em> through completion. When done, a <strong>Show animated</strong> toggle appears on the image grid so you can compare the still and animated versions.</p>
+              <p><strong>ComfyUI output panel shows:</strong> Each video generation job — these are slower than image jobs (typically 30–90 seconds each depending on your GPU).</p>
+              <p><strong>When done:</strong> Toggle the animated view on the image grid to review. This stage is <strong>optional</strong> — if you skip it, the assembly data will use still images instead.</p>
+              <p className="text-xs text-slate-500"><strong>Review gate:</strong> Stage 3 is available whether or not you run Stage 2. You can proceed directly to TTS from Stage 1's review.</p>
+            </div>
+          </div>
+
+          {/* Stage 3 */}
+          <div className="rounded-lg border border-sky-200 bg-sky-50 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-sky-200">
+              <span className="w-7 h-7 rounded-full bg-sky-200 text-sky-800 flex items-center justify-center text-sm font-bold flex-shrink-0">3</span>
+              <span className="font-semibold text-slate-900">Generate TTS Audio</span>
+              <span className="ml-auto text-xs text-sky-700 font-medium">ComfyUI (built-in TTS workflow)</span>
+            </div>
+            <div className="p-4 space-y-2 text-sm text-slate-700">
+              <p><strong>What happens:</strong> The chapter text is split at sentence boundaries into chunks of approximately 1000 characters. Each chunk is sent to ComfyUI's TTS workflow with your configured speaker voice and sample rate. Each chunk produces a separate audio file (wav/mp3/flac). The pipeline tracks which text passage each audio file corresponds to — this mapping is used in the assembly export and lip-sync stage.</p>
+              <p><strong>Story Forge shows:</strong> <em>"Generating TTS chunk 1 of N..."</em> and a secondary progress bar below showing how many chunks have completed out of the total.</p>
+              <p><strong>ComfyUI output panel shows:</strong> Each TTS job — typically fast (5–20 seconds per chunk).</p>
+              <p><strong>When done:</strong> Listen to the audio chunks in the pipeline interface to check quality. Look for mispronounced character or place names. If needed, edit the phonetic spelling in the chapter text and re-run this stage.</p>
+              <p className="text-xs text-slate-500"><strong>Review gate:</strong> Stages 4 and 5 both become available once at least one TTS chunk is completed.</p>
+            </div>
+          </div>
+
+          {/* Stage 4 */}
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-emerald-200">
+              <span className="w-7 h-7 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center text-sm font-bold flex-shrink-0">4</span>
+              <span className="font-semibold text-slate-900">Export Assembly Data</span>
+              <span className="ml-auto text-xs text-emerald-700 font-medium">Local export — no ComfyUI job</span>
+            </div>
+            <div className="p-4 space-y-2 text-sm text-slate-700">
+              <p><strong>What happens:</strong> Story Forge builds a structured JSON file from the data already in the database and triggers a browser download. No ComfyUI job is submitted. The file contains:</p>
+              <ul className="space-y-1 ml-4">
+                <li className="flex gap-2"><span className="text-slate-400">—</span><span><strong>images array</strong> — each image's URL (animated GIF if available, otherwise still), its order index, and the text anchor phrase that marks where it should appear on screen</span></li>
+                <li className="flex gap-2"><span className="text-slate-400">—</span><span><strong>audio array</strong> — each TTS chunk's URL, its text content, and its order index</span></li>
+                <li className="flex gap-2"><span className="text-slate-400">—</span><span><strong>chapterLabel</strong> — e.g. "Chapter 01"</span></li>
+              </ul>
+              <p><strong>How to use it:</strong> Feed this JSON into your video assembly tool. When the narration reaches a text anchor phrase, switch the displayed image to the corresponding one. The audio timeline gives you all the clip URLs in order to concatenate.</p>
+              <p className="text-xs text-slate-500"><strong>Note:</strong> This button is available any time after Stage 3 is started. You can re-download it at any point.</p>
+            </div>
+          </div>
+
+          {/* Stage 5 */}
+          <div className="rounded-lg border border-rose-200 bg-rose-50 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-rose-200">
+              <span className="w-7 h-7 rounded-full bg-rose-200 text-rose-800 flex items-center justify-center text-sm font-bold flex-shrink-0">5</span>
+              <span className="font-semibold text-slate-900">Lip-sync Generation</span>
+              <span className="ml-auto text-xs text-rose-700 font-medium">ComfyUI (LTX 2.3 LipSync workflow)</span>
+            </div>
+            <div className="p-4 space-y-2 text-sm text-slate-700">
+              <p><strong>What happens:</strong> You paste the URL of a character face image (front-facing, ideally from the World Library or a ComfyUI-generated image). Story Forge takes each completed TTS audio chunk and submits a lip-sync job to ComfyUI pairing the character image with that audio. ComfyUI generates a video of the character's mouth moving in sync with the speech.</p>
+              <p><strong>Output naming:</strong> Each clip is named sequentially — <Code>ch01_lipsync_001.mp4</Code>, <Code>ch01_lipsync_002.mp4</Code>, etc. These names appear in the Lip-sync Chunks list in the Pipeline UI and in <Code>ComfyUI/output/</Code>. Use this order to stitch clips in your external tool.</p>
+              <p><strong>Story Forge shows:</strong> <em>"Generating lip-sync 1 of N (ch01_lipsync_001.mp4)..."</em> for each clip.</p>
+              <p><strong>ComfyUI output panel shows:</strong> Each lip-sync video job — these are the slowest jobs (60–180 seconds each depending on audio length and GPU).</p>
+              <p><strong>When done:</strong> The Lip-sync Chunks list shows all clip URLs in order. Download or copy them and stitch sequentially in your video editor.</p>
+              <p className="text-xs text-slate-500"><strong>Review gate:</strong> You can re-run lip-sync at any time (e.g. with a different character image) without re-running earlier stages. The previous lip-sync chunks are discarded and replaced.</p>
+            </div>
+          </div>
+
         </div>
 
         <div className="mt-6 space-y-2">
           <Note color="red">
-            <strong>Do not clear ComfyUI's output folder between stages.</strong> Stage 2 needs Stage 1's images.
-            Stage 5 needs Stage 3's audio. Deleting output files will break the pipeline.
+            <strong>Never clear ComfyUI/output/ between stages.</strong> Stage 2 reads Stage 1's image files.
+            Stage 5 reads Stage 3's audio files. Deleting anything from the output folder will break those
+            references and the stage will error when it tries to read the missing file.
           </Note>
           <Note color="amber">
-            <strong>Sequential processing.</strong> Story Forge sends one job to ComfyUI at a time and waits
-            for completion before sending the next. Never start a second pipeline run while one is in progress.
+            <strong>Never run two pipeline stages at the same time.</strong> Story Forge sends one job at a time and
+            waits for each to finish before sending the next. Starting a new stage while one is running will
+            submit conflicting jobs to ComfyUI and corrupt the output.
+          </Note>
+          <Note color="sky">
+            <strong>New Run.</strong> The <em>New Run</em> button creates a fresh pipeline run for the same chapter,
+            discarding all previous images and lip-sync data. TTS chunks are NOT discarded — they persist and can
+            be reused in the new run's lip-sync stage without re-generating audio.
           </Note>
         </div>
       </Card>
-    </>
-  );
-}
 
-function StageCard({ number, color, title, what, review }: {
-  number: number;
-  color: 'sky' | 'teal' | 'emerald' | 'rose';
-  title: string;
-  what: string;
-  review: string;
-}) {
-  const colors = {
-    sky:     'border-sky-200 bg-sky-50',
-    teal:    'border-teal-200 bg-teal-50',
-    emerald: 'border-emerald-200 bg-emerald-50',
-    rose:    'border-rose-200 bg-rose-50',
-  };
-  const numColors = {
-    sky:     'bg-sky-200 text-sky-800',
-    teal:    'bg-teal-200 text-teal-800',
-    emerald: 'bg-emerald-200 text-emerald-800',
-    rose:    'bg-rose-200 text-rose-800',
-  };
-  return (
-    <div className={`rounded-lg border p-4 ${colors[color]}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${numColors[color]}`}>
-          {number}
-        </span>
-        <span className="font-semibold text-slate-900 text-sm">{title}</span>
-      </div>
-      <p className="text-sm text-slate-700 mb-2">{what}</p>
-      <p className="text-xs text-slate-500"><strong>Review gate:</strong> {review}</p>
-    </div>
+      <Card>
+        <H2>Watching ComfyUI During a Run</H2>
+        <P>
+          You do not need to interact with the ComfyUI web UI during a pipeline run — Story Forge handles
+          everything automatically. But keeping a browser tab open to your ComfyUI instance
+          (<Code>http://your-ai-machine:8188</Code>) is useful for:
+        </P>
+        <ul className="space-y-2 text-sm text-slate-700 mb-4">
+          <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span><strong>Seeing real-time render progress</strong> — the output panel shows the image forming as it renders, which is satisfying and lets you catch bad outputs early.</span></li>
+          <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span><strong>Spotting stalled jobs</strong> — if Story Forge's progress bar hasn't moved in several minutes, check the ComfyUI queue. If the queue is empty but Story Forge is still "running", a network issue may have caused the poll to hang. Refresh Story Forge to recover.</span></li>
+          <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span><strong>Identifying workflow errors</strong> — if a node shows a red error border in ComfyUI, the workflow failed. Story Forge will surface the error message and stop the stage.</span></li>
+          <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span><strong>Checking queue depth</strong> — the queue status indicator in Settings (after testing the connection) shows how many jobs are pending. This should always be 0 or 1 during a Story Forge run.</span></li>
+        </ul>
+        <Note color="sky">
+          The ComfyUI output panel is read-only during a Story Forge run. You should not queue additional jobs
+          from the ComfyUI UI while a pipeline stage is running, as this can cause Story Forge to retrieve the
+          wrong output file.
+        </Note>
+      </Card>
+    </>
   );
 }
 
