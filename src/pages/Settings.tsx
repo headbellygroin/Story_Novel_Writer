@@ -5,7 +5,7 @@ import { Database } from '../lib/database.types';
 import ProjectSelector from '../components/ProjectSelector';
 import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
 import { checkVisionConnection } from '../services/visionService';
-import { checkComfyUIConnection, getAvailableCheckpoints, getAvailableSamplers, getQueueStatus, QueueStatus } from '../services/comfyuiService';
+import { checkComfyUIConnection, getAvailableCheckpoints, getQueueStatus, QueueStatus, IMAGE_DIMENSIONS, ImageOrientation, ImageNoiseMode } from '../services/comfyuiService';
 import { DEFAULT_ART_STYLE_PRESETS, ArtStylePreset } from '../lib/artStylePresets';
 import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
 import { LIPSYNC_DIMENSIONS, LipsyncOrientation, LipsyncNoiseMode } from '../services/comfyuiLipsyncService';
@@ -118,10 +118,8 @@ export default function Settings() {
   const [comfyError, setComfyError] = useState('');
   const [comfyQueue, setComfyQueue] = useState<QueueStatus | null>(null);
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
-  const [samplers, setSamplers] = useState<string[]>([]);
 
   // Workflow import buffers
-  const [workflowText, setWorkflowText] = useState('');
   const [ttsWorkflowText, setTtsWorkflowText] = useState('');
   const [animationWorkflowText, setAnimationWorkflowText] = useState('');
   const [lipsyncWorkflowText, setLipsyncWorkflowText] = useState('');
@@ -225,13 +223,11 @@ export default function Settings() {
     const result = await checkComfyUIConnection(endpoint);
     if (result.ok) {
       setComfyStatus('connected');
-      const [ckpts, smpls, queue] = await Promise.all([
+      const [ckpts, queue] = await Promise.all([
         getAvailableCheckpoints(endpoint),
-        getAvailableSamplers(endpoint),
         getQueueStatus(endpoint),
       ]);
       setCheckpoints(ckpts);
-      setSamplers(smpls);
       setComfyQueue(queue);
     } else {
       setComfyStatus('disconnected');
@@ -649,112 +645,136 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* --- Orientation --- */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Checkpoint Model</label>
-            {checkpoints.length > 0 ? (
-              <select
-                value={(settings.comfyui_checkpoint as string) || ''}
-                onChange={(e) => setSettings({ ...settings, comfyui_checkpoint: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              >
-                <option value="">Select a checkpoint...</option>
-                {checkpoints.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={(settings.comfyui_checkpoint as string) || ''}
-                onChange={(e) => setSettings({ ...settings, comfyui_checkpoint: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-                placeholder="e.g. v1-5-pruned-emaonly.safetensors"
-              />
+            <p className="text-sm font-medium text-slate-700 mb-2">Output Orientation</p>
+            <p className="text-xs text-slate-400 mb-3">Sets the image resolution. Batch size is always 4 for user-initiated generation.</p>
+            <div className="grid grid-cols-3 gap-3">
+              {(Object.entries(IMAGE_DIMENSIONS) as [ImageOrientation, { width: number; height: number }][]).map(
+                ([key, dims]) => {
+                  const active = ((settings as Record<string, unknown>).image_orientation ?? 'portrait') === key;
+                  const labels: Record<ImageOrientation, string> = {
+                    portrait: 'Portrait',
+                    landscape: 'Landscape',
+                    square: 'Square',
+                  };
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSettings({ ...settings, image_orientation: key } as Partial<GenerationSettings>)}
+                      className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-all ${
+                        active
+                          ? 'border-sky-500 bg-sky-50 text-sky-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className={`border-2 rounded-sm ${active ? 'border-sky-500' : 'border-slate-400'} ${
+                        key === 'portrait'  ? 'w-6 h-9' :
+                        key === 'landscape' ? 'w-9 h-6' :
+                                              'w-7 h-7'
+                      }`} />
+                      <span className="text-xs font-medium">{labels[key]}</span>
+                      <span className="text-xs text-slate-400">{dims.width}×{dims.height}</span>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </div>
+
+          {/* --- Noise Seed --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-2">Noise Seed</p>
+            <div className="flex gap-3 mb-3">
+              {(['random', 'fixed'] as ImageNoiseMode[]).map((mode) => {
+                const active = ((settings as Record<string, unknown>).image_noise_mode ?? 'random') === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setSettings({ ...settings, image_noise_mode: mode } as Partial<GenerationSettings>)}
+                    className={`px-4 py-1.5 rounded-lg border text-sm transition-all ${
+                      active
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 font-medium'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {mode === 'random' ? 'Random (new each time)' : 'Fixed (reproducible)'}
+                  </button>
+                );
+              })}
+            </div>
+            {((settings as Record<string, unknown>).image_noise_mode ?? 'random') === 'fixed' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Seed Value</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={((settings as Record<string, unknown>).image_noise_seed as number) ?? 42}
+                  onChange={(e) => setSettings({ ...settings, image_noise_seed: parseInt(e.target.value) } as Partial<GenerationSettings>)}
+                  className="w-48 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="42"
+                />
+                <p className="text-xs text-slate-400 mt-1">Same seed + same prompt = same image output.</p>
+              </div>
             )}
-            <p className="text-xs text-slate-400 mt-1">
-              Connect to ComfyUI to auto-detect available models, or type the filename manually.
+          </div>
+
+          {/* --- Conditioning / Prompt --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-1">Positive Conditioning</p>
+            <p className="text-xs text-slate-400 mb-3">
+              These three fields are assembled into the prompt sent to the NetaYume Lumina workflow.
+              Describe what should appear in the image. The system prompt and negative conditioning are fixed in the workflow.
             </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Image Width</label>
-              <input type="number" step="64" min="256" max="2048"
-                value={settings.image_width || 768}
-                onChange={(e) => setSettings({ ...settings, image_width: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Image Height</label>
-              <input type="number" step="64" min="256" max="2048"
-                value={settings.image_height || 512}
-                onChange={(e) => setSettings({ ...settings, image_height: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Steps</label>
-              <input type="number" step="1" min="1" max="150"
-                value={settings.image_steps || 25}
-                onChange={(e) => setSettings({ ...settings, image_steps: parseInt(e.target.value) })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              />
-              <p className="text-xs text-slate-400 mt-1">More steps = higher quality, slower</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">CFG Scale</label>
-              <input type="number" step="0.5" min="1" max="30"
-                value={settings.image_cfg_scale || 7}
-                onChange={(e) => setSettings({ ...settings, image_cfg_scale: parseFloat(e.target.value) })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              />
-              <p className="text-xs text-slate-400 mt-1">How closely to follow the prompt (7–8 typical)</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Background</label>
+                <textarea
+                  rows={2}
+                  value={((settings as Record<string, unknown>).image_background_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, image_background_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="Desert plain of North Africa, sand dunes everywhere. In the far off distance, a small Oasis."
+                />
+                <p className="text-xs text-slate-400 mt-1">The environment, setting, and atmosphere of the scene.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Foreground</label>
+                <textarea
+                  rows={2}
+                  value={((settings as Record<string, unknown>).image_foreground_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, image_foreground_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="Ancient carved stone arch, scattered pottery shards, golden sand rippled by wind."
+                />
+                <p className="text-xs text-slate-400 mt-1">Objects, details, and elements in the foreground.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Characters</label>
+                <textarea
+                  rows={2}
+                  value={((settings as Record<string, unknown>).image_characters_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, image_characters_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="A young woman in a white linen robe, dark hair braided, shielding her eyes from the sun."
+                />
+                <p className="text-xs text-slate-400 mt-1">Characters present, their appearance and positioning.</p>
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Sampler</label>
-            {samplers.length > 0 ? (
-              <select
-                value={(settings.image_sampler as string) || 'euler_ancestral'}
-                onChange={(e) => setSettings({ ...settings, image_sampler: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              >
-                {samplers.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={(settings.image_sampler as string) || 'euler_ancestral'}
-                onChange={(e) => setSettings({ ...settings, image_sampler: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-                placeholder="euler_ancestral"
-              />
-            )}
+          {/* --- Technical note --- */}
+          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <p className="font-medium text-slate-600 mb-1">What Story Forge injects automatically</p>
+            <ul className="space-y-0.5 text-slate-500">
+              <li>· Width &amp; Height — from orientation above</li>
+              <li>· Batch Size — 4 (user generation) or 1 (automated pipeline)</li>
+              <li>· Seed — random or fixed value above</li>
+              <li>· Model, steps, cfg, sampler, negative prompt — fixed in the workflow</li>
+            </ul>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Negative Prompt</label>
-            <textarea
-              value={(settings.image_negative_prompt as string) || ''}
-              onChange={(e) => setSettings({ ...settings, image_negative_prompt: e.target.value })}
-              rows={2}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-              placeholder="text, watermark, blurry, low quality..."
-            />
-          </div>
-
-          <WorkflowImportBlock
-            label="Custom Image Workflow"
-            hint="Export from ComfyUI using Save (API Format). Leave empty to use the built-in default."
-            placeholder='{"3": {"class_type": "KSampler", ...}}'
-            value={workflowText}
-            onChange={setWorkflowText}
-            loaded={!!settings.comfyui_workflow}
-            loadedLabel="Custom image workflow"
-            message={importMsg['image']}
-            onImport={() => importWorkflow('image', workflowText, 'comfyui_workflow', 'Image workflow')}
-            onClear={() => clearWorkflow('comfyui_workflow', setWorkflowText)}
-          />
         </Section>
 
         {/* ------------------------------------------------------------------ */}

@@ -1,13 +1,24 @@
+export type ImageOrientation = 'portrait' | 'landscape' | 'square';
+export type ImageNoiseMode = 'random' | 'fixed';
+
+export const IMAGE_DIMENSIONS: Record<ImageOrientation, { width: number; height: number }> = {
+  portrait:  { width: 1080, height: 1920 },
+  landscape: { width: 1920, height: 1080 },
+  square:    { width: 1080, height: 1080 },
+};
+
 export interface ComfyUISettings {
   endpoint: string;
   workflow: Record<string, unknown> | null;
-  checkpoint: string;
-  width: number;
-  height: number;
-  steps: number;
-  cfgScale: number;
-  sampler: string;
-  negativePrompt: string;
+  // User-facing generation options
+  orientation?: ImageOrientation;
+  noiseMode?: ImageNoiseMode;
+  noiseSeed?: number;
+  // Internal overrides (used by Story Forge automated generation, not user-initiated)
+  batchSize?: number;
+  // Legacy fields kept for fallback workflow compatibility
+  checkpoint?: string;
+  negativePrompt?: string;
 }
 
 interface QueueResponse {
@@ -27,18 +38,24 @@ interface HistoryEntry {
 // Workflow preparation
 // ---------------------------------------------------------------------------
 
-// Finds the single PrimitiveStringMultiline node whose _meta.title === "Prompt"
-// and updates its value. This is the user-facing prompt input in the NetaYume
-// API workflow (node key "26:28").
-//
-// Also applies fixed settings to all matching node types so every run starts
-// from a known-good state regardless of what was previously saved in the file.
+// Prepares the NetaYume workflow for submission. Story Forge only controls:
+//   1. The "Prompt" PrimitiveStringMultiline node — scene description from user fields
+//   2. EmptySD3LatentImage / EmptyLatentImage — width, height (from orientation), batch_size
+//   3. KSampler seed — random or fixed
+// Everything else (system prompts, negative prompt, checkpoint, steps, cfg, sampler)
+// stays exactly as authored in the workflow JSON.
 function prepareWorkflow(
   workflow: Record<string, unknown>,
   prompt: string,
   settings: ComfyUISettings
 ): Record<string, unknown> {
   const w: Record<string, unknown> = JSON.parse(JSON.stringify(workflow));
+
+  const { width, height } = IMAGE_DIMENSIONS[settings.orientation ?? 'portrait'];
+  const batchSize = settings.batchSize ?? 4;
+  const seed = settings.noiseMode === 'fixed' && settings.noiseSeed != null
+    ? settings.noiseSeed
+    : Math.floor(Math.random() * 2 ** 32);
 
   for (const nodeId of Object.keys(w)) {
     const node = w[nodeId] as Record<string, unknown>;
@@ -48,7 +65,6 @@ function prepareWorkflow(
 
     switch (classType) {
       case 'PrimitiveStringMultiline':
-        // Only inject into the "Prompt" node — leave System prompt nodes untouched
         if (title === 'Prompt') {
           inputs.value = prompt;
           node.inputs = inputs;
@@ -57,91 +73,21 @@ function prepareWorkflow(
 
       case 'KSampler':
       case 'KSamplerAdvanced':
-        inputs.seed = Math.floor(Math.random() * 2 ** 32);
-        inputs.steps = settings.steps;
-        inputs.cfg = settings.cfgScale;
-        inputs.sampler_name = settings.sampler;
-        inputs.scheduler = inputs.scheduler ?? 'simple';
-        inputs.denoise = 1;
-        inputs.batch_size = 1;
+        inputs.seed = seed;
         node.inputs = inputs;
         break;
 
       case 'EmptyLatentImage':
       case 'EmptySD3LatentImage':
-        inputs.width = settings.width;
-        inputs.height = settings.height;
-        inputs.batch_size = 1;
+        inputs.width = width;
+        inputs.height = height;
+        inputs.batch_size = batchSize;
         node.inputs = inputs;
-        break;
-
-      case 'CheckpointLoaderSimple':
-        if (settings.checkpoint) {
-          inputs.ckpt_name = settings.checkpoint;
-          node.inputs = inputs;
-        }
         break;
     }
   }
 
   return w;
-}
-
-// Builds a minimal SD1.5-compatible fallback workflow when no custom workflow
-// is configured (legacy support).
-function buildDefaultWorkflow(
-  prompt: string,
-  negative: string,
-  settings: ComfyUISettings
-): Record<string, unknown> {
-  return {
-    '3': {
-      class_type: 'KSampler',
-      _meta: { title: 'KSampler' },
-      inputs: {
-        seed: Math.floor(Math.random() * 2 ** 32),
-        steps: settings.steps,
-        cfg: settings.cfgScale,
-        sampler_name: settings.sampler,
-        scheduler: 'normal',
-        denoise: 1,
-        model: ['4', 0],
-        positive: ['6', 0],
-        negative: ['7', 0],
-        latent_image: ['5', 0],
-      },
-    },
-    '4': {
-      class_type: 'CheckpointLoaderSimple',
-      _meta: { title: 'Load Checkpoint' },
-      inputs: { ckpt_name: settings.checkpoint },
-    },
-    '5': {
-      class_type: 'EmptyLatentImage',
-      _meta: { title: 'Empty Latent Image' },
-      inputs: { width: settings.width, height: settings.height, batch_size: 1 },
-    },
-    '6': {
-      class_type: 'CLIPTextEncode',
-      _meta: { title: 'CLIP Text Encode (Positive Prompt)' },
-      inputs: { text: prompt, clip: ['4', 1] },
-    },
-    '7': {
-      class_type: 'CLIPTextEncode',
-      _meta: { title: 'CLIP Text Encode (Negative Prompt)' },
-      inputs: { text: negative, clip: ['4', 1] },
-    },
-    '8': {
-      class_type: 'VAEDecode',
-      _meta: { title: 'VAE Decode' },
-      inputs: { samples: ['3', 0], vae: ['4', 2] },
-    },
-    '9': {
-      class_type: 'SaveImage',
-      _meta: { title: 'Save Image' },
-      inputs: { filename_prefix: 'novelist_scene', images: ['8', 0] },
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +186,22 @@ export async function getAvailableSamplers(endpoint: string): Promise<string[]> 
 }
 
 // ---------------------------------------------------------------------------
+// Prompt assembly
+// ---------------------------------------------------------------------------
+
+export function buildImagePrompt(
+  background: string,
+  foreground: string,
+  characters: string
+): string {
+  const parts: string[] = [];
+  if (background.trim()) parts.push(`Background: ${background.trim()}`);
+  if (foreground.trim()) parts.push(`Foreground: ${foreground.trim()}`);
+  if (characters.trim()) parts.push(`Characters: ${characters.trim()}`);
+  return parts.join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
 // Image generation
 // ---------------------------------------------------------------------------
 
@@ -252,15 +214,10 @@ export async function generateImage(
   // Wait for any in-progress job to finish before submitting
   await waitUntilQueueFree(endpoint);
 
-  let workflow: Record<string, unknown>;
-  if (settings.workflow) {
-    workflow = prepareWorkflow(settings.workflow, prompt, settings);
-  } else {
-    if (!settings.checkpoint) {
-      throw new Error('No checkpoint model configured. Please set a checkpoint in Settings.');
-    }
-    workflow = buildDefaultWorkflow(prompt, settings.negativePrompt, settings);
+  if (!settings.workflow) {
+    throw new Error('No image workflow configured. The NetaYume workflow JSON must be present.');
   }
+  const workflow = prepareWorkflow(settings.workflow, prompt, settings);
 
   const clientId = crypto.randomUUID();
   const queueRes = await fetch(`${endpoint}/prompt`, {

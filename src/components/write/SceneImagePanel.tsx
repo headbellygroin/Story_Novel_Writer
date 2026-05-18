@@ -46,15 +46,12 @@ export default function SceneImagePanel({ scene, settings, projectId, onSceneUpd
       }
 
       const comfySettings: ComfyUISettings = {
-        endpoint: settings.comfyui_endpoint || 'http://127.0.0.1:8188',
+        endpoint: (settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188',
         workflow: settings.comfyui_workflow as Record<string, unknown> | null,
-        checkpoint: settings.comfyui_checkpoint || '',
-        width: settings.image_width || 768,
-        height: settings.image_height || 512,
-        steps: settings.image_steps || 25,
-        cfgScale: Number(settings.image_cfg_scale) || 7,
-        sampler: settings.image_sampler || 'euler_ancestral',
-        negativePrompt: settings.image_negative_prompt || '',
+        orientation: ((settings as Record<string, unknown>).image_orientation as 'portrait' | 'landscape' | 'square') ?? 'portrait',
+        noiseMode: ((settings as Record<string, unknown>).image_noise_mode as 'random' | 'fixed') ?? 'random',
+        noiseSeed: ((settings as Record<string, unknown>).image_noise_seed as number) ?? 42,
+        batchSize: 1,
       };
 
       const imageUrl = await generateImage(prompt, comfySettings);
