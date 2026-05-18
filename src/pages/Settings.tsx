@@ -15,7 +15,7 @@ export default function Settings() {
   const { currentProjectId } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings>>({
     model_name: 'local-model',
-    api_endpoint: 'http://localhost:5000/v1/completions',
+    api_endpoint: 'http://localhost:1234/v1/chat/completions',
     temperature: 0.7,
     max_tokens: 1000,
     top_p: 0.9,
@@ -282,9 +282,9 @@ export default function Settings() {
 
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
         <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4">
-          <h3 className="font-semibold text-amber-900 mb-2">Uncensored Local Models</h3>
+          <h3 className="font-semibold text-amber-900 mb-2">Local AI Models via LM Studio</h3>
           <p className="text-sm text-amber-800 mb-3">
-            This application works with uncensored local AI models, giving you complete creative freedom without content restrictions or ethical guardrails.
+            Story Forge connects to LM Studio's local server for all AI writing. Start LM Studio, load a model, and enable the local server. The default endpoint below points to LM Studio's standard address.
           </p>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
@@ -293,14 +293,15 @@ export default function Settings() {
                 <li>• MythoMax 13B (creative, uncensored)</li>
                 <li>• Nous Hermes 2 Yi 34B (coherent)</li>
                 <li>• Goliath 120B (top tier, high VRAM)</li>
+                <li>• Any GGUF/MLX model in LM Studio</li>
               </ul>
             </div>
             <div>
-              <p className="text-sm font-medium text-amber-900 mb-1">Backend Options:</p>
+              <p className="text-sm font-medium text-amber-900 mb-1">Endpoint Formats:</p>
               <ul className="text-sm text-amber-800 space-y-1">
-                <li>• text-generation-webui (best)</li>
-                <li>• LM Studio (user-friendly)</li>
-                <li>• KoboldAI</li>
+                <li>• <code className="bg-amber-100 px-1 rounded">…/v1/chat/completions</code> — LM Studio (recommended)</li>
+                <li>• <code className="bg-amber-100 px-1 rounded">…/v1/completions</code> — legacy / text-gen-webui</li>
+                <li>• <code className="bg-amber-100 px-1 rounded">…/v1/completions</code> — KoboldAI</li>
               </ul>
             </div>
           </div>
@@ -330,10 +331,10 @@ export default function Settings() {
               value={settings.api_endpoint || ''}
               onChange={(e) => setSettings({ ...settings, api_endpoint: e.target.value })}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="http://localhost:5000/v1/completions"
+              placeholder="http://localhost:1234/v1/chat/completions"
             />
             <p className="text-xs text-slate-500 mt-1">
-              URL of your local model's API endpoint (OpenAI-compatible format)
+              LM Studio default: <code className="bg-slate-100 px-1 rounded">http://localhost:1234/v1/chat/completions</code>. Use <code className="bg-slate-100 px-1 rounded">/v1/completions</code> for text-generation-webui or KoboldAI.
             </p>
           </div>
 

@@ -108,37 +108,52 @@ ${sceneDescription}
 
 Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`;
 
+  // LM Studio and OpenAI-compatible servers support both endpoints:
+  // /v1/chat/completions — chat format, better for instruction-tuned models
+  // /v1/completions     — legacy text-in/text-out format
+  const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
+
   try {
-    const requestBody: Record<string, unknown> = {
-      prompt: fullPrompt,
+    const baseBody: Record<string, unknown> = {
       temperature: settings.temperature,
       max_tokens: settings.max_tokens,
     };
 
-    if (settings.top_p !== undefined) requestBody.top_p = settings.top_p;
-    if (settings.top_k !== undefined) requestBody.top_k = settings.top_k;
-    if (settings.repetition_penalty !== undefined) requestBody.repetition_penalty = settings.repetition_penalty;
-    if (settings.presence_penalty !== undefined) requestBody.presence_penalty = settings.presence_penalty;
-    if (settings.frequency_penalty !== undefined) requestBody.frequency_penalty = settings.frequency_penalty;
+    if (settings.model_name) baseBody.model = settings.model_name;
+    if (settings.top_p !== undefined) baseBody.top_p = settings.top_p;
+    if (settings.top_k !== undefined) baseBody.top_k = settings.top_k;
+    if (settings.repetition_penalty !== undefined) baseBody.repetition_penalty = settings.repetition_penalty;
+    if (settings.presence_penalty !== undefined) baseBody.presence_penalty = settings.presence_penalty;
+    if (settings.frequency_penalty !== undefined) baseBody.frequency_penalty = settings.frequency_penalty;
     if (settings.stop_sequences && settings.stop_sequences.length > 0) {
-      requestBody.stop = settings.stop_sequences;
+      baseBody.stop = settings.stop_sequences;
     }
+
+    const requestBody: Record<string, unknown> = isChatEndpoint
+      ? { ...baseBody, messages: [{ role: 'user', content: fullPrompt }] }
+      : { ...baseBody, prompt: fullPrompt };
 
     const response = await fetch(settings.api_endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
+      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
 
-    return data.choices?.[0]?.text || data.text || data.results?.[0]?.text || 'No content generated';
+    // Chat completions: { choices: [{ message: { content } }] }
+    // Legacy completions: { choices: [{ text }] } or { text } or { results: [{ text }] }
+    return (
+      data.choices?.[0]?.message?.content ||
+      data.choices?.[0]?.text ||
+      data.text ||
+      data.results?.[0]?.text ||
+      'No content generated'
+    );
   } catch (error) {
     console.error('Error generating scene:', error);
     throw error;
