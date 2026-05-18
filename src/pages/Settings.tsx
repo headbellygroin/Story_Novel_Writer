@@ -294,17 +294,18 @@ export default function Settings() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">AI Generation Settings</h1>
+        <h1 className="text-3xl font-bold text-slate-900">Settings</h1>
         <ProjectSelector />
       </div>
 
-      {/* Offline planning notice */}
-      <div className="mb-6 bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 flex gap-3 items-start">
-        <span className="text-sky-500 mt-0.5 text-lg leading-none">i</span>
-        <p className="text-sm text-sky-800">
-          All settings are saved to the database and will be ready when you connect to your base machine.
-          Connection tests will show as offline until the AI server and ComfyUI are running — this is expected.
-        </p>
+      {/* Connection overview */}
+      <div className="mb-6 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 flex gap-3 items-start">
+        <span className="text-slate-400 mt-0.5 text-lg leading-none">i</span>
+        <div className="text-sm text-slate-700 space-y-1">
+          <p><strong>LM Studio</strong> — runs on your AI machine and handles all text generation. Story Forge connects directly to its local API server.</p>
+          <p><strong>ComfyUI</strong> — runs on the same AI machine and handles all image, animation, TTS, and lip-sync generation. Story Forge sends workflows, waits for completion, and retrieves all output files automatically.</p>
+          <p className="text-slate-500">Enter the hostname or IP of your AI machine below. All generated files are stored in <code className="bg-slate-100 px-1 rounded">ComfyUI/output/</code> and referenced by URL — do not clear that folder between pipeline runs.</p>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -315,9 +316,8 @@ export default function Settings() {
         <div className="mb-2">
           <h2 className="text-lg font-semibold text-slate-900 mb-1">Writing AI (LM Studio)</h2>
           <p className="text-sm text-slate-500 mb-4">
-            Story Forge connects to LM Studio's local server for all AI text generation.
-            Start LM Studio, load a model, and enable the local server on port 1234.
-            Both <code className="bg-slate-100 px-1 rounded">/v1/chat/completions</code> (recommended) and <code className="bg-slate-100 px-1 rounded">/v1/completions</code> (legacy) are supported — the format is detected automatically from the URL.
+            LM Studio is assumed to be running on your AI machine with a model loaded and the local server enabled on port 1234.
+            Enter the full endpoint URL below. Both <code className="bg-slate-100 px-1 rounded">/v1/chat/completions</code> (recommended) and <code className="bg-slate-100 px-1 rounded">/v1/completions</code> (legacy) are supported — format is detected automatically.
           </p>
 
           <div className="space-y-4">
@@ -332,7 +332,7 @@ export default function Settings() {
                   placeholder="local-model"
                 />
                 <p className="text-xs text-slate-400 mt-1">
-                  Copy the Model ID from LM Studio's Local Server tab (e.g. <code>llama-3-8b-instruct</code>).
+                  Copy the Model ID from LM Studio's Local Server tab (e.g. <code>llama-3.1-8b-instruct</code>).
                 </p>
               </div>
               <div>
@@ -380,7 +380,7 @@ export default function Settings() {
                 {aiStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
                 {aiStatus === 'connected' && <span className="text-emerald-600">Connected to LM Studio</span>}
                 {aiStatus === 'disconnected' && (
-                  <span className="text-red-600">{aiError || 'Server not reachable — expected if offline'}</span>
+                  <span className="text-red-600">{aiError || 'Cannot reach LM Studio — check the endpoint and that the server is running'}</span>
                 )}
               </div>
             </div>
@@ -521,7 +521,7 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Vision / Image Analysis (LM Studio)"
-          description="Analyzes uploaded reference images using a vision-capable model loaded in LM Studio (e.g. LLaVA). The connection uses the Vite dev proxy on port 1234."
+          description="Analyzes reference images using a vision-capable model loaded in LM Studio on your AI machine. Load a vision model (LLaVA, BakLLaVA, etc.) alongside or instead of your writing model."
         >
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -552,14 +552,13 @@ export default function Settings() {
                   {visionStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
                   {visionStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
                   {visionStatus === 'connected' && <span className="text-emerald-600">Connected</span>}
-                  {visionStatus === 'disconnected' && <span className="text-red-600">Offline — expected if not on base machine</span>}
+                  {visionStatus === 'disconnected' && <span className="text-red-600">Cannot reach LM Studio vision model — check model is loaded</span>}
                 </div>
               </div>
             </div>
           </div>
-          <div className="text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-lg p-3">
-            Vision uses a fixed proxy to <code>http://127.0.0.1:1234</code>. To use vision on the base machine,
-            load a vision-capable model (LLaVA, BakLLaVA, etc.) in LM Studio and keep the local server running.
+          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            Vision requests are routed through the same LM Studio server as text generation. Load a vision-capable model in LM Studio and enter its Model ID above.
           </div>
         </Section>
 
@@ -567,8 +566,8 @@ export default function Settings() {
         {/* ComfyUI — Scene Images                                              */}
         {/* ------------------------------------------------------------------ */}
         <Section
-          title="Scene-to-Image (ComfyUI)"
-          description="Generate images from your scenes using ComfyUI. Make sure ComfyUI is running before testing the connection."
+          title="ComfyUI Connection"
+          description="ComfyUI is assumed to be running on your AI machine. This single endpoint is used for all generation — scene images, animation, TTS audio, and lip-sync. Story Forge sends each workflow, waits for completion, and retrieves the output file automatically."
         >
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -578,8 +577,9 @@ export default function Settings() {
                 value={comfyEndpoint}
                 onChange={(e) => setSettings({ ...settings, comfyui_endpoint: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
-                placeholder="http://desktop-fbpj753:8188"
+                placeholder="http://your-ai-machine:8188"
               />
+              <p className="text-xs text-slate-400 mt-1">Replace <code className="bg-slate-100 px-1 rounded">your-ai-machine</code> with the hostname or IP of the machine running ComfyUI.</p>
             </div>
             <div className="flex flex-col justify-end">
               <div className="flex items-center gap-3">
@@ -602,7 +602,7 @@ export default function Settings() {
                     </span>
                   )}
                   {comfyStatus === 'disconnected' && (
-                    <span className="text-red-600">{comfyError || 'Offline — expected if not on base machine'}</span>
+                    <span className="text-red-600">{comfyError || 'Cannot reach ComfyUI — check the endpoint and that ComfyUI is running'}</span>
                   )}
                 </div>
               </div>
@@ -864,7 +864,7 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Text-to-Speech (ComfyUI TTS)"
-          description="Generate narration audio from story text using the built-in ComfyUI TTS workflow."
+          description="Converts chapter text to narration audio via ComfyUI on your AI machine. The built-in TTS workflow is sent automatically — configure your voice and sample rate below."
         >
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -895,7 +895,7 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Image Animation (ComfyUI)"
-          description="Animate still images using the built-in LTX 2.3 Text2Video workflow. Generates at 30 fps / 5 seconds and outputs a .gif for use in audiobooks and exports."
+          description="Animates story images via ComfyUI on your AI machine using the built-in LTX 2.3 Text2Video workflow. Generates at 30 fps / 5 seconds. Output is retrieved automatically and converted to .gif for use in audiobooks and video exports."
         >
           {/* --- Prompt Fields --- */}
           <div>
@@ -986,7 +986,7 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Lip-sync (ComfyUI LTX 2.3)"
-          description="Generate a video from a character image and audio. Story Forge uploads your image and audio to ComfyUI and retrieves the generated video automatically."
+          description="Generates animated lip-sync video from a character image and TTS audio via ComfyUI on your AI machine. Story Forge uploads both files, sends the built-in LTX 2.3 workflow, and retrieves the output video automatically."
         >
           {/* --- Orientation --- */}
           <div>
