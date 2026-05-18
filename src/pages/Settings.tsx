@@ -11,6 +11,64 @@ import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voic
 
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+type ConnStatus = 'unchecked' | 'connected' | 'disconnected' | 'checking';
+
+// ---------------------------------------------------------------------------
+// Small helper: collapsible section wrapper
+// ---------------------------------------------------------------------------
+function Section({
+  title,
+  description,
+  children,
+  badge,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border-t border-slate-200 pt-6 mt-6">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between group mb-1"
+      >
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-slate-900 text-left">{title}</h3>
+          {badge}
+        </div>
+        <span className="text-slate-400 group-hover:text-slate-600 transition-colors text-sm">
+          {open ? '▲' : '▼'}
+        </span>
+      </button>
+      {description && (
+        <p className="text-sm text-slate-500 mb-4">{description}</p>
+      )}
+      {open && <div className="space-y-4">{children}</div>}
+    </div>
+  );
+}
+
+function ConnDot({ status }: { status: ConnStatus }) {
+  if (status === 'connected') return <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />;
+  if (status === 'disconnected') return <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />;
+  if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" />;
+  return <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />;
+}
+
+function WorkflowLoaded({ label }: { label: string }) {
+  return (
+    <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+      {label} loaded
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 export default function Settings() {
   const { currentProjectId } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings>>({
@@ -46,41 +104,47 @@ export default function Settings() {
     voice_chat_pitch: 1.0,
     art_style_presets: [],
   });
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [existingId, setExistingId] = useState<string | null>(null);
-  const [visionStatus, setVisionStatus] = useState<'unchecked' | 'connected' | 'disconnected'>('unchecked');
-  const [checkingVision, setCheckingVision] = useState(false);
-  const [comfyStatus, setComfyStatus] = useState<'unchecked' | 'connected' | 'disconnected'>('unchecked');
-  const [comfyError, setComfyError] = useState<string>('');
-  const [checkingComfy, setCheckingComfy] = useState(false);
+
+  // Connection states
+  const [aiStatus, setAiStatus] = useState<ConnStatus>('unchecked');
+  const [aiError, setAiError] = useState('');
+  const [visionStatus, setVisionStatus] = useState<ConnStatus>('unchecked');
+  const [comfyStatus, setComfyStatus] = useState<ConnStatus>('unchecked');
+  const [comfyError, setComfyError] = useState('');
   const [comfyQueue, setComfyQueue] = useState<QueueStatus | null>(null);
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const [samplers, setSamplers] = useState<string[]>([]);
+
+  // Workflow import buffers
   const [workflowText, setWorkflowText] = useState('');
   const [ttsWorkflowText, setTtsWorkflowText] = useState('');
   const [animationWorkflowText, setAnimationWorkflowText] = useState('');
   const [lipsyncWorkflowText, setLipsyncWorkflowText] = useState('');
+
+  // Inline import feedback
+  const [importMsg, setImportMsg] = useState<Record<string, string>>({});
+
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentProjectId) {
-      loadSettings();
-    }
+    if (currentProjectId) loadSettings();
   }, [currentProjectId]);
 
   useEffect(() => {
     if (isSpeechSynthesisSupported()) {
-      const loadVoices = () => setVoices(getAvailableVoices());
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
+      const load = () => setVoices(getAvailableVoices());
+      load();
+      window.speechSynthesis.onvoiceschanged = load;
     }
   }, []);
 
   async function loadSettings() {
     if (!currentProjectId) return;
-
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -88,15 +152,13 @@ export default function Settings() {
         .select('*')
         .eq('project_id', currentProjectId)
         .maybeSingle();
-
       if (error && error.code !== 'PGRST116') throw error;
-
       if (data) {
         setSettings(data);
         setExistingId(data.id);
       }
-    } catch (error) {
-      console.error('Error loading settings:', error);
+    } catch (err) {
+      console.error('Error loading settings:', err);
     } finally {
       setLoading(false);
     }
@@ -104,56 +166,62 @@ export default function Settings() {
 
   async function saveSettings() {
     if (!currentProjectId) return;
-
-    setSaving(true);
+    setSaveStatus('saving');
     try {
-      const payload = {
-        ...settings,
-        project_id: currentProjectId,
-        updated_at: new Date().toISOString(),
-      };
-
+      const payload = { ...settings, project_id: currentProjectId, updated_at: new Date().toISOString() };
       if (existingId) {
-        const { error } = await supabase
-          .from('generation_settings')
-          .update(payload)
-          .eq('id', existingId);
-
+        const { error } = await supabase.from('generation_settings').update(payload).eq('id', existingId);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
-          .from('generation_settings')
-          .insert([payload])
-          .select()
-          .single();
-
+        const { data, error } = await supabase.from('generation_settings').insert([payload]).select().single();
         if (error) throw error;
         setExistingId(data.id);
       }
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 4000);
+    }
+  }
 
-      alert('Settings saved successfully!');
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      alert('Failed to save settings');
-    } finally {
-      setSaving(false);
+  // ---------------------------------------------------------------------------
+  // Connection tests
+  // ---------------------------------------------------------------------------
+
+  async function handleCheckAI() {
+    setAiStatus('checking');
+    setAiError('');
+    const endpoint = settings.api_endpoint || 'http://localhost:1234/v1/chat/completions';
+    try {
+      // Derive the models list URL from the configured endpoint
+      const base = endpoint.replace(/\/v1\/.*$/, '');
+      const res = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        setAiStatus('connected');
+      } else {
+        setAiStatus('disconnected');
+        setAiError(`Server responded with ${res.status}`);
+      }
+    } catch {
+      setAiStatus('disconnected');
+      setAiError('Could not reach the AI server. Make sure LM Studio (or your backend) is running.');
     }
   }
 
   async function handleCheckVision() {
-    setCheckingVision(true);
+    setVisionStatus('checking');
     const connected = await checkVisionConnection();
     setVisionStatus(connected ? 'connected' : 'disconnected');
-    setCheckingVision(false);
   }
 
   async function handleCheckComfyUI() {
-    setCheckingComfy(true);
+    setComfyStatus('checking');
     setComfyError('');
     setComfyQueue(null);
     const endpoint = (settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188';
     const result = await checkComfyUIConnection(endpoint);
-
     if (result.ok) {
       setComfyStatus('connected');
       const [ckpts, smpls, queue] = await Promise.all([
@@ -168,42 +236,41 @@ export default function Settings() {
       setComfyStatus('disconnected');
       setComfyError(result.error || 'Unknown error');
     }
-    setCheckingComfy(false);
   }
 
-  function handleTtsWorkflowImport() {
+  // ---------------------------------------------------------------------------
+  // Workflow imports
+  // ---------------------------------------------------------------------------
+
+  function importWorkflow(
+    key: string,
+    json: string,
+    settingField: keyof GenerationSettings,
+    label: string
+  ) {
     try {
-      const parsed = JSON.parse(ttsWorkflowText);
-      setSettings({ ...settings, comfyui_tts_workflow: parsed });
-      alert('TTS Workflow imported successfully');
+      const parsed = JSON.parse(json);
+      setSettings({ ...settings, [settingField]: parsed });
+      setImportMsg({ ...importMsg, [key]: `${label} imported successfully.` });
+      setTimeout(() => setImportMsg((m) => ({ ...m, [key]: '' })), 4000);
     } catch {
-      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
+      setImportMsg({ ...importMsg, [key]: 'Invalid JSON — paste a valid ComfyUI API-format workflow.' });
+      setTimeout(() => setImportMsg((m) => ({ ...m, [key]: '' })), 5000);
     }
   }
 
-  function handleAnimationWorkflowImport() {
-    try {
-      const parsed = JSON.parse(animationWorkflowText);
-      setSettings({ ...settings, comfyui_animation_workflow: parsed });
-      alert('Animation workflow imported successfully');
-    } catch {
-      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
-    }
+  function clearWorkflow(settingField: keyof GenerationSettings, textSetter: (v: string) => void) {
+    setSettings({ ...settings, [settingField]: null });
+    textSetter('');
   }
 
-  function handleLipsyncWorkflowImport() {
-    try {
-      const parsed = JSON.parse(lipsyncWorkflowText);
-      setSettings({ ...settings, comfyui_lipsync_workflow: parsed });
-      alert('Lip-sync workflow imported successfully');
-    } catch {
-      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // Art style preset helpers
+  // ---------------------------------------------------------------------------
 
   function getArtPresets(): ArtStylePreset[] {
-    const presets = settings.art_style_presets;
-    if (Array.isArray(presets)) return presets as unknown as ArtStylePreset[];
+    const p = settings.art_style_presets;
+    if (Array.isArray(p)) return p as unknown as ArtStylePreset[];
     return [];
   }
 
@@ -211,28 +278,23 @@ export default function Settings() {
     setSettings({ ...settings, art_style_presets: JSON.parse(JSON.stringify(presets)) });
   }
 
-  function updateArtPreset(presetId: string, field: keyof ArtStylePreset, value: string | number | null) {
-    const presets = getArtPresets();
-    const updated = presets.map((p) => p.id === presetId ? { ...p, [field]: value } : p);
-    setArtPresets(updated);
+  function updateArtPreset(id: string, field: keyof ArtStylePreset, value: string | number | null) {
+    setArtPresets(getArtPresets().map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   }
 
   function addDefaultPresets() {
     const existing = getArtPresets();
-    const existingIds = new Set(existing.map((p) => p.id));
-    const newPresets = DEFAULT_ART_STYLE_PRESETS.filter((p) => !existingIds.has(p.id));
-    setArtPresets([...existing, ...newPresets]);
+    const ids = new Set(existing.map((p) => p.id));
+    setArtPresets([...existing, ...DEFAULT_ART_STYLE_PRESETS.filter((p) => !ids.has(p.id))]);
   }
 
-  function removePreset(presetId: string) {
-    const presets = getArtPresets().filter((p) => p.id !== presetId);
-    setArtPresets(presets);
-    if (editingPresetId === presetId) setEditingPresetId(null);
+  function removePreset(id: string) {
+    setArtPresets(getArtPresets().filter((p) => p.id !== id));
+    if (editingPresetId === id) setEditingPresetId(null);
   }
 
   function addCustomPreset() {
-    const presets = getArtPresets();
-    const newPreset: ArtStylePreset = {
+    const preset: ArtStylePreset = {
       id: `custom-${Date.now()}`,
       name: 'New Style',
       checkpoint: '',
@@ -243,23 +305,15 @@ export default function Settings() {
       stepsOverride: null,
       cfgOverride: null,
     };
-    setArtPresets([...presets, newPreset]);
-    setEditingPresetId(newPreset.id);
+    setArtPresets([...getArtPresets(), preset]);
+    setEditingPresetId(preset.id);
   }
 
-  function handleWorkflowImport() {
-    try {
-      const parsed = JSON.parse(workflowText);
-      setSettings({ ...settings, comfyui_workflow: parsed });
-      alert('Workflow imported successfully');
-    } catch {
-      alert('Invalid JSON. Please paste a valid ComfyUI API-format workflow.');
-    }
-  }
+  // ---------------------------------------------------------------------------
 
   if (!currentProjectId) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center text-slate-600">Please select or create a project first.</div>
       </div>
     );
@@ -267,11 +321,14 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center text-slate-600">Loading settings...</div>
       </div>
     );
   }
+
+  const aiEndpoint = settings.api_endpoint || 'http://localhost:1234/v1/chat/completions';
+  const comfyEndpoint = (settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188';
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -280,906 +337,197 @@ export default function Settings() {
         <ProjectSelector />
       </div>
 
+      {/* Offline planning notice */}
+      <div className="mb-6 bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 flex gap-3 items-start">
+        <span className="text-sky-500 mt-0.5 text-lg leading-none">i</span>
+        <p className="text-sm text-sky-800">
+          All settings are saved to the database and will be ready when you connect to your base machine.
+          Connection tests will show as offline until the AI server and ComfyUI are running — this is expected.
+        </p>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-        <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4">
-          <h3 className="font-semibold text-amber-900 mb-2">Local AI Models via LM Studio</h3>
-          <p className="text-sm text-amber-800 mb-3">
-            Story Forge connects to LM Studio's local server for all AI writing. Start LM Studio, load a model, and enable the local server. The default endpoint below points to LM Studio's standard address.
+
+        {/* ------------------------------------------------------------------ */}
+        {/* LM Studio / Writing AI                                              */}
+        {/* ------------------------------------------------------------------ */}
+        <div className="mb-2">
+          <h2 className="text-lg font-semibold text-slate-900 mb-1">Writing AI (LM Studio)</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Story Forge connects to LM Studio's local server for all AI text generation.
+            Start LM Studio, load a model, and enable the local server on port 1234.
+            Both <code className="bg-slate-100 px-1 rounded">/v1/chat/completions</code> (recommended) and <code className="bg-slate-100 px-1 rounded">/v1/completions</code> (legacy) are supported — the format is detected automatically from the URL.
           </p>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm font-medium text-amber-900 mb-1">Recommended Models:</p>
-              <ul className="text-sm text-amber-800 space-y-1">
-                <li>• MythoMax 13B (creative, uncensored)</li>
-                <li>• Nous Hermes 2 Yi 34B (coherent)</li>
-                <li>• Goliath 120B (top tier, high VRAM)</li>
-                <li>• Any GGUF/MLX model in LM Studio</li>
-              </ul>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-amber-900 mb-1">Endpoint Formats:</p>
-              <ul className="text-sm text-amber-800 space-y-1">
-                <li>• <code className="bg-amber-100 px-1 rounded">…/v1/chat/completions</code> — LM Studio (recommended)</li>
-                <li>• <code className="bg-amber-100 px-1 rounded">…/v1/completions</code> — legacy / text-gen-webui</li>
-                <li>• <code className="bg-amber-100 px-1 rounded">…/v1/completions</code> — KoboldAI</li>
-              </ul>
-            </div>
-          </div>
-        </div>
 
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Model Name
-            </label>
-            <input
-              type="text"
-              value={settings.model_name || ''}
-              onChange={(e) => setSettings({ ...settings, model_name: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="local-model"
-            />
-            <p className="text-xs text-slate-500 mt-1">Identifier for your local model</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              API Endpoint
-            </label>
-            <input
-              type="text"
-              value={settings.api_endpoint || ''}
-              onChange={(e) => setSettings({ ...settings, api_endpoint: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="http://localhost:1234/v1/chat/completions"
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              LM Studio default: <code className="bg-slate-100 px-1 rounded">http://localhost:1234/v1/chat/completions</code>. Use <code className="bg-slate-100 px-1 rounded">/v1/completions</code> for text-generation-webui or KoboldAI.
-            </p>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Vision / Image Analysis</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Analyzes uploaded reference images using LM Studio with a vision model (e.g. LLaVA).
-              Make sure LM Studio's local server is running on port 1234 with a vision-capable model loaded.
-            </p>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCheckVision}
-                  disabled={checkingVision}
-                  className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  {checkingVision ? 'Checking...' : 'Test LM Studio Connection'}
-                </button>
-                {visionStatus === 'connected' && (
-                  <p className="text-xs text-green-600 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                    Connected to LM Studio
-                  </p>
-                )}
-                {visionStatus === 'disconnected' && (
-                  <p className="text-xs text-red-600">
-                    Cannot reach LM Studio at port 1234. Make sure the local server is running.
-                  </p>
-                )}
-              </div>
-
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Vision Model Name
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Model Name / ID</label>
                 <input
                   type="text"
-                  value={settings.vision_model_name || 'llava-1.6-mistral-7b'}
-                  onChange={(e) => setSettings({ ...settings, vision_model_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  placeholder="llava-1.6-mistral-7b"
+                  value={settings.model_name || ''}
+                  onChange={(e) => setSettings({ ...settings, model_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="local-model"
                 />
-                <p className="text-xs text-slate-500 mt-1">
-                  The API Model Identifier shown in LM Studio's Local Server tab when a model is loaded.
+                <p className="text-xs text-slate-400 mt-1">
+                  Copy the Model ID from LM Studio's Local Server tab (e.g. <code>llama-3-8b-instruct</code>).
                 </p>
               </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Scene-to-Image (ComfyUI)</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Generate images from your scenes using ComfyUI running locally.
-              Make sure ComfyUI is running before testing the connection.
-            </p>
-            <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
-              <p className="font-medium text-slate-700 mb-1">Current Status:</p>
-              <p>Checking endpoint: <code className="bg-white px-1.5 py-0.5 rounded font-mono">{(settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188'}</code></p>
-              <p>Path tested: <code className="bg-white px-1.5 py-0.5 rounded font-mono">/system_stats</code></p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCheckComfyUI}
-                  disabled={checkingComfy}
-                  className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-                >
-                  {checkingComfy ? 'Checking...' : 'Test ComfyUI Connection'}
-                </button>
-                {comfyStatus === 'connected' && (
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs text-green-600 flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                      Connected to ComfyUI
-                    </p>
-                    {comfyQueue && (
-                      <p className={`text-xs flex items-center gap-1 ${comfyQueue.isBusy ? 'text-amber-600' : 'text-slate-500'}`}>
-                        <span className={`w-2 h-2 rounded-full inline-block ${comfyQueue.isBusy ? 'bg-amber-400' : 'bg-slate-300'}`} />
-                        Queue: {comfyQueue.isBusy
-                          ? `${comfyQueue.queueRunning} running, ${comfyQueue.queuePending} pending`
-                          : 'Idle — ready for tasks'}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {comfyStatus === 'disconnected' && (
-                  <div className="text-xs text-red-600">
-                    <p className="font-medium">Cannot reach ComfyUI</p>
-                    {comfyError && <p className="mt-1 text-red-500">{comfyError}</p>}
-                    <p className="mt-2 text-red-600">Troubleshooting:</p>
-                    <ul className="list-disc list-inside mt-1 text-red-600 space-y-0.5">
-                      <li>Ensure ComfyUI is running: <code className="bg-red-50 px-1">python main.py</code></li>
-                      <li>Verify the endpoint URL is correct</li>
-                      <li>Check that ComfyUI is listening on the configured port</li>
-                      <li>Try <code className="bg-red-50 px-1">http://localhost:8188</code> instead of <code className="bg-red-50 px-1">127.0.0.1</code></li>
-                    </ul>
-                  </div>
-                )}
-              </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  ComfyUI Endpoint
-                </label>
-                <input
-                  type="text"
-                  value={(settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188'}
-                  onChange={(e) => setSettings({ ...settings, comfyui_endpoint: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="http://desktop-fbpj753:8188"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Checkpoint Model
-                </label>
-                {checkpoints.length > 0 ? (
-                  <select
-                    value={(settings.comfyui_checkpoint as string) || ''}
-                    onChange={(e) => setSettings({ ...settings, comfyui_checkpoint: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  >
-                    <option value="">Select a checkpoint...</option>
-                    {checkpoints.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={(settings.comfyui_checkpoint as string) || ''}
-                    onChange={(e) => setSettings({ ...settings, comfyui_checkpoint: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    placeholder="e.g. v1-5-pruned-emaonly.safetensors"
-                  />
-                )}
-                <p className="text-xs text-slate-500 mt-1">
-                  Connect to ComfyUI to auto-detect available models, or type the filename manually.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Image Width
-                  </label>
-                  <input
-                    type="number"
-                    step="64"
-                    min="256"
-                    max="2048"
-                    value={settings.image_width || 768}
-                    onChange={(e) => setSettings({ ...settings, image_width: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Image Height
-                  </label>
-                  <input
-                    type="number"
-                    step="64"
-                    min="256"
-                    max="2048"
-                    value={settings.image_height || 512}
-                    onChange={(e) => setSettings({ ...settings, image_height: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Steps
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="1"
-                    max="150"
-                    value={settings.image_steps || 25}
-                    onChange={(e) => setSettings({ ...settings, image_steps: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">More steps = higher quality, slower</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    CFG Scale
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="1"
-                    max="30"
-                    value={settings.image_cfg_scale || 7}
-                    onChange={(e) => setSettings({ ...settings, image_cfg_scale: parseFloat(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">How closely to follow the prompt (7-8 typical)</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Sampler
-                </label>
-                {samplers.length > 0 ? (
-                  <select
-                    value={(settings.image_sampler as string) || 'euler_ancestral'}
-                    onChange={(e) => setSettings({ ...settings, image_sampler: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  >
-                    {samplers.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={(settings.image_sampler as string) || 'euler_ancestral'}
-                    onChange={(e) => setSettings({ ...settings, image_sampler: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    placeholder="euler_ancestral"
-                  />
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Negative Prompt
-                </label>
-                <textarea
-                  value={(settings.image_negative_prompt as string) || ''}
-                  onChange={(e) => setSettings({ ...settings, image_negative_prompt: e.target.value })}
-                  rows={2}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="text, watermark, blurry, low quality..."
-                />
-                <p className="text-xs text-slate-500 mt-1">Things to avoid in generated images</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Custom Workflow (Optional)
-                </label>
-                <p className="text-xs text-slate-500 mb-2">
-                  Paste a ComfyUI API-format workflow JSON. Export it from ComfyUI using "Save (API Format)".
-                  Leave empty to use the built-in default workflow.
-                </p>
-                <textarea
-                  value={workflowText}
-                  onChange={(e) => setWorkflowText(e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
-                  placeholder='{"3": {"class_type": "KSampler", ...}}'
-                />
-                <div className="flex gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={handleWorkflowImport}
-                    disabled={!workflowText.trim()}
-                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
-                  >
-                    Import Workflow
-                  </button>
-                  {settings.comfyui_workflow && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettings({ ...settings, comfyui_workflow: null });
-                        setWorkflowText('');
-                      }}
-                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
-                    >
-                      Clear Custom Workflow
-                    </button>
-                  )}
-                </div>
-                {settings.comfyui_workflow && (
-                  <p className="text-xs text-green-600 mt-2">Custom workflow loaded. Prompt and settings will be injected automatically.</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Art Style Presets</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Map art styles to specific checkpoint models and prompt modifiers. When generating scene images,
-              you can pick a style preset to automatically switch the model and adjust prompts.
-            </p>
-
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={addDefaultPresets}
-                  className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  Add Default Presets
-                </button>
-                <button
-                  type="button"
-                  onClick={addCustomPreset}
-                  className="px-3 py-1.5 bg-sky-600 text-white text-xs rounded-lg hover:bg-sky-700 transition-colors"
-                >
-                  Add Custom Preset
-                </button>
-              </div>
-
-              {getArtPresets().length === 0 && (
-                <p className="text-xs text-slate-400 italic">No presets configured. Add default presets or create custom ones.</p>
-              )}
-
-              {getArtPresets().map((preset) => (
-                <div key={preset.id} className="border border-slate-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm text-slate-900">{preset.name}</span>
-                      {preset.checkpoint && (
-                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{preset.checkpoint}</span>
-                      )}
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingPresetId(editingPresetId === preset.id ? null : preset.id)}
-                        className="px-2 py-1 text-xs text-slate-600 hover:text-slate-800 transition-colors"
-                      >
-                        {editingPresetId === preset.id ? 'Collapse' : 'Edit'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removePreset(preset.id)}
-                        className="px-2 py-1 text-xs text-red-600 hover:text-red-800 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-
-                  {editingPresetId === preset.id && (
-                    <div className="space-y-3 pt-2 border-t border-slate-100">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Style Name</label>
-                        <input
-                          type="text"
-                          value={preset.name}
-                          onChange={(e) => updateArtPreset(preset.id, 'name', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Checkpoint Model</label>
-                        {checkpoints.length > 0 ? (
-                          <select
-                            value={preset.checkpoint}
-                            onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                          >
-                            <option value="">Use default checkpoint</option>
-                            {checkpoints.map((c) => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            value={preset.checkpoint}
-                            onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            placeholder="Leave empty to use default, or enter checkpoint filename"
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Prefix</label>
-                        <input
-                          type="text"
-                          value={preset.promptPrefix}
-                          onChange={(e) => updateArtPreset(preset.id, 'promptPrefix', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                          placeholder="e.g. epic fantasy illustration, detailed digital painting,"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Suffix</label>
-                        <input
-                          type="text"
-                          value={preset.promptSuffix}
-                          onChange={(e) => updateArtPreset(preset.id, 'promptSuffix', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                          placeholder="e.g. cinematic lighting, 8k, highly detailed"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Negative Prompt Override</label>
-                        <input
-                          type="text"
-                          value={preset.negativePrompt}
-                          onChange={(e) => updateArtPreset(preset.id, 'negativePrompt', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                          placeholder="Leave empty to use default negative prompt"
-                        />
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">Steps Override</label>
-                          <input
-                            type="number"
-                            value={preset.stepsOverride ?? ''}
-                            onChange={(e) => updateArtPreset(preset.id, 'stepsOverride', e.target.value ? parseInt(e.target.value) : null)}
-                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            placeholder="Default"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">CFG Override</label>
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={preset.cfgOverride ?? ''}
-                            onChange={(e) => updateArtPreset(preset.id, 'cfgOverride', e.target.value ? parseFloat(e.target.value) : null)}
-                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            placeholder="Default"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">Sampler Override</label>
-                          <input
-                            type="text"
-                            value={preset.samplerOverride}
-                            onChange={(e) => updateArtPreset(preset.id, 'samplerOverride', e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            placeholder="Default"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Text-to-Speech (ComfyUI TTS)</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Use a ComfyUI TTS workflow to generate narration audio from your story text.
-              Import a workflow that has a text input node and produces audio output.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  TTS Speaker / Voice
-                </label>
-                <input
-                  type="text"
-                  value={(settings.comfyui_tts_speaker as string) || ''}
-                  onChange={(e) => setSettings({ ...settings, comfyui_tts_speaker: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="e.g. narrator, en_speaker_0"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Speaker name passed to the TTS workflow. Depends on your TTS model.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Sample Rate
-                </label>
-                <input
-                  type="number"
-                  value={(settings.comfyui_tts_sample_rate as number) || 24000}
-                  onChange={(e) => setSettings({ ...settings, comfyui_tts_sample_rate: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  TTS Workflow (ComfyUI API Format)
-                </label>
-                <p className="text-xs text-slate-500 mb-2">
-                  Paste a ComfyUI API-format workflow that takes text input and produces audio.
-                </p>
-                <textarea
-                  value={ttsWorkflowText}
-                  onChange={(e) => setTtsWorkflowText(e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
-                  placeholder='{"1": {"class_type": "TextInput", ...}}'
-                />
-                <div className="flex gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={handleTtsWorkflowImport}
-                    disabled={!ttsWorkflowText.trim()}
-                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
-                  >
-                    Import TTS Workflow
-                  </button>
-                  {settings.comfyui_tts_workflow && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettings({ ...settings, comfyui_tts_workflow: null });
-                        setTtsWorkflowText('');
-                      }}
-                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
-                    >
-                      Clear TTS Workflow
-                    </button>
-                  )}
-                </div>
-                {settings.comfyui_tts_workflow && (
-                  <p className="text-xs text-green-600 mt-2">TTS workflow loaded. Text and speaker will be injected automatically.</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Image Animation (ComfyUI)</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Animate still images with subtle motion (glowing lights, swaying elements, etc.) using a ComfyUI animation workflow.
-              Used by the production pipeline to make images more engaging.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Animation Workflow (ComfyUI API Format)
-                </label>
-                <p className="text-xs text-slate-500 mb-2">
-                  Paste a ComfyUI workflow that takes an image input and a text prompt, then outputs an animated version.
-                  The system will inject the image URL and animation description automatically.
-                </p>
-                <textarea
-                  value={animationWorkflowText}
-                  onChange={(e) => setAnimationWorkflowText(e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
-                  placeholder='{"1": {"class_type": "LoadImage", ...}}'
-                />
-                <div className="flex gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={handleAnimationWorkflowImport}
-                    disabled={!animationWorkflowText.trim()}
-                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
-                  >
-                    Import Animation Workflow
-                  </button>
-                  {settings.comfyui_animation_workflow && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettings({ ...settings, comfyui_animation_workflow: null });
-                        setAnimationWorkflowText('');
-                      }}
-                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
-                    >
-                      Clear Animation Workflow
-                    </button>
-                  )}
-                </div>
-                {settings.comfyui_animation_workflow && (
-                  <p className="text-xs text-green-600 mt-2">Animation workflow loaded.</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Lip-sync (ComfyUI)</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Generate lip-sync videos from a character image and audio using a ComfyUI workflow.
-              The system injects the character image and TTS audio automatically.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Lip-sync Workflow (ComfyUI API Format)
-                </label>
-                <p className="text-xs text-slate-500 mb-2">
-                  Paste a ComfyUI workflow that accepts a face/character image and an audio file, then outputs a lip-sync video.
-                </p>
-                <textarea
-                  value={lipsyncWorkflowText}
-                  onChange={(e) => setLipsyncWorkflowText(e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono text-xs"
-                  placeholder='{"1": {"class_type": "LoadImage", ...}}'
-                />
-                <div className="flex gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={handleLipsyncWorkflowImport}
-                    disabled={!lipsyncWorkflowText.trim()}
-                    className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
-                  >
-                    Import Lip-sync Workflow
-                  </button>
-                  {settings.comfyui_lipsync_workflow && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettings({ ...settings, comfyui_lipsync_workflow: null });
-                        setLipsyncWorkflowText('');
-                      }}
-                      className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 transition-colors"
-                    >
-                      Clear Lip-sync Workflow
-                    </button>
-                  )}
-                </div>
-                {settings.comfyui_lipsync_workflow && (
-                  <p className="text-xs text-green-600 mt-2">Lip-sync workflow loaded.</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Voice Chat Settings</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Configure browser-based speech recognition and synthesis for voice chat with your AI assistant.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Response Voice
-                </label>
-                <select
-                  value={(settings.voice_chat_voice as string) || ''}
-                  onChange={(e) => setSettings({ ...settings, voice_chat_voice: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="">System Default</option>
-                  {voices.map((v) => (
-                    <option key={v.name} value={v.name}>
-                      {v.name} ({v.lang})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Speech Rate ({Number(settings.voice_chat_rate || 1).toFixed(1)}x)
-                  </label>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="2"
-                    step="0.1"
-                    value={Number(settings.voice_chat_rate) || 1}
-                    onChange={(e) => setSettings({ ...settings, voice_chat_rate: parseFloat(e.target.value) })}
-                    className="w-full accent-sky-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Speech Pitch ({Number(settings.voice_chat_pitch || 1).toFixed(1)})
-                  </label>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="2"
-                    step="0.1"
-                    value={Number(settings.voice_chat_pitch) || 1}
-                    onChange={(e) => setSettings({ ...settings, voice_chat_pitch: parseFloat(e.target.value) })}
-                    className="w-full accent-sky-600"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-4">Generation Parameters</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Temperature
-                </label>
-                <input
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  max="2"
-                  value={settings.temperature || 0.7}
-                  onChange={(e) => setSettings({ ...settings, temperature: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">0-2.0 (higher = more creative/random)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Max Tokens
-                </label>
-                <input
-                  type="number"
-                  step="100"
-                  min="100"
-                  max="4000"
-                  value={settings.max_tokens || 1000}
-                  onChange={(e) => setSettings({ ...settings, max_tokens: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">Maximum tokens per generation</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Top P (Nucleus Sampling)
-                </label>
-                <input
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  max="1"
-                  value={settings.top_p || 0.9}
-                  onChange={(e) => setSettings({ ...settings, top_p: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">0-1.0 (0.9 recommended)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Top K
-                </label>
-                <input
-                  type="number"
-                  step="5"
-                  min="0"
-                  max="100"
-                  value={settings.top_k || 40}
-                  onChange={(e) => setSettings({ ...settings, top_k: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">0-100 (40 recommended)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Repetition Penalty
-                </label>
-                <input
-                  type="number"
-                  step="0.05"
-                  min="1"
-                  max="1.5"
-                  value={settings.repetition_penalty || 1.1}
-                  onChange={(e) => setSettings({ ...settings, repetition_penalty: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">1.0-1.5 (prevents word repetition)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Context Length
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Context Length</label>
                 <input
                   type="number"
                   step="512"
                   min="2048"
-                  max="32768"
+                  max="131072"
                   value={settings.context_length || 4096}
                   onChange={(e) => setSettings({ ...settings, context_length: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
                 />
-                <p className="text-xs text-slate-500 mt-1">Model's max context window</p>
+                <p className="text-xs text-slate-400 mt-1">Match the context window of your loaded model.</p>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Presence Penalty
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="-2"
-                  max="2"
-                  value={settings.presence_penalty || 0}
-                  onChange={(e) => setSettings({ ...settings, presence_penalty: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">-2 to 2 (encourages new topics)</p>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">API Endpoint</label>
+              <input
+                type="text"
+                value={aiEndpoint}
+                onChange={(e) => setSettings({ ...settings, api_endpoint: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
+                placeholder="http://localhost:1234/v1/chat/completions"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                LM Studio default: <code className="bg-slate-100 px-1 rounded">http://localhost:1234/v1/chat/completions</code> —
+                use <code className="bg-slate-100 px-1 rounded">/v1/completions</code> for text-generation-webui or KoboldAI.
+              </p>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Frequency Penalty
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="-2"
-                  max="2"
-                  value={settings.frequency_penalty || 0}
-                  onChange={(e) => setSettings({ ...settings, frequency_penalty: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">-2 to 2 (reduces word frequency)</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={handleCheckAI}
+                disabled={aiStatus === 'checking'}
+                className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors"
+              >
+                {aiStatus === 'checking' ? 'Checking...' : 'Test AI Connection'}
+              </button>
+              <div className="flex items-center gap-1.5 text-xs">
+                <ConnDot status={aiStatus} />
+                {aiStatus === 'unchecked' && <span className="text-slate-400">Not tested yet</span>}
+                {aiStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
+                {aiStatus === 'connected' && <span className="text-emerald-600">Connected to LM Studio</span>}
+                {aiStatus === 'disconnected' && (
+                  <span className="text-red-600">{aiError || 'Server not reachable — expected if offline'}</span>
+                )}
               </div>
             </div>
           </div>
+        </div>
 
+        {/* ------------------------------------------------------------------ */}
+        {/* Generation Parameters                                               */}
+        {/* ------------------------------------------------------------------ */}
+        <Section title="Generation Parameters" description="Tune how the model generates text. These values are sent with every writing request.">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Temperature</label>
+              <input type="number" step="0.05" min="0" max="2"
+                value={settings.temperature || 0.7}
+                onChange={(e) => setSettings({ ...settings, temperature: parseFloat(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">0–2.0 — higher = more creative / random</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Max Tokens</label>
+              <input type="number" step="100" min="100" max="8000"
+                value={settings.max_tokens || 1000}
+                onChange={(e) => setSettings({ ...settings, max_tokens: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">Max tokens per generation (output only)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Top P</label>
+              <input type="number" step="0.05" min="0" max="1"
+                value={settings.top_p || 0.9}
+                onChange={(e) => setSettings({ ...settings, top_p: parseFloat(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">Nucleus sampling — 0.9 recommended</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Top K</label>
+              <input type="number" step="5" min="0" max="200"
+                value={settings.top_k || 40}
+                onChange={(e) => setSettings({ ...settings, top_k: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">40 recommended; 0 = disabled</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Repetition Penalty</label>
+              <input type="number" step="0.05" min="1" max="1.5"
+                value={settings.repetition_penalty || 1.1}
+                onChange={(e) => setSettings({ ...settings, repetition_penalty: parseFloat(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">1.0–1.5 — prevents repeated phrases</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Presence Penalty</label>
+              <input type="number" step="0.1" min="-2" max="2"
+                value={settings.presence_penalty || 0}
+                onChange={(e) => setSettings({ ...settings, presence_penalty: parseFloat(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">Encourages new topics (OpenAI-style)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Frequency Penalty</label>
+              <input type="number" step="0.1" min="-2" max="2"
+                value={settings.frequency_penalty || 0}
+                onChange={(e) => setSettings({ ...settings, frequency_penalty: parseFloat(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">Reduces word frequency (OpenAI-style)</p>
+            </div>
+          </div>
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* System Prompt & Style                                               */}
+        {/* ------------------------------------------------------------------ */}
+        <Section title="System Prompt & Style">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              System Prompt
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">System Prompt</label>
             <textarea
               value={settings.system_prompt || ''}
               onChange={(e) => setSettings({ ...settings, system_prompt: e.target.value })}
               rows={4}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               placeholder="You are a creative fiction writer..."
             />
-            <p className="text-xs text-slate-500 mt-1">
-              Base instructions for the AI about its role and behavior
-            </p>
+            <p className="text-xs text-slate-400 mt-1">Base instructions for the AI about its role and behavior</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Style Guide</label>
+            <textarea
+              value={settings.style_guide || ''}
+              onChange={(e) => setSettings({ ...settings, style_guide: e.target.value })}
+              rows={5}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              placeholder="Write in third person limited POV. Use vivid sensory details. Keep dialogue natural and character-specific..."
+            />
+            <p className="text-xs text-slate-400 mt-1">Project-specific writing style guidelines (POV, tense, tone, etc.)</p>
           </div>
 
-          <div className="border-t border-slate-200 pt-6 mt-6">
-            <h3 className="font-semibold text-slate-900 mb-1">Style Rules</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Toggle rules to enforce in generated prose. Active rules are injected into every AI prompt.
-            </p>
-            <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-2">Style Rules</p>
+            <p className="text-xs text-slate-400 mb-3">Active rules are injected into every AI writing prompt.</p>
+            <div className="space-y-2">
               {BUILT_IN_STYLE_RULES.map((rule) => {
                 const styleRules = (settings.style_rules || {}) as Record<string, boolean>;
                 const isActive = !!styleRules[rule.id];
@@ -1187,21 +535,16 @@ export default function Settings() {
                   <label
                     key={rule.id}
                     className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      isActive
-                        ? 'bg-emerald-50 border-emerald-300'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
+                      isActive ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={isActive}
-                      onChange={() => {
-                        const updated = { ...styleRules, [rule.id]: !isActive };
-                        setSettings({ ...settings, style_rules: updated });
-                      }}
+                      onChange={() => setSettings({ ...settings, style_rules: { ...styleRules, [rule.id]: !isActive } })}
                       className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                     />
-                    <div className="flex-1 min-w-0">
+                    <div>
                       <div className="font-medium text-slate-900 text-sm">{rule.label}</div>
                       <div className="text-xs text-slate-500 mt-0.5">{rule.description}</div>
                     </div>
@@ -1210,55 +553,576 @@ export default function Settings() {
               })}
             </div>
           </div>
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Vision / Image Analysis                                             */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Vision / Image Analysis (LM Studio)"
+          description="Analyzes uploaded reference images using a vision-capable model loaded in LM Studio (e.g. LLaVA). The connection uses the Vite dev proxy on port 1234."
+        >
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Model Name</label>
+              <input
+                type="text"
+                value={settings.vision_model_name || 'llava-1.6-mistral-7b'}
+                onChange={(e) => setSettings({ ...settings, vision_model_name: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm"
+                placeholder="llava-1.6-mistral-7b"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                The Model ID shown in LM Studio's Local Server tab when a vision model is loaded.
+              </p>
+            </div>
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleCheckVision}
+                  disabled={visionStatus === 'checking'}
+                  className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                >
+                  {visionStatus === 'checking' ? 'Checking...' : 'Test Vision Connection'}
+                </button>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <ConnDot status={visionStatus} />
+                  {visionStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
+                  {visionStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
+                  {visionStatus === 'connected' && <span className="text-emerald-600">Connected</span>}
+                  {visionStatus === 'disconnected' && <span className="text-red-600">Offline — expected if not on base machine</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            Vision uses a fixed proxy to <code>http://127.0.0.1:1234</code>. To use vision on the base machine,
+            load a vision-capable model (LLaVA, BakLLaVA, etc.) in LM Studio and keep the local server running.
+          </div>
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* ComfyUI — Scene Images                                              */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Scene-to-Image (ComfyUI)"
+          description="Generate images from your scenes using ComfyUI. Make sure ComfyUI is running before testing the connection."
+        >
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">ComfyUI Endpoint</label>
+              <input
+                type="text"
+                value={comfyEndpoint}
+                onChange={(e) => setSettings({ ...settings, comfyui_endpoint: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
+                placeholder="http://desktop-fbpj753:8188"
+              />
+            </div>
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleCheckComfyUI}
+                  disabled={comfyStatus === 'checking'}
+                  className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors"
+                >
+                  {comfyStatus === 'checking' ? 'Checking...' : 'Test ComfyUI'}
+                </button>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <ConnDot status={comfyStatus} />
+                  {comfyStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
+                  {comfyStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
+                  {comfyStatus === 'connected' && (
+                    <span className="text-emerald-600">
+                      Connected
+                      {comfyQueue && ` — ${comfyQueue.isBusy ? `${comfyQueue.queueRunning} running` : 'idle'}`}
+                    </span>
+                  )}
+                  {comfyStatus === 'disconnected' && (
+                    <span className="text-red-600">{comfyError || 'Offline — expected if not on base machine'}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Style Guide
-            </label>
-            <textarea
-              value={settings.style_guide || ''}
-              onChange={(e) => setSettings({ ...settings, style_guide: e.target.value })}
-              rows={6}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Write in third person limited POV. Use vivid sensory details. Keep dialogue natural and character-specific..."
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              Custom writing style guidelines for this project (POV, tense, tone, etc.)
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Checkpoint Model</label>
+            {checkpoints.length > 0 ? (
+              <select
+                value={(settings.comfyui_checkpoint as string) || ''}
+                onChange={(e) => setSettings({ ...settings, comfyui_checkpoint: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              >
+                <option value="">Select a checkpoint...</option>
+                {checkpoints.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={(settings.comfyui_checkpoint as string) || ''}
+                onChange={(e) => setSettings({ ...settings, comfyui_checkpoint: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                placeholder="e.g. v1-5-pruned-emaonly.safetensors"
+              />
+            )}
+            <p className="text-xs text-slate-400 mt-1">
+              Connect to ComfyUI to auto-detect available models, or type the filename manually.
             </p>
           </div>
 
-          <div className="pt-4 border-t border-slate-200">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Image Width</label>
+              <input type="number" step="64" min="256" max="2048"
+                value={settings.image_width || 768}
+                onChange={(e) => setSettings({ ...settings, image_width: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Image Height</label>
+              <input type="number" step="64" min="256" max="2048"
+                value={settings.image_height || 512}
+                onChange={(e) => setSettings({ ...settings, image_height: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Steps</label>
+              <input type="number" step="1" min="1" max="150"
+                value={settings.image_steps || 25}
+                onChange={(e) => setSettings({ ...settings, image_steps: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">More steps = higher quality, slower</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">CFG Scale</label>
+              <input type="number" step="0.5" min="1" max="30"
+                value={settings.image_cfg_scale || 7}
+                onChange={(e) => setSettings({ ...settings, image_cfg_scale: parseFloat(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+              <p className="text-xs text-slate-400 mt-1">How closely to follow the prompt (7–8 typical)</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Sampler</label>
+            {samplers.length > 0 ? (
+              <select
+                value={(settings.image_sampler as string) || 'euler_ancestral'}
+                onChange={(e) => setSettings({ ...settings, image_sampler: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              >
+                {samplers.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={(settings.image_sampler as string) || 'euler_ancestral'}
+                onChange={(e) => setSettings({ ...settings, image_sampler: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                placeholder="euler_ancestral"
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Negative Prompt</label>
+            <textarea
+              value={(settings.image_negative_prompt as string) || ''}
+              onChange={(e) => setSettings({ ...settings, image_negative_prompt: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              placeholder="text, watermark, blurry, low quality..."
+            />
+          </div>
+
+          <WorkflowImportBlock
+            label="Custom Image Workflow"
+            hint="Export from ComfyUI using Save (API Format). Leave empty to use the built-in default."
+            placeholder='{"3": {"class_type": "KSampler", ...}}'
+            value={workflowText}
+            onChange={setWorkflowText}
+            loaded={!!settings.comfyui_workflow}
+            loadedLabel="Custom image workflow"
+            message={importMsg['image']}
+            onImport={() => importWorkflow('image', workflowText, 'comfyui_workflow', 'Image workflow')}
+            onClear={() => clearWorkflow('comfyui_workflow', setWorkflowText)}
+          />
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Art Style Presets                                                   */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Art Style Presets"
+          description="Map art styles to specific checkpoint models and prompt modifiers. Pick a preset when generating scene images."
+        >
+          <div className="flex gap-2">
+            <button type="button" onClick={addDefaultPresets}
+              className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 transition-colors">
+              Add Default Presets
+            </button>
+            <button type="button" onClick={addCustomPreset}
+              className="px-3 py-1.5 bg-sky-600 text-white text-xs rounded-lg hover:bg-sky-700 transition-colors">
+              Add Custom Preset
+            </button>
+          </div>
+
+          {getArtPresets().length === 0 && (
+            <p className="text-xs text-slate-400 italic">No presets configured.</p>
+          )}
+
+          {getArtPresets().map((preset) => (
+            <div key={preset.id} className="border border-slate-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm text-slate-900">{preset.name}</span>
+                  {preset.checkpoint && (
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{preset.checkpoint}</span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <button type="button"
+                    onClick={() => setEditingPresetId(editingPresetId === preset.id ? null : preset.id)}
+                    className="px-2 py-1 text-xs text-slate-600 hover:text-slate-800 transition-colors">
+                    {editingPresetId === preset.id ? 'Collapse' : 'Edit'}
+                  </button>
+                  <button type="button" onClick={() => removePreset(preset.id)}
+                    className="px-2 py-1 text-xs text-red-600 hover:text-red-800 transition-colors">
+                    Remove
+                  </button>
+                </div>
+              </div>
+
+              {editingPresetId === preset.id && (
+                <div className="space-y-3 pt-2 border-t border-slate-100 mt-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Style Name</label>
+                    <input type="text" value={preset.name}
+                      onChange={(e) => updateArtPreset(preset.id, 'name', e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Checkpoint Model</label>
+                    {checkpoints.length > 0 ? (
+                      <select value={preset.checkpoint}
+                        onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
+                        <option value="">Use default checkpoint</option>
+                        {checkpoints.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" value={preset.checkpoint}
+                        onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                        placeholder="Leave empty to use default" />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Prefix</label>
+                    <input type="text" value={preset.promptPrefix}
+                      onChange={(e) => updateArtPreset(preset.id, 'promptPrefix', e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      placeholder="e.g. epic fantasy illustration, detailed digital painting," />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Suffix</label>
+                    <input type="text" value={preset.promptSuffix}
+                      onChange={(e) => updateArtPreset(preset.id, 'promptSuffix', e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      placeholder="e.g. cinematic lighting, 8k, highly detailed" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Negative Prompt Override</label>
+                    <input type="text" value={preset.negativePrompt}
+                      onChange={(e) => updateArtPreset(preset.id, 'negativePrompt', e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      placeholder="Leave empty to use default negative prompt" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Steps Override</label>
+                      <input type="number" value={preset.stepsOverride ?? ''}
+                        onChange={(e) => updateArtPreset(preset.id, 'stepsOverride', e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                        placeholder="Default" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">CFG Override</label>
+                      <input type="number" step="0.5" value={preset.cfgOverride ?? ''}
+                        onChange={(e) => updateArtPreset(preset.id, 'cfgOverride', e.target.value ? parseFloat(e.target.value) : null)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                        placeholder="Default" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Sampler Override</label>
+                      <input type="text" value={preset.samplerOverride}
+                        onChange={(e) => updateArtPreset(preset.id, 'samplerOverride', e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+                        placeholder="Default" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* TTS                                                                 */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Text-to-Speech (ComfyUI TTS)"
+          description="Generate narration audio from story text using a ComfyUI TTS workflow."
+          badge={settings.comfyui_tts_workflow ? <WorkflowLoaded label="TTS" /> : undefined}
+        >
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">TTS Speaker / Voice</label>
+              <input
+                type="text"
+                value={(settings.comfyui_tts_speaker as string) || ''}
+                onChange={(e) => setSettings({ ...settings, comfyui_tts_speaker: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                placeholder="e.g. narrator, en_speaker_0"
+              />
+              <p className="text-xs text-slate-400 mt-1">Speaker name passed to your TTS model.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Sample Rate</label>
+              <input
+                type="number"
+                value={(settings.comfyui_tts_sample_rate as number) || 24000}
+                onChange={(e) => setSettings({ ...settings, comfyui_tts_sample_rate: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              />
+            </div>
+          </div>
+          <WorkflowImportBlock
+            label="TTS Workflow"
+            hint="Paste a ComfyUI API-format workflow that takes text input and produces audio."
+            placeholder='{"1": {"class_type": "TextInput", ...}}'
+            value={ttsWorkflowText}
+            onChange={setTtsWorkflowText}
+            loaded={!!settings.comfyui_tts_workflow}
+            loadedLabel="TTS workflow"
+            message={importMsg['tts']}
+            onImport={() => importWorkflow('tts', ttsWorkflowText, 'comfyui_tts_workflow', 'TTS workflow')}
+            onClear={() => clearWorkflow('comfyui_tts_workflow', setTtsWorkflowText)}
+          />
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Animation                                                           */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Image Animation (ComfyUI)"
+          description="Animate still images with subtle motion using a ComfyUI animation workflow."
+          badge={settings.comfyui_animation_workflow ? <WorkflowLoaded label="Animation" /> : undefined}
+        >
+          <WorkflowImportBlock
+            label="Animation Workflow"
+            hint="Paste a ComfyUI workflow that takes an image and text prompt, then outputs an animated version."
+            placeholder='{"1": {"class_type": "LoadImage", ...}}'
+            value={animationWorkflowText}
+            onChange={setAnimationWorkflowText}
+            loaded={!!settings.comfyui_animation_workflow}
+            loadedLabel="Animation workflow"
+            message={importMsg['animation']}
+            onImport={() => importWorkflow('animation', animationWorkflowText, 'comfyui_animation_workflow', 'Animation workflow')}
+            onClear={() => clearWorkflow('comfyui_animation_workflow', setAnimationWorkflowText)}
+          />
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Lip-sync                                                            */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Lip-sync (ComfyUI LTX 2.3)"
+          description="Generate portrait lip-sync video from a character image and TTS audio. Uses the LTX 2.3 Portrait workflow at 1080×1920 / 30fps. Duration is set automatically to match the audio clip."
+          badge={settings.comfyui_lipsync_workflow ? <WorkflowLoaded label="Lip-sync" /> : undefined}
+        >
+          <div className="text-xs text-slate-500 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="font-medium text-amber-800 mb-1">Fixed portrait settings (injected automatically)</p>
+            <ul className="space-y-0.5 text-amber-700">
+              <li>Width: 1080 · Height: 1920 · Frame rate: 30 fps</li>
+              <li>Duration: matched to audio clip length</li>
+              <li>Model: ltx-2.3-22b-dev-fp8 · LoRA: ltx-2.3-22b-distilled-lora</li>
+              <li>Upscaler: ltx-2.3-spatial-upscaler-x2</li>
+            </ul>
+          </div>
+          <WorkflowImportBlock
+            label="Lip-sync Workflow"
+            hint="Paste the LTX 2.3 Portrait Lipsync workflow exported from ComfyUI in API format."
+            placeholder='{"269": {"class_type": "LoadImage", ...}}'
+            value={lipsyncWorkflowText}
+            onChange={setLipsyncWorkflowText}
+            loaded={!!settings.comfyui_lipsync_workflow}
+            loadedLabel="Lip-sync workflow"
+            message={importMsg['lipsync']}
+            onImport={() => importWorkflow('lipsync', lipsyncWorkflowText, 'comfyui_lipsync_workflow', 'Lip-sync workflow')}
+            onClear={() => clearWorkflow('comfyui_lipsync_workflow', setLipsyncWorkflowText)}
+          />
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Voice Chat                                                          */}
+        {/* ------------------------------------------------------------------ */}
+        <Section title="Voice Chat Settings" description="Browser-based speech recognition and synthesis for voice chat with the AI.">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Response Voice</label>
+            <select
+              value={(settings.voice_chat_voice as string) || ''}
+              onChange={(e) => setSettings({ ...settings, voice_chat_voice: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+            >
+              <option value="">System Default</option>
+              {voices.map((v) => (
+                <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Speech Rate ({Number(settings.voice_chat_rate || 1).toFixed(1)}x)
+              </label>
+              <input type="range" min="0.5" max="2" step="0.1"
+                value={Number(settings.voice_chat_rate) || 1}
+                onChange={(e) => setSettings({ ...settings, voice_chat_rate: parseFloat(e.target.value) })}
+                className="w-full accent-sky-600" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Speech Pitch ({Number(settings.voice_chat_pitch || 1).toFixed(1)})
+              </label>
+              <input type="range" min="0.5" max="2" step="0.1"
+                value={Number(settings.voice_chat_pitch) || 1}
+                onChange={(e) => setSettings({ ...settings, voice_chat_pitch: parseFloat(e.target.value) })}
+                className="w-full accent-sky-600" />
+            </div>
+          </div>
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Save                                                                */}
+        {/* ------------------------------------------------------------------ */}
+        <div className="pt-6 mt-6 border-t border-slate-200">
+          <div className="flex items-center gap-4">
             <button
               onClick={saveSettings}
-              disabled={saving}
-              className="w-full px-4 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium transition-colors"
+              disabled={saveStatus === 'saving'}
+              className="px-6 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50 font-medium transition-colors text-sm"
             >
-              {saving ? 'Saving...' : 'Save Settings'}
+              {saveStatus === 'saving' ? 'Saving…' : 'Save Settings'}
             </button>
+            {saveStatus === 'saved' && (
+              <span className="text-sm text-emerald-600 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                Saved to database
+              </span>
+            )}
+            {saveStatus === 'error' && (
+              <span className="text-sm text-red-600">Save failed — check console</span>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="mt-8 bg-slate-50 rounded-lg border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Example Endpoints</h2>
-        <div className="space-y-3 text-sm">
+      {/* Quick reference */}
+      <div className="mt-6 bg-slate-50 rounded-lg border border-slate-200 p-5">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Quick Reference — Common Endpoints</h2>
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-xs text-slate-600">
           <div>
-            <div className="font-medium text-slate-700">text-generation-webui:</div>
-            <code className="text-slate-600">http://localhost:5000/v1/completions</code>
+            <span className="font-medium text-slate-700">LM Studio (recommended):</span>{' '}
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:1234/v1/chat/completions</code>
           </div>
           <div>
-            <div className="font-medium text-slate-700">KoboldAI:</div>
-            <code className="text-slate-600">http://localhost:5001/api/v1/generate</code>
+            <span className="font-medium text-slate-700">text-generation-webui:</span>{' '}
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:5000/v1/completions</code>
           </div>
           <div>
-            <div className="font-medium text-slate-700">LM Studio:</div>
-            <code className="text-slate-600">http://localhost:1234/v1/completions</code>
+            <span className="font-medium text-slate-700">KoboldAI:</span>{' '}
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:5001/api/v1/generate</code>
           </div>
           <div>
-            <div className="font-medium text-slate-700">LocalAI:</div>
-            <code className="text-slate-600">http://localhost:8080/v1/completions</code>
+            <span className="font-medium text-slate-700">LocalAI:</span>{' '}
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:8080/v1/completions</code>
+          </div>
+          <div>
+            <span className="font-medium text-slate-700">ComfyUI (local):</span>{' '}
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:8188</code>
+          </div>
+          <div>
+            <span className="font-medium text-slate-700">ComfyUI (network):</span>{' '}
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://desktop-fbpj753:8188</code>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reusable workflow import block
+// ---------------------------------------------------------------------------
+function WorkflowImportBlock({
+  label, hint, placeholder, value, onChange, loaded, loadedLabel, message, onImport, onClear,
+}: {
+  label: string;
+  hint: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  loaded: boolean;
+  loadedLabel: string;
+  message?: string;
+  onImport: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
+      <p className="text-xs text-slate-400 mb-2">{hint}</p>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 font-mono text-xs"
+        placeholder={placeholder}
+      />
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <button
+          type="button"
+          onClick={onImport}
+          disabled={!value.trim()}
+          className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+        >
+          Import
+        </button>
+        {loaded && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="px-3 py-1.5 bg-red-50 text-red-700 text-xs rounded-lg hover:bg-red-100 border border-red-200 transition-colors"
+          >
+            Clear
+          </button>
+        )}
+        {loaded && !message && (
+          <span className="text-xs text-emerald-600">{loadedLabel} active</span>
+        )}
+        {message && (
+          <span className={`text-xs ${message.includes('nvalid') || message.includes('failed') ? 'text-red-600' : 'text-emerald-600'}`}>
+            {message}
+          </span>
+        )}
       </div>
     </div>
   );
