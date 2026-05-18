@@ -20,6 +20,7 @@ interface HistoryOutput {
 
 interface HistoryEntry {
   outputs: Record<string, HistoryOutput>;
+  status?: { completed?: boolean };
 }
 
 function buildDefaultWorkflow(
@@ -88,6 +89,23 @@ function buildDefaultWorkflow(
   };
 }
 
+function getNodeTitle(node: Record<string, unknown>): string {
+  const meta = node._meta as Record<string, unknown> | undefined;
+  return ((meta?.title as string) || '').toLowerCase();
+}
+
+function looksLikeNegativeContent(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    t.includes('bad quality') ||
+    t.includes('worst quality') ||
+    t.includes('blurry') ||
+    t.includes('low quality') ||
+    t.includes('deformed') ||
+    t.includes('watermark')
+  );
+}
+
 function injectPromptIntoWorkflow(
   workflow: Record<string, unknown>,
   prompt: string,
@@ -99,24 +117,46 @@ function injectPromptIntoWorkflow(
   for (const nodeId of Object.keys(w)) {
     const node = w[nodeId] as Record<string, unknown>;
     const classType = node.class_type as string;
-    const inputs = node.inputs as Record<string, unknown>;
+    const inputs = (node.inputs || {}) as Record<string, unknown>;
+    const title = getNodeTitle(node);
 
-    if (classType === 'CLIPTextEncode' && typeof inputs.text === 'string') {
-      if (inputs.text.includes('NEGATIVE') || inputs.text.toLowerCase().includes('bad quality')) {
-        inputs.text = negative;
-      } else {
-        inputs.text = prompt;
+    if (classType === 'PrimitiveStringMultiline') {
+      const currentVal = (inputs.value as string) || (node.widgets_values as string[])?.[0] || '';
+      const isNeg = title.includes('negative') || looksLikeNegativeContent(currentVal);
+      const isSystemPrompt = title.includes('system') || currentVal.toLowerCase().includes('you are an assistant');
+      const isPrompt = title === 'prompt' || title.includes('positive') || (!isNeg && !isSystemPrompt && currentVal.length > 0);
+
+      if (isNeg) {
+        if (inputs.value !== undefined) inputs.value = negative;
+        if (Array.isArray(node.widgets_values)) (node.widgets_values as unknown[])[0] = negative;
+      } else if (isPrompt) {
+        if (inputs.value !== undefined) inputs.value = prompt;
+        if (Array.isArray(node.widgets_values)) (node.widgets_values as unknown[])[0] = prompt;
       }
     }
 
-    if (classType === 'KSampler') {
+    if (classType === 'CLIPTextEncode') {
+      const currentText = typeof inputs.text === 'string' ? inputs.text : '';
+      const isNeg = title.includes('negative') || looksLikeNegativeContent(currentText);
+      const isSystemPrompt = title.includes('system') || currentText.toLowerCase().includes('you are an assistant');
+
+      if (isNeg) {
+        inputs.text = negative;
+        if (Array.isArray(node.widgets_values)) (node.widgets_values as unknown[])[0] = negative;
+      } else if (!isSystemPrompt) {
+        inputs.text = prompt;
+        if (Array.isArray(node.widgets_values)) (node.widgets_values as unknown[])[0] = prompt;
+      }
+    }
+
+    if (classType === 'KSampler' || classType === 'KSamplerAdvanced') {
       inputs.seed = Math.floor(Math.random() * 2 ** 32);
       if (settings.steps) inputs.steps = settings.steps;
       if (settings.cfgScale) inputs.cfg = settings.cfgScale;
       if (settings.sampler) inputs.sampler_name = settings.sampler;
     }
 
-    if (classType === 'EmptyLatentImage') {
+    if (classType === 'EmptyLatentImage' || classType === 'EmptySD3LatentImage') {
       inputs.width = settings.width;
       inputs.height = settings.height;
     }
@@ -127,6 +167,42 @@ function injectPromptIntoWorkflow(
   }
 
   return w;
+}
+
+export interface QueueStatus {
+  queueRunning: number;
+  queuePending: number;
+  isBusy: boolean;
+}
+
+export async function getQueueStatus(endpoint: string): Promise<QueueStatus> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${endpoint.replace(/\/$/, '')}/queue`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return { queueRunning: 0, queuePending: 0, isBusy: false };
+    const data = await res.json();
+    const running: unknown[] = data?.queue_running ?? [];
+    const pending: unknown[] = data?.queue_pending ?? [];
+    return {
+      queueRunning: running.length,
+      queuePending: pending.length,
+      isBusy: running.length > 0 || pending.length > 0,
+    };
+  } catch {
+    return { queueRunning: 0, queuePending: 0, isBusy: false };
+  }
+}
+
+export async function waitUntilQueueFree(endpoint: string, timeoutMs = 10 * 60 * 1000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await getQueueStatus(endpoint);
+    if (!status.isBusy) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error('Timed out waiting for ComfyUI queue to become free');
 }
 
 export async function checkComfyUIConnection(endpoint: string): Promise<{ ok: boolean; error?: string }> {

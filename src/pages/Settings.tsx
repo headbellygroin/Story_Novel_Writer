@@ -5,7 +5,7 @@ import { Database } from '../lib/database.types';
 import ProjectSelector from '../components/ProjectSelector';
 import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
 import { checkVisionConnection } from '../services/visionService';
-import { checkComfyUIConnection, getAvailableCheckpoints, getAvailableSamplers } from '../services/comfyuiService';
+import { checkComfyUIConnection, getAvailableCheckpoints, getAvailableSamplers, getQueueStatus, QueueStatus } from '../services/comfyuiService';
 import { DEFAULT_ART_STYLE_PRESETS, ArtStylePreset } from '../lib/artStylePresets';
 import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
 
@@ -28,7 +28,7 @@ export default function Settings() {
     style_guide: '',
     style_rules: {},
     vision_model_name: 'llava-1.6-mistral-7b',
-    comfyui_endpoint: 'http://127.0.0.1:8188',
+    comfyui_endpoint: 'http://desktop-fbpj753:8188',
     comfyui_checkpoint: '',
     comfyui_workflow: null,
     image_width: 768,
@@ -54,6 +54,7 @@ export default function Settings() {
   const [comfyStatus, setComfyStatus] = useState<'unchecked' | 'connected' | 'disconnected'>('unchecked');
   const [comfyError, setComfyError] = useState<string>('');
   const [checkingComfy, setCheckingComfy] = useState(false);
+  const [comfyQueue, setComfyQueue] = useState<QueueStatus | null>(null);
   const [checkpoints, setCheckpoints] = useState<string[]>([]);
   const [samplers, setSamplers] = useState<string[]>([]);
   const [workflowText, setWorkflowText] = useState('');
@@ -149,17 +150,20 @@ export default function Settings() {
   async function handleCheckComfyUI() {
     setCheckingComfy(true);
     setComfyError('');
-    const endpoint = (settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188';
+    setComfyQueue(null);
+    const endpoint = (settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188';
     const result = await checkComfyUIConnection(endpoint);
 
     if (result.ok) {
       setComfyStatus('connected');
-      const [ckpts, smpls] = await Promise.all([
+      const [ckpts, smpls, queue] = await Promise.all([
         getAvailableCheckpoints(endpoint),
         getAvailableSamplers(endpoint),
+        getQueueStatus(endpoint),
       ]);
       setCheckpoints(ckpts);
       setSamplers(smpls);
+      setComfyQueue(queue);
     } else {
       setComfyStatus('disconnected');
       setComfyError(result.error || 'Unknown error');
@@ -389,7 +393,7 @@ export default function Settings() {
             </p>
             <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
               <p className="font-medium text-slate-700 mb-1">Current Status:</p>
-              <p>Checking endpoint: <code className="bg-white px-1.5 py-0.5 rounded font-mono">{(settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188'}</code></p>
+              <p>Checking endpoint: <code className="bg-white px-1.5 py-0.5 rounded font-mono">{(settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188'}</code></p>
               <p>Path tested: <code className="bg-white px-1.5 py-0.5 rounded font-mono">/system_stats</code></p>
             </div>
 
@@ -404,10 +408,20 @@ export default function Settings() {
                   {checkingComfy ? 'Checking...' : 'Test ComfyUI Connection'}
                 </button>
                 {comfyStatus === 'connected' && (
-                  <p className="text-xs text-green-600 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                    Connected to ComfyUI
-                  </p>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                      Connected to ComfyUI
+                    </p>
+                    {comfyQueue && (
+                      <p className={`text-xs flex items-center gap-1 ${comfyQueue.isBusy ? 'text-amber-600' : 'text-slate-500'}`}>
+                        <span className={`w-2 h-2 rounded-full inline-block ${comfyQueue.isBusy ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                        Queue: {comfyQueue.isBusy
+                          ? `${comfyQueue.queueRunning} running, ${comfyQueue.queuePending} pending`
+                          : 'Idle — ready for tasks'}
+                      </p>
+                    )}
+                  </div>
                 )}
                 {comfyStatus === 'disconnected' && (
                   <div className="text-xs text-red-600">
@@ -430,10 +444,10 @@ export default function Settings() {
                 </label>
                 <input
                   type="text"
-                  value={(settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188'}
+                  value={(settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188'}
                   onChange={(e) => setSettings({ ...settings, comfyui_endpoint: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="http://127.0.0.1:8188"
+                  placeholder="http://desktop-fbpj753:8188"
                 />
               </div>
 
