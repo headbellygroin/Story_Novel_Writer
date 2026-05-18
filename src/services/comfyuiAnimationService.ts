@@ -1,6 +1,25 @@
+export type AnimationOrientation = 'portrait' | 'landscape' | 'square';
+export type AnimationNoiseMode = 'random' | 'fixed';
+
+export const ANIMATION_DIMENSIONS: Record<AnimationOrientation, { width: number; height: number }> = {
+  portrait:  { width: 768,  height: 1344 },
+  landscape: { width: 1344, height: 768  },
+  square:    { width: 1024, height: 1024 },
+};
+
 export interface ComfyUIAnimationSettings {
   endpoint: string;
   workflow: Record<string, unknown> | null;
+  orientation?: AnimationOrientation;
+  noiseMode?: AnimationNoiseMode;
+  noiseSeed?: number;
+}
+
+export function buildAnimationPrompt(describeImage: string, whatToAnimate: string): string {
+  const parts: string[] = [];
+  if (describeImage.trim()) parts.push(`Describe the image: ${describeImage.trim()}`);
+  if (whatToAnimate.trim()) parts.push(`What needs to be animated: ${whatToAnimate.trim()}`);
+  return parts.join('\n\n');
 }
 
 interface QueueResponse {
@@ -46,33 +65,75 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): string | null {
   return null;
 }
 
+// Injects user-controlled parameters into the LTX 2.3 Text2Video workflow.
+// Story Forge controls:
+//   - LoadImage.image          — source image filename/url
+//   - PrimitiveStringMultiline titled "Prompt" — assembled description + animation text
+//   - PrimitiveInt titled "Width" / "Height" — from orientation
+//   - RandomNoise node with the higher seed value — main generation seed
+// Everything else (sigmas, loras, sampler, cfg, fps, length) is fixed in the workflow.
 function injectAnimationParams(
   workflow: Record<string, unknown>,
   imageUrl: string,
-  animationPrompt: string
+  prompt: string,
+  settings: ComfyUIAnimationSettings
 ): Record<string, unknown> {
-  const w = JSON.parse(JSON.stringify(workflow));
+  const w: Record<string, unknown> = JSON.parse(JSON.stringify(workflow));
+
+  const { width, height } = ANIMATION_DIMENSIONS[settings.orientation ?? 'portrait'];
+  const seed = settings.noiseMode === 'fixed' && settings.noiseSeed != null
+    ? settings.noiseSeed
+    : Math.floor(Math.random() * 2 ** 32);
+
+  // Find the two RandomNoise nodes — inject seed into the one that drives the main
+  // SamplerCustomAdvanced (the distilled-lora pass, node 267:237 in reference workflow).
+  // We identify it as the RandomNoise node with the larger default seed value, since
+  // the secondary one (node 267:216) uses seed 42 for the audio pass.
+  let maxSeedNodeId: string | null = null;
+  let maxSeedVal = -1;
+  for (const nodeId of Object.keys(w)) {
+    const node = w[nodeId] as Record<string, unknown>;
+    if (node.class_type !== 'RandomNoise') continue;
+    const inputs = (node.inputs || {}) as Record<string, unknown>;
+    const s = typeof inputs.noise_seed === 'number' ? inputs.noise_seed : 0;
+    if (s > maxSeedVal) { maxSeedVal = s; maxSeedNodeId = nodeId; }
+  }
 
   for (const nodeId of Object.keys(w)) {
     const node = w[nodeId] as Record<string, unknown>;
-    const inputs = node.inputs as Record<string, unknown>;
-    if (!inputs) continue;
+    const classType = node.class_type as string;
+    const inputs = (node.inputs || {}) as Record<string, unknown>;
+    const title = ((node._meta as Record<string, unknown>)?.title as string) || '';
 
-    if (typeof inputs.image === 'string' && (inputs.image === '' || inputs.image.includes('PLACEHOLDER'))) {
-      inputs.image = imageUrl;
-    }
-    if (typeof inputs.url === 'string') {
-      inputs.url = imageUrl;
-    }
-    if (typeof inputs.image_path === 'string') {
-      inputs.image_path = imageUrl;
-    }
+    switch (classType) {
+      case 'LoadImage':
+        inputs.image = imageUrl;
+        node.inputs = inputs;
+        break;
 
-    if (typeof inputs.text === 'string') {
-      inputs.text = animationPrompt;
-    }
-    if (typeof inputs.prompt === 'string' && !inputs.prompt.includes('NEGATIVE')) {
-      inputs.prompt = animationPrompt;
+      case 'PrimitiveStringMultiline':
+        if (title === 'Prompt') {
+          inputs.value = prompt;
+          node.inputs = inputs;
+        }
+        break;
+
+      case 'PrimitiveInt':
+        if (title === 'Width') {
+          inputs.value = width;
+          node.inputs = inputs;
+        } else if (title === 'Height') {
+          inputs.value = height;
+          node.inputs = inputs;
+        }
+        break;
+
+      case 'RandomNoise':
+        if (nodeId === maxSeedNodeId) {
+          inputs.noise_seed = seed;
+          node.inputs = inputs;
+        }
+        break;
     }
   }
 
@@ -90,7 +151,7 @@ export async function animateImage(
     throw new Error('No animation workflow configured. Import a ComfyUI animation workflow in Settings.');
   }
 
-  const workflow = injectAnimationParams(settings.workflow, imageUrl, animationPrompt);
+  const workflow = injectAnimationParams(settings.workflow, imageUrl, animationPrompt, settings);
   const clientId = crypto.randomUUID();
 
   const queueRes = await fetch(`${endpoint}/prompt`, {

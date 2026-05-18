@@ -944,12 +944,12 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Image Animation (ComfyUI)"
-          description="Animate still images with subtle motion using a ComfyUI animation workflow."
+          description="Animate still images using the LTX 2.3 Text2Video workflow. Generates at 30 fps / 5 seconds and outputs a .gif for use in audiobooks and exports."
           badge={settings.comfyui_animation_workflow ? <WorkflowLoaded label="Animation" /> : undefined}
         >
           <WorkflowImportBlock
             label="Animation Workflow"
-            hint="Paste a ComfyUI workflow that takes an image and text prompt, then outputs an animated version."
+            hint="Paste the AI Playground – Text2Video (LTX 2.3) ComfyUI workflow in API format."
             placeholder='{"1": {"class_type": "LoadImage", ...}}'
             value={animationWorkflowText}
             onChange={setAnimationWorkflowText}
@@ -959,6 +959,89 @@ export default function Settings() {
             onImport={() => importWorkflow('animation', animationWorkflowText, 'comfyui_animation_workflow', 'Animation workflow')}
             onClear={() => clearWorkflow('comfyui_animation_workflow', setAnimationWorkflowText)}
           />
+
+          {/* --- Prompt Fields --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-1">Animation Prompt</p>
+            <p className="text-xs text-slate-400 mb-3">
+              These two fields are assembled into the prompt sent to the workflow. Each is prefixed with its label automatically.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Describe the image <span className="text-slate-400 font-normal">→ sent as "Describe the image: …"</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={((settings as Record<string, unknown>).animation_describe_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, animation_describe_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="A small sailing ship on the sea during a light storm, waves gently rocking the boat."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  What needs to be animated <span className="text-slate-400 font-normal">→ sent as "What needs to be animated: …"</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={((settings as Record<string, unknown>).animation_action_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, animation_action_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="Waves moving, ship rocking, sails billowing in the wind."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* --- Orientation --- */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Output Orientation</label>
+            <div className="flex gap-2">
+              {(['portrait', 'landscape', 'square'] as const).map((o) => (
+                <button
+                  key={o}
+                  onClick={() => setSettings({ ...settings, animation_orientation: o } as Partial<GenerationSettings>)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-medium capitalize transition-colors ${
+                    (((settings as Record<string, unknown>).animation_orientation as string) ?? 'portrait') === o
+                      ? 'bg-sky-600 text-white border-sky-600'
+                      : 'border-slate-300 text-slate-600 hover:border-sky-400'
+                  }`}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* --- Seed --- */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Seed Mode</label>
+            <div className="flex gap-2 mb-3">
+              {(['random', 'fixed'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setSettings({ ...settings, animation_noise_mode: m } as Partial<GenerationSettings>)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-medium capitalize transition-colors ${
+                    (((settings as Record<string, unknown>).animation_noise_mode as string) ?? 'random') === m
+                      ? 'bg-sky-600 text-white border-sky-600'
+                      : 'border-slate-300 text-slate-600 hover:border-sky-400'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            {(((settings as Record<string, unknown>).animation_noise_mode as string) ?? 'random') === 'fixed' && (
+              <input
+                type="number"
+                value={((settings as Record<string, unknown>).animation_noise_seed as number) ?? 42}
+                onChange={(e) => setSettings({ ...settings, animation_noise_seed: parseInt(e.target.value) || 42 } as Partial<GenerationSettings>)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                placeholder="42"
+              />
+            )}
+          </div>
         </Section>
 
         {/* ------------------------------------------------------------------ */}

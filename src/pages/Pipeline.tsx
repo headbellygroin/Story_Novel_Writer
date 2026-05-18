@@ -187,6 +187,9 @@ export default function Pipeline() {
     return {
       endpoint: (settings?.comfyui_endpoint as string) || 'http://127.0.0.1:8188',
       workflow: (settings?.comfyui_animation_workflow as Record<string, unknown>) || null,
+      orientation: ((settings as Record<string, unknown>)?.animation_orientation as 'portrait' | 'landscape' | 'square') ?? 'portrait',
+      noiseMode: ((settings as Record<string, unknown>)?.animation_noise_mode as 'random' | 'fixed') ?? 'random',
+      noiseSeed: ((settings as Record<string, unknown>)?.animation_noise_seed as number) ?? 42,
     };
   }
 
