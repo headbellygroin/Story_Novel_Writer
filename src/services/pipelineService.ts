@@ -341,7 +341,7 @@ export async function runLipsyncStage(
     });
 
     try {
-      const videoUrl = await generateLipsync(lipsyncImageUrl, chunk.audio_url, lipsyncSettings);
+      const videoUrl = await generateLipsync(lipsyncImageUrl, chunk.audio_url, lipsyncSettings, chunk.text_content ?? '');
 
       await supabase.from('pipeline_lipsync_chunks').insert({
         pipeline_run_id: runId,
