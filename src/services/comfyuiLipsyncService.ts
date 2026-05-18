@@ -1,8 +1,20 @@
 import { waitUntilQueueFree } from './comfyuiService';
 
+export type LipsyncOrientation = 'portrait' | 'landscape' | 'square';
+export type LipsyncNoiseMode = 'random' | 'fixed';
+
+export const LIPSYNC_DIMENSIONS: Record<LipsyncOrientation, { width: number; height: number }> = {
+  portrait:  { width: 1080, height: 1920 },
+  landscape: { width: 1920, height: 1080 },
+  square:    { width: 1080, height: 1080 },
+};
+
 export interface ComfyUILipsyncSettings {
   endpoint: string;
   workflow: Record<string, unknown> | null;
+  orientation?: LipsyncOrientation;
+  noiseMode?: LipsyncNoiseMode;
+  noiseSeed?: number;
 }
 
 interface QueueResponse {
@@ -131,9 +143,13 @@ function prepareLipsyncWorkflow(
   imageFilename: string,
   audioFilename: string,
   scenePrompt: string,
-  audioDurationSeconds: number
+  audioDurationSeconds: number,
+  orientation: LipsyncOrientation = 'portrait',
+  noiseMode: LipsyncNoiseMode = 'random',
+  noiseSeed = 42
 ): Record<string, unknown> {
   const w: Record<string, unknown> = JSON.parse(JSON.stringify(workflow));
+  const { width, height } = LIPSYNC_DIMENSIONS[orientation];
 
   for (const nodeId of Object.keys(w)) {
     const node = w[nodeId] as Record<string, unknown>;
@@ -149,7 +165,6 @@ function prepareLipsyncWorkflow(
 
       case 'LoadAudio':
         inputs.audio = audioFilename;
-        // Clear the audioUI preview path — ComfyUI regenerates it
         delete inputs.audioUI;
         node.inputs = inputs;
         break;
@@ -163,7 +178,6 @@ function prepareLipsyncWorkflow(
 
       case 'PrimitiveFloat':
         if (title === 'Duration') {
-          // Round to 2 decimal places; ComfyUI uses this to trim/pad the audio
           inputs.value = Math.round(audioDurationSeconds * 100) / 100;
           node.inputs = inputs;
         }
@@ -171,10 +185,10 @@ function prepareLipsyncWorkflow(
 
       case 'PrimitiveInt':
         if (title === 'Width') {
-          inputs.value = 1080;
+          inputs.value = width;
           node.inputs = inputs;
         } else if (title === 'Height') {
-          inputs.value = 1920;
+          inputs.value = height;
           node.inputs = inputs;
         } else if (title === 'Frame Rate') {
           inputs.value = 30;
@@ -183,8 +197,9 @@ function prepareLipsyncWorkflow(
         break;
 
       case 'RandomNoise':
-        // Randomize seeds on every run
-        inputs.noise_seed = Math.floor(Math.random() * 2 ** 32);
+        inputs.noise_seed = noiseMode === 'fixed'
+          ? noiseSeed
+          : Math.floor(Math.random() * 2 ** 32);
         node.inputs = inputs;
         break;
     }
@@ -196,6 +211,13 @@ function prepareLipsyncWorkflow(
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+export function buildLipsyncPrompt(backgroundPrompt: string, characterPrompt: string): string {
+  const parts: string[] = [];
+  if (backgroundPrompt.trim()) parts.push(`Background: ${backgroundPrompt.trim()}`);
+  if (characterPrompt.trim()) parts.push(`Character: ${characterPrompt.trim()}`);
+  return parts.join('\n\n');
+}
 
 export async function generateLipsync(
   characterImageUrl: string,
@@ -209,10 +231,8 @@ export async function generateLipsync(
     throw new Error('No lip-sync workflow configured. Import a ComfyUI lip-sync workflow in Settings.');
   }
 
-  // Wait for ComfyUI to be free — it processes one job at a time
   await waitUntilQueueFree(endpoint);
 
-  // Upload image and audio, get the duration in parallel
   const imageExt = characterImageUrl.includes('.png') ? '.png' : '.jpg';
   const audioExt = audioUrl.includes('.wav') ? '.wav' : '.mp3';
   const imageFilename = `lipsync_character${imageExt}`;
@@ -229,7 +249,10 @@ export async function generateLipsync(
     uploadedImage,
     uploadedAudio,
     scenePrompt,
-    audioDuration
+    audioDuration,
+    settings.orientation ?? 'portrait',
+    settings.noiseMode ?? 'random',
+    settings.noiseSeed ?? 42
   );
 
   const clientId = crypto.randomUUID();

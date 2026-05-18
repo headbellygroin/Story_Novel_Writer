@@ -8,6 +8,7 @@ import { checkVisionConnection } from '../services/visionService';
 import { checkComfyUIConnection, getAvailableCheckpoints, getAvailableSamplers, getQueueStatus, QueueStatus } from '../services/comfyuiService';
 import { DEFAULT_ART_STYLE_PRESETS, ArtStylePreset } from '../lib/artStylePresets';
 import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
+import { LIPSYNC_DIMENSIONS, LipsyncOrientation, LipsyncNoiseMode } from '../services/comfyuiLipsyncService';
 
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
@@ -945,21 +946,136 @@ export default function Settings() {
         {/* ------------------------------------------------------------------ */}
         <Section
           title="Lip-sync (ComfyUI LTX 2.3)"
-          description="Generate portrait lip-sync video from a character image and TTS audio. Uses the LTX 2.3 Portrait workflow at 1080×1920 / 30fps. Duration is set automatically to match the audio clip."
-          badge={settings.comfyui_lipsync_workflow ? <WorkflowLoaded label="Lip-sync" /> : undefined}
+          description="Generate a video from a character image and audio. Story Forge uploads your image and audio to ComfyUI and retrieves the generated video automatically."
+          badge={settings.comfyui_lipsync_workflow ? <WorkflowLoaded label="Workflow loaded" /> : undefined}
         >
-          <div className="text-xs text-slate-500 bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <p className="font-medium text-amber-800 mb-1">Fixed portrait settings (injected automatically)</p>
-            <ul className="space-y-0.5 text-amber-700">
-              <li>Width: 1080 · Height: 1920 · Frame rate: 30 fps</li>
-              <li>Duration: matched to audio clip length</li>
-              <li>Model: ltx-2.3-22b-dev-fp8 · LoRA: ltx-2.3-22b-distilled-lora</li>
-              <li>Upscaler: ltx-2.3-spatial-upscaler-x2</li>
+          {/* --- Orientation --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-2">Output Orientation</p>
+            <p className="text-xs text-slate-400 mb-3">Sets the video resolution sent to ComfyUI.</p>
+            <div className="grid grid-cols-3 gap-3">
+              {(Object.entries(LIPSYNC_DIMENSIONS) as [LipsyncOrientation, { width: number; height: number }][]).map(
+                ([key, dims]) => {
+                  const active = ((settings as Record<string, unknown>).lipsync_orientation ?? 'portrait') === key;
+                  const labels: Record<LipsyncOrientation, string> = {
+                    portrait: 'Portrait',
+                    landscape: 'Landscape',
+                    square: 'Square',
+                  };
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSettings({ ...settings, lipsync_orientation: key } as Partial<GenerationSettings>)}
+                      className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-all ${
+                        active
+                          ? 'border-sky-500 bg-sky-50 text-sky-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {/* Orientation icon */}
+                      <div className={`border-2 rounded-sm ${active ? 'border-sky-500' : 'border-slate-400'} ${
+                        key === 'portrait'  ? 'w-6 h-9' :
+                        key === 'landscape' ? 'w-9 h-6' :
+                                              'w-7 h-7'
+                      }`} />
+                      <span className="text-xs font-medium">{labels[key]}</span>
+                      <span className="text-xs text-slate-400">{dims.width}×{dims.height}</span>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </div>
+
+          {/* --- Noise Seed --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-2">Noise Seed</p>
+            <div className="flex gap-3 mb-3">
+              {(['random', 'fixed'] as LipsyncNoiseMode[]).map((mode) => {
+                const active = ((settings as Record<string, unknown>).lipsync_noise_mode ?? 'random') === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setSettings({ ...settings, lipsync_noise_mode: mode } as Partial<GenerationSettings>)}
+                    className={`px-4 py-1.5 rounded-lg border text-sm transition-all ${
+                      active
+                        ? 'border-sky-500 bg-sky-50 text-sky-700 font-medium'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {mode === 'random' ? 'Random (new each time)' : 'Fixed (reproducible)'}
+                  </button>
+                );
+              })}
+            </div>
+            {((settings as Record<string, unknown>).lipsync_noise_mode ?? 'random') === 'fixed' && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Seed Value</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={((settings as Record<string, unknown>).lipsync_noise_seed as number) ?? 42}
+                  onChange={(e) => setSettings({ ...settings, lipsync_noise_seed: parseInt(e.target.value) } as Partial<GenerationSettings>)}
+                  className="w-48 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="42"
+                />
+                <p className="text-xs text-slate-400 mt-1">Same seed + same inputs = same video output.</p>
+              </div>
+            )}
+          </div>
+
+          {/* --- Prompt fields --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-1">Scene Prompt</p>
+            <p className="text-xs text-slate-400 mb-3">
+              These two fields are combined into the prompt sent to the LTX 2.3 Video Generation node.
+              Describe what should appear in the video — match what is in the source image.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Background Setting</label>
+                <textarea
+                  rows={3}
+                  value={((settings as Record<string, unknown>).lipsync_background_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, lipsync_background_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="A dimly lit tavern with stone walls, wooden tables, and warm firelight flickering in the background."
+                />
+                <p className="text-xs text-slate-400 mt-1">Describe the environment, lighting, and atmosphere.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Character Description</label>
+                <textarea
+                  rows={3}
+                  value={((settings as Record<string, unknown>).lipsync_character_prompt as string) ?? ''}
+                  onChange={(e) => setSettings({ ...settings, lipsync_character_prompt: e.target.value } as Partial<GenerationSettings>)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+                  placeholder="A woman in her 30s with auburn hair, wearing a dark leather jacket, speaking directly to camera."
+                />
+                <p className="text-xs text-slate-400 mt-1">Describe the character's appearance and what they should match from the source image.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* --- Technical note --- */}
+          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <p className="font-medium text-slate-600 mb-1">What Story Forge injects automatically</p>
+            <ul className="space-y-0.5 text-slate-500">
+              <li>· Width &amp; Height — from orientation above</li>
+              <li>· Frame Rate — 30 fps (fixed)</li>
+              <li>· Duration — matched to your audio clip length</li>
+              <li>· Noise Seed — random or fixed value above</li>
+              <li>· Image — uploaded from your selected character image</li>
+              <li>· Audio — uploaded from TTS or your audio file</li>
             </ul>
           </div>
+
+          {/* --- Workflow import --- */}
           <WorkflowImportBlock
-            label="Lip-sync Workflow"
-            hint="Paste the LTX 2.3 Portrait Lipsync workflow exported from ComfyUI in API format."
+            label="LTX 2.3 Lipsync Workflow (ComfyUI API Format)"
+            hint='Export from ComfyUI using "Save (API Format)". Required models: ltx-2.3-22b-dev-fp8, ltx-2.3-22b-distilled-lora, ltx-2.3-spatial-upscaler-x2.'
             placeholder='{"269": {"class_type": "LoadImage", ...}}'
             value={lipsyncWorkflowText}
             onChange={setLipsyncWorkflowText}
