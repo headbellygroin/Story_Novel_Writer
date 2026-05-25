@@ -6,6 +6,7 @@ import ProjectSelector from '../components/ProjectSelector';
 import StageIndicator from '../components/pipeline/StageIndicator';
 import ImageReviewGrid from '../components/pipeline/ImageReviewGrid';
 import LipsyncChunkList from '../components/pipeline/LipsyncChunkList';
+import TtsChunkReview from '../components/pipeline/TtsChunkReview';
 import {
   PipelineStage,
   PipelineProgress,
@@ -502,6 +503,17 @@ export default function Pipeline() {
                       style={{ width: `${ttsChunks.length > 0 ? (completedTtsCount / ttsChunks.length) * 100 : 0}%` }} />
                   </div>
                 </div>
+              )}
+
+              {/* TTS Chunk Review - play, edit text, regenerate individual chunks */}
+              {ttsChunks.length > 0 && (
+                <TtsChunkReview
+                  chunks={ttsChunks}
+                  ttsSettings={getTtsSettings()}
+                  projectId={currentProjectId!}
+                  chapterId={selectedChapterId}
+                  onChunkUpdated={() => loadPipelineRun()}
+                />
               )}
             </div>
           )}

@@ -596,7 +596,7 @@ function PipelineSection() {
               <p><strong>What happens:</strong> The chapter text is split at sentence boundaries into chunks of approximately 1000 characters. Each chunk is sent to ComfyUI's TTS workflow with your configured speaker voice and sample rate. Each chunk produces a separate audio file (wav/mp3/flac). The pipeline tracks which text passage each audio file corresponds to — this mapping is used in the assembly export and lip-sync stage.</p>
               <p><strong>Story Forge shows:</strong> <em>"Generating TTS chunk 1 of N..."</em> and a secondary progress bar below showing how many chunks have completed out of the total.</p>
               <p><strong>ComfyUI output panel shows:</strong> Each TTS job — typically fast (5–20 seconds per chunk).</p>
-              <p><strong>When done:</strong> Listen to the audio chunks in the pipeline interface to check quality. Look for mispronounced character or place names. If needed, edit the phonetic spelling in the chapter text and re-run this stage.</p>
+              <p><strong>When done:</strong> The TTS Chunk Review list appears. For each chunk you can: <strong>play</strong> the audio to check quality, <strong>click the text to edit it</strong> (fix mispronounced words by spelling phonetically), then <strong>regenerate</strong> just that one chunk. The new audio replaces the old in the same position — no need to re-run the entire stage.</p>
               <p className="text-xs text-slate-500"><strong>Review gate:</strong> Stages 4 and 5 both become available once at least one TTS chunk is completed.</p>
             </div>
           </div>

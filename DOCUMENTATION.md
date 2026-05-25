@@ -421,7 +421,12 @@ The `imagePromptService` converts scene context into Stable Diffusion prompts by
 
 **Story Forge shows:** "Generating TTS chunk 1 of N..." with progress bar.
 
-**When done:** Listen to audio chunks in the pipeline interface. Check for mispronounced names. Re-run if needed.
+**When done:** The TTS Chunk Review list appears below the progress bar. For each chunk you can:
+1. **Play** -- click the play button to listen to that specific chunk's audio
+2. **Edit** -- click the text to enter edit mode. Fix mispronounced words by spelling them phonetically (e.g. "Aerith" becomes "Air-ith")
+3. **Regenerate** -- click the orange Regenerate button to re-send the edited text to TTS. The new audio replaces the old one in the same position in the sequence.
+
+This workflow lets you fix pronunciation issues one chunk at a time without re-generating the entire chapter. The edited text and new audio are saved to the database -- downstream stages (audio assembly, lip-sync) will automatically use the corrected version.
 
 ---
 
