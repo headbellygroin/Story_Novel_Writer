@@ -1,4 +1,5 @@
-import { ComfyUITtsSettings, generateTtsAudio } from './comfyuiTtsService';
+import { supabase } from '../lib/supabase';
+import { ComfyUITtsSettings, TtsResult, generateTtsAudio } from './comfyuiTtsService';
 
 export interface TextChunk {
   index: number;
@@ -91,18 +92,76 @@ export function chunkChapter(chapter: ChapterForAudiobook): TextChunk[] {
   return allChunks;
 }
 
+/**
+ * Fetch the audio blob from ComfyUI and upload it to Supabase Storage.
+ * Returns the public URL and the storage path.
+ */
+async function uploadAudioToStorage(
+  result: TtsResult,
+  projectId: string,
+  chapterId: string,
+  chunkIndex: number
+): Promise<{ publicUrl: string; storagePath: string }> {
+  const res = await fetch(result.audioUrl);
+  if (!res.ok) throw new Error(`Failed to fetch audio from ComfyUI: ${res.status}`);
+
+  const blob = await res.blob();
+  const ext = result.filename.split('.').pop() || 'mp3';
+  const storagePath = `${projectId}/${chapterId}/chunk_${String(chunkIndex).padStart(4, '0')}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('audiobook-audio')
+    .upload(storagePath, blob, {
+      contentType: blob.type || 'audio/mpeg',
+      upsert: true,
+    });
+
+  if (error) throw new Error(`Supabase storage upload failed: ${error.message}`);
+
+  const { data: urlData } = supabase.storage
+    .from('audiobook-audio')
+    .getPublicUrl(storagePath);
+
+  return { publicUrl: urlData.publicUrl, storagePath };
+}
+
+export interface ChunkGenerationResult {
+  audioUrl: string;
+  storagePath: string;
+  comfyuiFilename: string;
+}
+
 export async function generateChunkAudio(
   chunk: TextChunk,
   ttsSettings: ComfyUITtsSettings,
-  onProgress?: (chunkIndex: number, status: 'generating' | 'completed' | 'error') => void
-): Promise<string> {
+  projectId: string,
+  chapterId: string,
+  onProgress?: (chunkIndex: number, status: 'generating' | 'uploading' | 'completed' | 'error') => void
+): Promise<ChunkGenerationResult> {
   onProgress?.(chunk.index, 'generating');
+
+  let result: TtsResult;
   try {
-    const audioUrl = await generateTtsAudio(chunk.text, ttsSettings);
-    onProgress?.(chunk.index, 'completed');
-    return audioUrl;
+    result = await generateTtsAudio(chunk.text, ttsSettings);
   } catch (error) {
     onProgress?.(chunk.index, 'error');
     throw error;
+  }
+
+  onProgress?.(chunk.index, 'uploading');
+  try {
+    const { publicUrl, storagePath } = await uploadAudioToStorage(
+      result,
+      projectId,
+      chapterId,
+      chunk.index
+    );
+    onProgress?.(chunk.index, 'completed');
+    return { audioUrl: publicUrl, storagePath, comfyuiFilename: result.filename };
+  } catch (uploadError) {
+    // Fallback: use the ComfyUI URL directly if upload fails
+    console.warn('Supabase upload failed, using ComfyUI URL directly:', uploadError);
+    onProgress?.(chunk.index, 'completed');
+    return { audioUrl: result.audioUrl, storagePath: '', comfyuiFilename: result.filename };
   }
 }

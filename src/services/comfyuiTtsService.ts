@@ -2,67 +2,111 @@ export interface ComfyUITtsSettings {
   endpoint: string;
   workflow: Record<string, unknown> | null;
   speaker: string;
+  speed?: number;
   sampleRate: number;
+}
+
+export interface TtsResult {
+  audioUrl: string;
+  filename: string;
+  subfolder: string;
+  type: string;
 }
 
 interface QueueResponse {
   prompt_id: string;
 }
 
+interface HistoryOutputFile {
+  filename: string;
+  subfolder: string;
+  type: string;
+}
+
 interface HistoryOutput {
-  audio?: Array<{ filename: string; subfolder: string; type: string }>;
-  gifs?: Array<{ filename: string; subfolder: string; type: string }>;
-  images?: Array<{ filename: string; subfolder: string; type: string }>;
+  audio?: HistoryOutputFile[];
+  gifs?: HistoryOutputFile[];
+  images?: HistoryOutputFile[];
 }
 
 interface HistoryEntry {
   outputs: Record<string, HistoryOutput>;
 }
 
-function findAudioOutput(entry: HistoryEntry, endpoint: string): string | null {
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.ogg', '.m4a'];
+
+function isAudioFile(filename: string): boolean {
+  return AUDIO_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext));
+}
+
+function findAudioOutput(entry: HistoryEntry, endpoint: string): TtsResult | null {
   for (const nodeOutput of Object.values(entry.outputs)) {
-    const files = nodeOutput.audio || nodeOutput.gifs || nodeOutput.images;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.filename.endsWith('.wav') || file.filename.endsWith('.mp3') || file.filename.endsWith('.flac') || file.filename.endsWith('.ogg')) {
-        return `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
-      }
+    const files = nodeOutput.audio || [];
+    const audioFile = files.find((f) => isAudioFile(f.filename));
+    if (audioFile) {
+      return {
+        audioUrl: `${endpoint}/view?filename=${encodeURIComponent(audioFile.filename)}&subfolder=${encodeURIComponent(audioFile.subfolder)}&type=${encodeURIComponent(audioFile.type)}`,
+        filename: audioFile.filename,
+        subfolder: audioFile.subfolder,
+        type: audioFile.type,
+      };
     }
   }
+  // Fallback: check gifs/images for any audio extension files
   for (const nodeOutput of Object.values(entry.outputs)) {
-    const allFiles = [...(nodeOutput.audio || []), ...(nodeOutput.gifs || []), ...(nodeOutput.images || [])];
-    if (allFiles.length > 0) {
-      const file = allFiles[0];
-      return `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
+    const allFiles = [
+      ...(nodeOutput.gifs || []),
+      ...(nodeOutput.images || []),
+    ];
+    const audioFile = allFiles.find((f) => isAudioFile(f.filename));
+    if (audioFile) {
+      return {
+        audioUrl: `${endpoint}/view?filename=${encodeURIComponent(audioFile.filename)}&subfolder=${encodeURIComponent(audioFile.subfolder)}&type=${encodeURIComponent(audioFile.type)}`,
+        filename: audioFile.filename,
+        subfolder: audioFile.subfolder,
+        type: audioFile.type,
+      };
     }
   }
   return null;
 }
 
-function injectTextIntoWorkflow(
+/**
+ * Inject text and speaker into the Kokoro workflow.
+ * The Kokoro workflow has a linked node structure:
+ *   KokoroSpeaker (node 3) -> speaker_name field
+ *   KokoroGenerator (node 2) -> text field, speed field, speaker is a link [nodeId, outputIndex]
+ * We update by class_type so node IDs don't matter.
+ */
+function injectKokoroWorkflow(
   workflow: Record<string, unknown>,
   text: string,
-  speaker: string
+  speaker: string,
+  speed: number
 ): Record<string, unknown> {
-  const w = JSON.parse(JSON.stringify(workflow));
+  const w = JSON.parse(JSON.stringify(workflow)) as Record<string, Record<string, unknown>>;
 
   for (const nodeId of Object.keys(w)) {
-    const node = w[nodeId] as Record<string, unknown>;
-    const inputs = node.inputs as Record<string, unknown>;
+    const node = w[nodeId];
+    const classType = node.class_type as string | undefined;
+    const inputs = node.inputs as Record<string, unknown> | undefined;
     if (!inputs) continue;
 
-    if (typeof inputs.text === 'string') {
-      inputs.text = text;
+    if (classType === 'KokoroSpeaker') {
+      inputs.speaker_name = speaker;
     }
 
-    if (typeof inputs.speaker === 'string' && speaker) {
-      inputs.speaker = speaker;
+    if (classType === 'KokoroGenerator') {
+      inputs.text = text;
+      inputs.speed = speed;
     }
-    if (typeof inputs.voice === 'string' && speaker) {
-      inputs.voice = speaker;
-    }
-    if (typeof inputs.speaker_name === 'string' && speaker) {
-      inputs.speaker_name = speaker;
+
+    // Generic fallback for non-Kokoro TTS nodes
+    if (classType !== 'KokoroSpeaker' && classType !== 'KokoroGenerator') {
+      if (typeof inputs.text === 'string') inputs.text = text;
+      if (typeof inputs.speaker_name === 'string' && speaker) inputs.speaker_name = speaker;
+      if (typeof inputs.speaker === 'string' && speaker) inputs.speaker = speaker;
+      if (typeof inputs.voice === 'string' && speaker) inputs.voice = speaker;
     }
   }
 
@@ -72,14 +116,20 @@ function injectTextIntoWorkflow(
 export async function generateTtsAudio(
   text: string,
   settings: ComfyUITtsSettings
-): Promise<string> {
+): Promise<TtsResult> {
   const endpoint = settings.endpoint.replace(/\/$/, '');
 
   if (!settings.workflow) {
     throw new Error('No TTS workflow configured. Import a ComfyUI TTS workflow in Settings.');
   }
 
-  const workflow = injectTextIntoWorkflow(settings.workflow, text, settings.speaker);
+  const workflow = injectKokoroWorkflow(
+    settings.workflow,
+    text,
+    settings.speaker || 'af_sarah',
+    settings.speed ?? 1.0
+  );
+
   const clientId = crypto.randomUUID();
 
   const queueRes = await fetch(`${endpoint}/prompt`, {
@@ -94,15 +144,14 @@ export async function generateTtsAudio(
   }
 
   const { prompt_id }: QueueResponse = await queueRes.json();
-  const audioUrl = await waitForTtsResult(endpoint, prompt_id, clientId);
-  return audioUrl;
+  return waitForTtsResult(endpoint, prompt_id, clientId);
 }
 
 function waitForTtsResult(
   endpoint: string,
   promptId: string,
   clientId: string
-): Promise<string> {
+): Promise<TtsResult> {
   return new Promise((resolve, reject) => {
     const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
     let ws: WebSocket;
@@ -121,18 +170,16 @@ function waitForTtsResult(
       }
     }, timeoutMs);
 
-    const fetchResult = async (): Promise<string | null> => {
+    const fetchResult = async (): Promise<TtsResult | null> => {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
         clearTimeout(tid);
         if (!res.ok) return null;
-
         const history: Record<string, HistoryEntry> = await res.json();
         const entry = history[promptId];
         if (!entry) return null;
-
         return findAudioOutput(entry, endpoint);
       } catch {
         return null;
@@ -154,11 +201,11 @@ function waitForTtsResult(
 
         if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
           await new Promise((r) => setTimeout(r, 300));
-          const url = await fetchResult();
-          if (url && !settled) {
+          const result = await fetchResult();
+          if (result && !settled) {
             cleanup();
             clearTimeout(overallTimeout);
-            resolve(url);
+            resolve(result);
           }
         }
 
@@ -190,7 +237,7 @@ function waitForTtsResult(
   });
 }
 
-async function pollTtsFallback(endpoint: string, promptId: string): Promise<string> {
+async function pollTtsFallback(endpoint: string, promptId: string): Promise<TtsResult> {
   const maxAttempts = 120;
   const pollInterval = 3000;
 
@@ -208,8 +255,8 @@ async function pollTtsFallback(endpoint: string, promptId: string): Promise<stri
       const entry = history[promptId];
       if (!entry) continue;
 
-      const url = findAudioOutput(entry, endpoint);
-      if (url) return url;
+      const result = findAudioOutput(entry, endpoint);
+      if (result) return result;
     } catch {
       continue;
     }
