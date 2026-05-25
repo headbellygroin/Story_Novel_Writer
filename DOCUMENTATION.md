@@ -1,59 +1,45 @@
-# Story Forge — Documentation
+# Story Forge -- Documentation
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Services & Settings](#services--settings)
-3. [Writing Tools](#writing-tools)
-4. [World & Characters](#world--characters)
-5. [Consistency & Quality Checks](#consistency--quality-checks)
-6. [Production Pipeline](#production-pipeline)
-7. [Audiobook](#audiobook)
-8. [Export](#export)
-9. [Files & Storage](#files--storage)
-10. [End-to-End Workflow](#end-to-end-workflow)
+2. [Hardware & Model Configuration](#hardware--model-configuration)
+3. [Services & Settings](#services--settings)
+4. [Writing Tools](#writing-tools)
+5. [World & Characters](#world--characters)
+6. [Consistency & Quality Checks](#consistency--quality-checks)
+7. [Production Pipeline](#production-pipeline)
+8. [Audiobook](#audiobook)
+9. [Export](#export)
+10. [Files & Storage](#files--storage)
+11. [End-to-End Workflow](#end-to-end-workflow)
 
 ---
 
 ## Overview
 
-Story Forge is a self-hosted AI novel writing and production studio. It connects to two services running on your AI machine — LM Studio for text generation and ComfyUI for all media generation — and uses a Supabase database to store your project data. Nothing is sent to any third-party AI cloud.
+Story Forge is a self-hosted AI novel writing and production studio. It connects to two services running on your AI machine -- LM Studio for text generation and ComfyUI for all media generation -- and uses a Supabase database to store your project data. Nothing is sent to any third-party AI cloud.
 
-The application covers the full authoring lifecycle: brainstorming, world-building, outlining, scene-by-scene writing with AI assistance, consistency checking, and then a full production pipeline that turns finished chapters into audiobook-style video content.
+The application covers the full authoring lifecycle: brainstorming, world-building, outlining, scene-by-scene writing with AI assistance, consistency checking, and then a full production pipeline that turns finished chapters into audiobook-style video content suitable for YouTube upload.
+
+### Architecture: CPU vs GPU Split
+
+Story Forge separates workloads by hardware:
+
+- **LM Studio (CPU / System RAM)** -- All text generation runs in system RAM with 0 GPU layers. This includes writing, scene analysis, image prompt generation, logic audits, image description, and voice chat.
+- **ComfyUI (GPU / VRAM)** -- All media generation runs on the GPU exclusively. This includes scene images, animated GIFs, TTS narration audio, and lip-sync video.
+
+This separation means both services run simultaneously without competing for resources.
 
 ### The Two Services
 
-**LM Studio — Text Generation (CPU / System RAM)**
+**LM Studio -- Text Generation (CPU / System RAM)**
 Handles all writing and analysis: generating scene content, summarising scenes, building image prompts, running logic audits, analysing reference images, and powering voice chat. Runs on your AI machine and exposes an OpenAI-compatible API on port 1234. Both models run entirely in system RAM (0 GPU layers) so the GPU stays free for ComfyUI.
 
-**ComfyUI — Media Generation (GPU / VRAM)**
-Handles all four media types: scene images (Stable Diffusion), animated GIFs (LTX 2.3 Text2Video), TTS narration audio, and lip-sync video (LTX 2.3 LipSync). All four use the same ComfyUI endpoint with built-in workflows — no workflow files to manage. Story Forge sends each job, polls for completion, and retrieves the output file automatically. ComfyUI has exclusive access to the GPU — it never competes with LM Studio for VRAM.
-
-### Recommended Hardware & Models
-
-**Target Hardware:** Intel i7, NVIDIA RTX 5090 (32 GB VRAM), 196 GB DDR5 RAM
-
-| Role | Model | Runs On | RAM Usage | Speed |
-|------|-------|---------|-----------|-------|
-| Text (Writing) | Midnight-Miqu-70B-v1.5.Q4_K_M | System RAM (CPU) | ~45 GB | ~3-5 tok/s |
-| Vision (Image Analysis) | llava-v1.6-mistral-7b (Q5_K_M or Q6_K) | System RAM (CPU) | ~6 GB | ~15-20 tok/s |
-| Media Generation | ComfyUI (all workflows) | GPU (VRAM) | Up to 32 GB | Full GPU speed |
-
-**Total RAM used by LM Studio:** ~51 GB of 196 GB available.
-
-**Why this configuration:**
-
-- **Midnight Miqu 70B** — uncensored creative writing model based on Mistral Medium. Excellent prose quality, strong instruction following, 32K context window. No content refusals. At Q4_K_M quantization it fits comfortably in RAM with room to spare.
-- **LLaVA v1.6 Mistral 7B** — uncensored vision model for describing reference images. Small enough to load alongside the writing model without meaningful RAM pressure. Fast on CPU for the short image-description tasks it handles.
-- **0 GPU layers for both models** — this is critical. The RTX 5090's full 32 GB VRAM is dedicated exclusively to ComfyUI for image generation, animation, TTS, and lip-sync. LM Studio never touches the GPU.
-
-**LM Studio Load Settings:**
-1. Set GPU Offload to 0 layers for both models
-2. Set context length to 32768 for Midnight Miqu
-3. Set context length to 4096 for LLaVA (short context is sufficient for image analysis)
-4. Both models can be loaded simultaneously — LM Studio supports multiple models
+**ComfyUI -- Media Generation (GPU / VRAM)**
+Handles all four media types: scene images (NetaYume Lumina / Flux workflow), animated GIFs (LTX 2.3 Text2Video), TTS narration audio (Kokoro TTS), and lip-sync video (LTX 2.3 LipSync Portrait). All four use the same ComfyUI endpoint with built-in workflows -- no workflow files to manage. Story Forge sends each job, polls for completion, and retrieves the output file automatically. ComfyUI has exclusive access to the GPU.
 
 ### Feature Map
 
@@ -62,9 +48,46 @@ Handles all four media types: scene images (Stable Diffusion), animated GIFs (LT
 | Planning | Projects, Dossier, Outline |
 | World | World Library (Characters, Places, Things, Technologies), Story Bible, Style Anchors, Prohibited Words |
 | Writing | Write (scene editor), Voice Chat |
-| Quality | Consistency Tracking, Logic Checks |
-| Production | Pipeline (5 stages), Audiobook TTS |
+| Quality | Consistency Tracking (Story Events, Character States, Scene References), Logic Checks |
+| Production | Pipeline (5 stages: Images, Animation, TTS, Assembly, Lip-sync), Audiobook TTS |
 | Output | Export (HTML / Markdown / Text), Save & Load (JSON backup) |
+
+---
+
+## Hardware & Model Configuration
+
+### Target Hardware
+
+- **CPU:** Intel i7 (or equivalent)
+- **GPU:** NVIDIA RTX 5090 (32 GB VRAM)
+- **RAM:** 196 GB DDR5
+
+### Model Assignment
+
+| Role | Model | Runs On | RAM Usage | Speed | Context |
+|------|-------|---------|-----------|-------|---------|
+| Text (Writing) | Midnight-Miqu-70B-v1.5.Q4_K_M | System RAM (CPU) | ~45 GB | ~3-5 tok/s | 32,768 |
+| Vision (Image Analysis) | llava-v1.6-mistral-7b (Q5_K_M) | System RAM (CPU) | ~6 GB | ~15-20 tok/s | 4,096 |
+| Image Generation | NetaYume Lumina / Flux | GPU (VRAM) | Up to 32 GB | Full GPU speed | -- |
+| TTS Audio | Kokoro TTS | GPU (VRAM) | Shared | Fast | -- |
+| Animation | LTX 2.3 Text2Video | GPU (VRAM) | Shared | ~30-90s/clip | -- |
+| Lip-sync | LTX 2.3 LipSync Portrait | GPU (VRAM) | Shared | ~60-180s/clip | -- |
+
+**Total LM Studio RAM:** ~51 GB of 196 GB available.
+
+### Why These Models
+
+- **Midnight Miqu 70B** -- Uncensored creative writing model based on Mistral Medium. Produces high-quality prose with no content refusals. Strong instruction following, large 32K context window for full-chapter generation with rich world context. At Q4_K_M quantization it fits comfortably in RAM.
+- **LLaVA v1.6 Mistral 7B** -- Uncensored vision model for describing reference images. Small enough to load alongside the writing model. Fast on CPU for the short image-description tasks it handles (typically 50-200 tokens per image).
+
+### LM Studio Load Settings
+
+1. Load both models in LM Studio
+2. Set **GPU Offload = 0 layers** for both models (critical -- GPU stays free for ComfyUI)
+3. Set context length to **32768** for Midnight Miqu
+4. Set context length to **4096** for LLaVA (short context is sufficient for image analysis)
+5. Enable the local server on port **1234**
+6. Both models can be loaded simultaneously -- LM Studio supports multiple models
 
 ---
 
@@ -81,34 +104,41 @@ Both services are assumed to be running on your AI machine before you use Story 
 - Set the **Vision Model Name** to `llava-v1.6-mistral-7b`.
 - Click **Test AI Connection** to verify. A green dot means Story Forge can reach the server.
 
-> **Context Length** — defaults to 32768, matching Midnight Miqu's context window. Story Forge uses this value to manage how much context is passed to the model during writing and analysis.
+> **Context Length** -- defaults to 32768, matching Midnight Miqu's context window. Story Forge uses this value to manage how much context is passed to the model during writing and analysis. The AI service uses priority-based context stacking: it calculates available token budget, then includes sections (story bible, style anchors, events, characters, etc.) by priority until the budget is full.
 
-> **GPU Offload = 0** — both models must run entirely in system RAM so ComfyUI has exclusive access to the GPU. With 196 GB DDR5, both models use only ~51 GB combined.
+> **GPU Offload = 0** -- both models must run entirely in system RAM so ComfyUI has exclusive access to the GPU. With 196 GB DDR5, both models use only ~51 GB combined.
 
 ### ComfyUI
 
 - Start ComfyUI on your AI machine. It runs at port 8188 by default.
 - In Settings, set the **ComfyUI Endpoint** to `http://your-ai-machine:8188`.
-- Click **Test ComfyUI**. A successful test also loads your available checkpoints and queue status.
-- Select a **Checkpoint** from the dropdown — this is the Stable Diffusion model used for scene image generation.
+- Click **Test ComfyUI**. A successful test shows connection status and queue state.
 
-> **One endpoint, all workflows.** The same ComfyUI endpoint handles images, animation, TTS, and lip-sync. Story Forge sends built-in workflows for each type — you never need to export or paste workflow JSON. The pipeline runs one job at a time and never submits two jobs simultaneously.
+> **One endpoint, all workflows.** The same ComfyUI endpoint handles images, animation, TTS, and lip-sync. Story Forge sends built-in workflows for each type -- you never need to export or paste workflow JSON. The pipeline runs one job at a time and never submits two jobs simultaneously.
 
 ### Generation Settings
 
 Beyond the endpoints, Settings lets you tune:
 
-- **LLM parameters** — Temperature, Max Tokens, Top P, Top K, Repetition Penalty, Presence/Frequency Penalty. Sensible defaults work for most models; lower temperature (0.3–0.5) for analysis tasks, higher (0.7–0.9) for creative writing.
-- **System Prompt & Style Guide** — A base persona and per-project writing style instructions injected into every generation request.
-- **Style Rules** — Toggle switches for common writing guidance (show don't tell, vary sentence length, avoid filter words, etc.). Active rules are injected automatically.
-- **Image orientation** — Portrait / Landscape / Square preset, applied to all scene image generation.
-- **Image noise seed** — Random (unique image each run) or Fixed (reproducible output from the same prompt).
-- **Positive conditioning prompts** — Background, Foreground, and Characters fields that feed the image generation workflow alongside the AI-generated scene prompt.
-- **Art Style Presets** — Named presets that override checkpoint, prompt prefix/suffix, negative prompt, sampler, steps, and CFG for different visual styles. Select a preset per scene during image generation.
-- **TTS Speaker & Sample Rate** — The voice/speaker name passed to the TTS model, and the output sample rate (default 24000 Hz).
-- **Animation prompt fields** — Background and Foreground motion descriptions passed to the LTX animation workflow.
-- **Lip-sync orientation & seed** — Output orientation and noise seed for lip-sync video generation.
-- **Voice Chat settings** — Browser TTS voice, speech rate, and pitch for in-app voice chat.
+- **LLM parameters** -- Temperature, Max Tokens, Top P, Top K, Repetition Penalty, Presence/Frequency Penalty. Sensible defaults work for most models; lower temperature (0.3-0.5) for analysis tasks, higher (0.7-0.9) for creative writing.
+- **System Prompt & Style Guide** -- A base persona and per-project writing style instructions injected into every generation request.
+- **Style Rules** -- 7 toggle switches for common writing guidance:
+  1. Avoid Adverbs (prefer precise verbs)
+  2. Kill Leading "The" (dynamic sentence openings)
+  3. Eliminate Linking Verbs (replace was/were/seemed with action)
+  4. Show, Don't Tell (emotion through action/dialogue)
+  5. Prefer Active Voice (subject performs action)
+  6. Minimal Dialogue Tags (use "said" only)
+  7. Cut Filter Words (remove felt/saw/heard/seemed)
+- **Image orientation** -- Portrait (768x1344) / Landscape (1344x768) / Square (1024x1024) preset.
+- **Image noise seed** -- Random (unique each run) or Fixed (reproducible output).
+- **Positive conditioning prompts** -- Background, Foreground, and Characters fields that feed the image generation workflow alongside the AI-generated scene prompt.
+- **TTS Speaker & Sample Rate** -- The Kokoro voice/speaker name (e.g. `af_sarah`) and output sample rate (default 24000 Hz).
+- **Animation prompt fields** -- "Describe the image" and "What needs to be animated" fields for LTX 2.3 Text2Video.
+- **Animation orientation & seed** -- Portrait / Landscape / Square and random/fixed seed for animation.
+- **Lip-sync orientation & seed** -- Output orientation and noise seed for lip-sync video generation.
+- **Lip-sync prompt fields** -- Background Setting and Character Description for the LTX 2.3 LipSync workflow.
+- **Voice Chat settings** -- Browser TTS voice, speech rate, and pitch for in-app voice chat.
 
 ---
 
@@ -116,7 +146,9 @@ Beyond the endpoints, Settings lets you tune:
 
 ### Projects
 
-Every piece of content in Story Forge belongs to a project. Create a project with a title, genre, and optional description. The active project is shown in the top-right corner of every page — switch projects from there or from the Projects page. All settings, world data, outlines, scenes, and pipeline output are scoped to the active project.
+Every piece of content in Story Forge belongs to a project. Create a project with a title, genre, and optional description. The active project is shown in the top-right corner of every page -- switch projects from there or from the Projects page. All settings, world data, outlines, scenes, and pipeline output are scoped to the active project.
+
+Projects display as cards showing title, genre, description, and last updated date. The currently active project is visually highlighted.
 
 ### Dossier
 
@@ -124,31 +156,70 @@ The Dossier is your pre-writing planning tool. Paste a free-form brain dump of y
 
 ### Outline
 
-Build your story structure here. Create one or more outlines (e.g. one per story arc) with a title, synopsis, act structure, and themes. Add chapters to each outline with a summary, key events, POV character, and primary setting. Chapters created here appear as options on the Write page and Pipeline page.
+Build your story structure here. Create one or more outlines (e.g. one per story arc) with a title, synopsis, act structure, and themes. Add chapters to each outline with:
+
+- Title and summary
+- Key events
+- POV character (selected from World Library characters)
+- Primary setting (selected from World Library places)
+- Order index (determines chapter sequence)
+
+Chapters created here appear as options on the Write page and Pipeline page.
 
 ### Write
 
-The scene editor is the core of Story Forge. Select a chapter, then a scene within it. The AI generates scene content using a deep context package that includes:
+The scene editor is the core of Story Forge. Select a chapter, then a scene within it. The editor has a main content area and a collapsible right sidebar with multiple panels.
+
+**AI Generation Context Package:**
+When you click Generate, the AI receives a deep context package assembled from 12+ database queries:
 
 - Story dossier and outline summary
 - Active Style Anchors (reference passages)
 - Active Prohibited Words
-- Active Style Rules
+- Active Style Rules (7 available rules)
 - World Library entries (characters, places, things, technologies)
-- Story Bible facts
+- Story Bible facts (sorted by importance: critical > high > medium > low)
 - Character States for the current scene
 - Story Events tracking
-- Referenced scenes (scenes you explicitly tag as context)
-- Scene Brief (what should happen in this scene)
-- Context tags (custom tags to focus generation)
+- Scene References (full text of referenced scenes)
+- Scene Brief (what should happen)
+- Context Tags (entity tags to focus generation)
+- Previous scene summaries (for continuity)
 
-The right sidebar gives access to: Scene Brief, Context Tags, Scene Summary, Scene Image (attach or generate a ComfyUI image for the scene), Editing Passes (AI-assisted refinement passes like "tighten pacing" or "strengthen dialogue"), and Scene References.
+The AI service uses **priority-based context stacking** -- it calculates available token budget (context_length minus max_tokens minus overhead), then includes sections by priority until the budget is full. This ensures the most important context always fits, even with a 32K window.
 
-> You can also paste pre-written text directly into the editor. The AI generation features are optional — you can use Story Forge as a structured editor for existing writing and still run the full production pipeline.
+**Sidebar Panels:**
+
+1. **Scene Brief Panel** -- 10-field structured brief (POV character, scene function, plot beats, characters in scene, setting details, conflict, tone/style notes, symbolism/themes, continuity notes, other notes). Can be AI-generated from chapter outline + world data. Shows progress indicator (X/10 fields filled).
+
+2. **Context Tags Panel** -- Tag specific entities (characters, places, things, technologies, story bible entries) to include in this scene's generation context. 5-type tabbed interface. Only tagged items are sent to the AI. Color-coded by entity type.
+
+3. **Scene Summary Panel** -- 4-field summary (summary text, key facts, characters involved, emotional arc). Used as efficient distant context for other scenes instead of sending full scene text.
+
+4. **Scene Image Panel** -- Generate a header image for the scene via ComfyUI. Auto-generates a prompt from scene content + world data, or allows manual prompt editing. Displays the generated image inline.
+
+5. **Editing Pass Panel** -- Two-step editing workflow:
+   - Step 1: Generate an improvement plan (line-by-line analysis of what can be better)
+   - Step 2: Implement edits (apply improvements to create refined version)
+   - Can apply the edited version back to the main scene content
+   - Uses style rules, prohibited words, and previous chapter context
+
+> You can also paste pre-written text directly into the editor. The AI generation features are optional -- you can use Story Forge as a structured editor for existing writing and still run the full production pipeline.
 
 ### Voice Chat
 
-An interactive voice assistant for discussing your story. Uses browser speech recognition to capture your voice and browser TTS to speak responses. Configure the response voice, rate, and pitch in Settings. The AI has full access to your project context and can answer questions, brainstorm ideas, or help work through plot problems.
+An interactive voice assistant for discussing your story. Uses browser speech recognition to capture your voice and browser TTS to speak responses.
+
+Features:
+- Voice selector (all system voices available)
+- Adjustable speech rate and pitch
+- Auto-listen mode (continuous conversation loop)
+- Manual text input option
+- Full message history display
+- Stop Speaking button during synthesis
+- Clear Conversation button
+
+The AI has full access to your project context via the configured system prompt and can answer questions, brainstorm ideas, or help work through plot problems.
 
 ---
 
@@ -156,10 +227,29 @@ An interactive voice assistant for discussing your story. Uses browser speech re
 
 ### World Library
 
-The central database for everything that exists in your story's world. Divided into four entity types:
+The central database for everything that exists in your story's world. Divided into four entity types with full CRUD operations:
 
 **Characters**
-Physical description, personality, background, role, relationships, motivations, secrets. Includes Hero's Journey stage tracking (which narrative arc stage each character is in) and personality sliders (introversion/extroversion, chaotic/lawful, etc.) that influence how the AI writes them.
+- Physical description, personality, background, role, relationships, motivations, secrets
+- **Hero's Journey Tracking** -- 12 stages (Ordinary World, Call to Adventure, Refusal, Meeting the Mentor, Crossing the Threshold, Tests/Allies/Enemies, Approach, Ordeal, Reward, The Road Back, Resurrection, Return with Elixir) with text descriptions for each
+- **Personality Sliders** -- 15 dimensions on a -10 to +10 scale:
+  1. Stress / Calm
+  2. Fear / Courage
+  3. Suspicion / Trust
+  4. Callous / Empathic
+  5. Impulsivity / Self-Control
+  6. Dominance / Submission
+  7. Pessimism / Optimism
+  8. Introverted / Extroverted
+  9. Gut / Logic
+  10. Detail / Big-Picture
+  11. Cautious / Risk Taker
+  12. Seriousness / Humor
+  13. Deception / Honesty
+  14. Stability / Sensitivity
+  15. Shame / Self-Worth
+
+  Each slider has descriptive text at 5 levels (extreme negative, moderate negative, neutral, moderate positive, extreme positive). Slider values are formatted into the AI prompt to influence how the model writes each character.
 
 **Places**
 Name, type, physical description, history, atmosphere, significance. Used to ground scene generation in the correct setting.
@@ -170,19 +260,40 @@ Objects, artefacts, weapons, vehicles, and other significant items. Includes pro
 **Technologies**
 Magic systems, technologies, scientific concepts, or any other rules-based system. Includes how it works, its limits, and who can use it.
 
-Any entity can have a reference image attached. The image is uploaded to Supabase Storage and can be analysed by the vision model to automatically extract descriptions.
+**Entity Images:**
+Any entity can have a reference image attached via the EntityImageUpload component. The image is uploaded to Supabase Storage (`entity-images` bucket). When uploaded, the vision model (llava-v1.6-mistral-7b) can automatically analyze the image and generate a detailed visual description (2-3 paragraphs) that is stored with the entity and used during writing generation.
 
 ### Story Bible
 
-Canonical facts that the AI must always know and respect. Each fact has a category (Character, World Rule, Timeline, Relationship, Plot Point, General), an importance level (Critical, High, Medium, Low), and optional tags. Active Story Bible entries are injected into every generation prompt. Use this for hard rules: "magic cannot bring the dead back to life", "the war ended in Year 412", "Elena is left-handed".
+Canonical facts that the AI must always know and respect. Each fact has:
+- **Category** -- Character, World Rule, Timeline, Relationship, Plot Point, General
+- **Importance** -- Critical, High, Medium, Low (affects priority in context stacking)
+- **Subject** -- The entity or topic the fact is about
+- **Fact** -- The canonical statement
+- **Tags** -- Optional categorization tags
+
+Active Story Bible entries are injected into every generation prompt, sorted by importance. Use this for hard rules: "magic cannot bring the dead back to life", "the war ended in Year 412", "Elena is left-handed".
+
+Category filter tabs show counts per category. Search/filter field for finding specific entries.
 
 ### Style Anchors
 
-Reference passages that define the writing voice you want. Paste excerpts from your own writing, a published author you're emulating, or AI-generated passages you liked. Mark up to 2–3 anchors as active — they are included in every AI writing prompt so the model matches the style.
+Reference passages that define the writing voice you want. Each anchor has a label, passage text, and optional notes. Mark anchors as active -- active anchors are included in every AI writing prompt so the model matches the style.
+
+A warning appears if more than 3 anchors are active (high context usage).
 
 ### Prohibited Words
 
-A blocklist of words and phrases the AI must not use. Includes a one-click loader for a curated preset of common AI writing tics (e.g. "tapestry of", "in the realm of", "a testament to"), genre clichés, and overused words. Organise entries by category: AI-isms, Clichés, Overused, or Custom. All active prohibited words are injected into every writing prompt.
+A blocklist of words and phrases the AI must not use. Features:
+- Add individual words/phrases with a category selector
+- **Load Defaults** button -- one-click loader for ~46 curated entries covering:
+  - AI-isms (24 items): delve, tapestry, resonate, nuanced, paradigm, etc.
+  - Cliches (7 items): sent shivers down, heart skipped a beat, blood ran cold, etc.
+  - Overused (15 items): let out a breath, dark chuckle, steeled himself, etc.
+- Category filter (All, AI-isms, Cliches, Overused, Custom)
+- Duplicate prevention (case-insensitive)
+
+All active prohibited words are injected into every writing prompt and editing pass.
 
 ---
 
@@ -190,151 +301,208 @@ A blocklist of words and phrases the AI must not use. Includes a one-click loade
 
 ### Consistency Tracking
 
-Three tools for maintaining continuity across a long story:
+Three-tab interface for maintaining continuity across a long story:
 
 **Story Events**
-A log of important plot events that have happened, tagged by chapter. The AI can reference these during generation to avoid contradicting established events or repeating them.
+A log of important plot events. Each event has:
+- Description text
+- Importance level (low, medium, high, critical) -- color-coded
+- Linked scene and chapter
+- Affected characters (multi-select)
+- World state impact flag
+
+Events are referenced by the AI during generation to avoid contradicting established events or repeating them.
 
 **Character States**
-Track how a character's physical condition, emotional state, and knowledge change from scene to scene. Each state entry specifies which chapter it applies to. The AI uses the most recent applicable state when writing a character.
+Track how a character changes from scene to scene. Each state entry tracks 5 dimensions:
+- Physical state (injuries, appearance changes)
+- Emotional state (feelings, mindset)
+- Knowledge (what the character now knows)
+- Possessions (items carried/lost)
+- Notes (additional context)
+
+Filter by character. The AI uses the most recent applicable state when writing a character.
 
 **Scene References**
-Tag specific earlier scenes that the current scene should be aware of. These scenes are included in full as context when generating the current scene — useful for callbacks, consequences, or continuity-critical moments.
+Tag specific earlier scenes that the current scene should be aware of. 6 reference types:
+- Foreshadowing
+- Callback
+- Continuity
+- Character Arc
+- World Building
+- Plot Thread
+
+Each type is color-coded. Active references are included in full as context when generating the current scene. Toggle active/inactive status per reference.
 
 ### Logic Checks
 
-An AI-powered audit tool. Select what to audit — Dossier, Outline/Synopsis, a specific Chapter, Characters, or Worldbuilding — and the AI reads the relevant content and produces a detailed report highlighting logical inconsistencies, internal contradictions, plot holes, timeline problems, and character behaviour inconsistencies. Previous audit reports are stored and can be reviewed at any time.
+An AI-powered audit tool. Select what to audit:
+- **Dossier** -- checks the story dossier for internal contradictions
+- **Outline** -- checks outline/synopsis coherence
+- **Chapter** -- checks a specific chapter for continuity errors
+- **Character** -- checks character consistency across the story
+- **Worldbuilding** -- checks world rules and technology/magic consistency
 
-> Logic Checks consume significant context. Use a model with a large context window (32K+) for best results, especially when auditing full chapters.
+The AI reads the relevant content and produces a detailed report highlighting logical inconsistencies, internal contradictions, plot holes, timeline problems, and character behaviour inconsistencies.
+
+Previous audit reports are stored and can be reviewed/deleted at any time. Uses low temperature (0.3) for deterministic, focused analysis.
+
+> Logic Checks consume significant context. The 32K context window of Midnight Miqu handles this well, especially for full-chapter audits.
 
 ---
 
 ## Production Pipeline
 
-The Pipeline page converts a finished chapter into all the media assets needed for an audiobook-style video. It runs five stages in order. Each stage submits jobs to ComfyUI one at a time, monitors them automatically, and retrieves the output files when they finish. **You watch Story Forge's progress bar — not the ComfyUI UI.**
+The Pipeline page converts a finished chapter into all the media assets needed for an audiobook-style video. It runs five stages in order. Each stage submits jobs to ComfyUI one at a time, monitors them automatically, and retrieves the output files when they finish.
+
+The **Stage Indicator** shows visual progress through all stages with color-coded states: completed (green), current/running (pulsing), paused/review (amber), error (red).
 
 ### How Job Monitoring Works
 
 When Story Forge sends a job to ComfyUI it does the following without any manual input:
 
-1. **Submits the workflow** — sends the built-in workflow JSON (with your prompts, settings, and image/audio references injected) to ComfyUI's `/prompt` endpoint. ComfyUI returns a `prompt_id`.
-2. **Polls for completion** — repeatedly queries ComfyUI's `/history/{prompt_id}` endpoint until the job shows `completed: true`. You will see the ComfyUI output panel show the job running and then completing.
-3. **Retrieves the output file** — reads the filename from the history response and constructs the `/view?filename=...&type=output` URL. Saves this URL to the database.
-4. **Moves to the next item** — submits the next image/chunk and repeats. Only one job is in ComfyUI's queue at any time.
+1. **Submits the workflow** -- sends the built-in workflow JSON (with prompts, settings, and image/audio references injected) to ComfyUI's `/prompt` endpoint. ComfyUI returns a `prompt_id`.
+2. **Monitors via WebSocket** -- connects to ComfyUI's WebSocket (`/ws?clientId=...`) for real-time completion notifications. Falls back to HTTP polling of `/history/{prompt_id}` if WebSocket fails.
+3. **Retrieves the output file** -- reads the filename from the history response and constructs the `/view?filename=...&type=output` URL. Saves this URL to the database.
+4. **Uploads to Supabase Storage** -- optionally copies the file to Supabase Storage for persistence (with graceful fallback to ComfyUI URL if upload fails).
+5. **Moves to the next item** -- submits the next image/chunk and repeats. Only one job is in ComfyUI's queue at any time.
 
-While a stage is running you will see: *"Generating image 3 of 8..."* with a progress bar and a live item counter. When all items are done, the stage button disappears and the next stage's button appears. This is your cue to review and then proceed.
-
-You can optionally watch the ComfyUI output panel on your AI machine to see the actual generation happening in real time — useful for debugging if something stalls or produces bad results. But you do not need to interact with ComfyUI at all during a normal run.
-
-> **If a job stalls:** check the ComfyUI output panel on your AI machine. If ComfyUI shows an error node (red border), the workflow has a problem. Fix it in Settings or restart ComfyUI. Story Forge will surface the error and stop the stage.
+While a stage is running you see a progress bar with message and item counter (e.g. "Generating image 3 of 8..."). When all items are done, the stage completes and the next stage becomes available.
 
 ---
 
-### Stage 1 — Analyse & Generate Images
-**Tool: LM Studio + ComfyUI (NetaYume Lumina workflow)**
+### Stage 1 -- Analyse & Generate Images
+**Tool: LM Studio (analysis) + ComfyUI (image generation)**
 
-**What happens:** The LLM reads your full chapter text and identifies 3–12 key visual moments — dramatic reveals, location introductions, action peaks, emotional beats. For each moment it writes a detailed Stable Diffusion prompt and a short animation description. Then ComfyUI generates the images one at a time using the built-in NetaYume Lumina workflow with your configured checkpoint, orientation, and conditioning prompts.
+**What happens:**
+1. The LLM reads your full chapter text (first ~12K characters) and identifies 3-12 key visual moments -- dramatic reveals, location introductions, action peaks, emotional beats.
+2. For each moment it writes: a **text anchor** (the passage it corresponds to), a detailed **image prompt** (Stable Diffusion format), and an **animation prompt** (motion description for Stage 2).
+3. ComfyUI generates the images one at a time using the built-in NetaYume Lumina workflow with your configured orientation, seed, and conditioning prompts.
 
-**Story Forge shows:** *"Analyzing chapter for visual moments..."* then *"Generating image 1 of N..."* through *"Generating image N of N."*
+**Image Prompt Generation:**
+The `imagePromptService` converts scene context into Stable Diffusion prompts by:
+- Inferring art style from genre (fantasy = epic fantasy illustration, sci-fi = futuristic concept art, etc.)
+- Scanning scene content for visual keywords (colors, lighting, actions, objects)
+- Including top 3 characters + top 2 things
+- Appending quality tags ("cinematic lighting, detailed, high quality, 8k")
+- Capping prompt length at 500 characters
 
-**ComfyUI output panel shows:** Each image job appearing in the queue, rendering progress, then completing. One job at a time.
+**Story Forge shows:** "Analyzing chapter for visual moments..." then "Generating image 1 of N..." through completion.
 
-**When done:** The image grid appears. Review all images. If any are wrong, click **New Run** to start over — this discards the current run's images and begins fresh.
-
-**Review gate:** The Stage 2 button only appears after Stage 1 completes. You decide when to proceed.
+**When done:** The Image Review Grid appears showing all images with their order index, text anchor, image prompt, and animation prompt. Review all images. Click **New Run** to discard and start over.
 
 ---
 
-### Stage 2 — Animate Images *(Optional)*
+### Stage 2 -- Animate Images (Optional)
 **Tool: ComfyUI (LTX 2.3 Text2Video workflow)**
 
-**What happens:** Each generated scene image is sent to ComfyUI's LTX 2.3 Text2Video workflow along with the animation description the LLM wrote in Stage 1. ComfyUI produces a short animated GIF (30 fps, 5 seconds) with subtle motion — flickering light, swaying foliage, atmospheric haze, gentle character breathing.
+**What happens:** Each generated scene image is sent to ComfyUI's LTX 2.3 Text2Video workflow along with the animation description. ComfyUI produces a short animated video (30 fps, 5 seconds) with subtle motion -- flickering light, swaying foliage, atmospheric haze, gentle character breathing.
 
-**Story Forge shows:** *"Animating image 1 of N..."* through completion. When done, a **Show animated** toggle appears on the image grid so you can compare the still and animated versions.
+**Technical details:**
+- Image is loaded via LoadImage node
+- Orientation presets: Portrait (768x1344), Landscape (1344x768), Square (1024x1024)
+- 10-minute timeout per clip (video encoding is slow)
+- Dual seed node injection for reproducibility
 
-**ComfyUI output panel shows:** Each video generation job — these are slower than image jobs (typically 30–90 seconds each depending on your GPU).
-
-**When done:** Toggle the animated view on the image grid to review. This stage is **optional** — if you skip it, the assembly data will use still images instead.
-
-**Review gate:** Stage 3 is available whether or not you run Stage 2. You can proceed directly to TTS from Stage 1's review.
-
----
-
-### Stage 3 — Generate TTS Audio
-**Tool: ComfyUI (built-in TTS workflow)**
-
-**What happens:** The chapter text is split at sentence boundaries into chunks of approximately 1000 characters. Each chunk is sent to ComfyUI's TTS workflow with your configured speaker voice and sample rate. Each chunk produces a separate audio file (wav/mp3/flac). The pipeline tracks which text passage each audio file corresponds to — this mapping is used in the assembly export and lip-sync stage.
-
-**Story Forge shows:** *"Generating TTS chunk 1 of N..."* and a secondary progress bar showing how many chunks have completed out of the total.
-
-**ComfyUI output panel shows:** Each TTS job — typically fast (5–20 seconds per chunk).
-
-**When done:** Listen to the audio chunks in the pipeline interface to check quality. Look for mispronounced character or place names. If needed, edit the phonetic spelling in the chapter text and re-run this stage.
-
-**Review gate:** Stages 4 and 5 both become available once at least one TTS chunk is completed.
+**When done:** A "Show animated" toggle appears on the image grid to compare still vs animated versions. This stage is optional -- skip it to use still images in the final assembly.
 
 ---
 
-### Stage 4 — Export Assembly Data
-**Tool: Local export — no ComfyUI job**
+### Stage 3 -- Generate TTS Audio
+**Tool: ComfyUI (Kokoro TTS workflow)**
 
-**What happens:** Story Forge builds a structured JSON file from the data already in the database and triggers a browser download. No ComfyUI job is submitted. The file contains:
+**What happens:** The chapter text is split at sentence boundaries into chunks of approximately 800-1000 characters. Each chunk is sent to ComfyUI's Kokoro TTS workflow with your configured speaker voice and speed. Each chunk produces a separate audio file.
 
-- **images array** — each image's URL (animated GIF if available, otherwise still), its order index, and the text anchor phrase that marks where it should appear on screen
-- **audio array** — each TTS chunk's URL, its text content, and its order index
-- **chapterLabel** — e.g. "Chapter 01"
+**Kokoro TTS details:**
+- Speaker profiles: e.g. `af_sarah`, `en_speaker_0`
+- Speed control: adjustable (default 1.0)
+- Finds KokoroSpeaker and KokoroGenerator nodes by class_type
+- 5-minute timeout per chunk (typically 5-20 seconds)
 
-**How to use it:** Feed this JSON into your video assembly tool. When the narration reaches a text anchor phrase, switch the displayed image to the corresponding one. The audio timeline gives you all the clip URLs in order to concatenate.
+**Story Forge shows:** "Generating TTS chunk 1 of N..." with progress bar.
 
-**Note:** This button is available any time after Stage 3 is started. You can re-download it at any point.
+**When done:** Listen to audio chunks in the pipeline interface. Check for mispronounced names. Re-run if needed.
+
+---
+
+### Stage 4 -- Audio Assembly & Export
+**Tool: Browser Web Audio API + local export (no ComfyUI job)**
+
+**What happens:** Two things occur at this stage:
+
+1. **Audio Assembly** -- Story Forge uses the browser's Web Audio API to decode all TTS chunks, concatenate them into a single continuous WAV file (44-byte header + PCM sample data), and upload the result to Supabase Storage. This gives you a single chapter audio file.
+
+2. **Video Assembly Manifest** -- Story Forge builds a structured JSON file containing:
+   - **images array** -- each image's URL (animated GIF if available, otherwise still), order index, and text anchor phrase
+   - **audio array** -- each TTS chunk's URL, text content, and order index
+   - **chapterLabel** -- e.g. "Chapter 01"
+   - **timing data** -- for syncing image changes to narration
+
+**How to use the manifest:** Feed this JSON into your video assembly tool. When the narration reaches a text anchor phrase, switch the displayed image to the corresponding one.
 
 ---
 
-### Stage 5 — Lip-sync Generation
-**Tool: ComfyUI (LTX 2.3 LipSync workflow)**
+### Stage 5 -- Lip-sync Generation
+**Tool: ComfyUI (LTX 2.3 LipSync Portrait workflow)**
 
-**What happens:** You paste the URL of a character face image (front-facing, ideally from the World Library or a ComfyUI-generated image). Story Forge takes each completed TTS audio chunk and submits a lip-sync job to ComfyUI pairing the character image with that audio. ComfyUI generates a video of the character's mouth moving in sync with the speech.
+**What happens:** You provide a character face image URL (front-facing, ideally from World Library or ComfyUI-generated). Story Forge takes each TTS audio chunk and submits a lip-sync job pairing the character image with that audio.
 
-**Output naming:** Each clip is named sequentially — `ch01_lipsync_001.mp4`, `ch01_lipsync_002.mp4`, etc. These names appear in the Lip-sync Chunks list in the Pipeline UI and in `ComfyUI/output/`. Use this order to stitch clips in your external tool.
+**Technical details:**
+- Image and audio are pre-uploaded to ComfyUI's `/input` folder via `/upload/image` endpoint
+- Audio duration is extracted via Web Audio API and injected into the Duration node
+- Fixed frame rate: 30 FPS
+- Resolution: up to 1080x1920 (portrait)
+- 20-minute timeout per clip (longest timeout -- high resolution + AI upsampling)
+- Scene prompt (background + character description) is injected for visual consistency
 
-**Story Forge shows:** *"Generating lip-sync 1 of N (ch01_lipsync_001.mp4)..."* for each clip.
+**Output naming:** Sequential -- `ch01_lipsync_001.mp4`, `ch01_lipsync_002.mp4`, etc.
 
-**ComfyUI output panel shows:** Each lip-sync video job — these are the slowest jobs (60–180 seconds each depending on audio length and GPU).
-
-**When done:** The Lip-sync Chunks list shows all clip URLs in order. Download or copy them and stitch sequentially in your video editor.
-
-**Review gate:** You can re-run lip-sync at any time (e.g. with a different character image) without re-running earlier stages. The previous lip-sync chunks are discarded and replaced.
+**When done:** The Lip-sync Chunks list shows all clip URLs in order with status badges. Download or copy them and stitch sequentially in your video editor.
 
 ---
+
+### Pipeline Controls
+
+- **New Run** -- Creates a fresh pipeline run for the same chapter, discarding previous images and lip-sync data. TTS chunks persist and can be reused.
+- **Review Gates** -- Each stage must complete before the next becomes available. You decide when to proceed.
+- **Error Recovery** -- Individual item failures are marked as errors but don't stop the entire stage. Errors are surfaced in the UI.
 
 ### Pipeline Warnings
 
-> **Never clear ComfyUI/output/ between stages.** Stage 2 reads Stage 1's image files. Stage 5 reads Stage 3's audio files. Deleting anything from the output folder will break those references and the stage will error when it tries to read the missing file.
+> **Never clear ComfyUI/output/ between stages.** Stage 2 reads Stage 1's image files. Stage 5 reads Stage 3's audio files. Deleting anything from the output folder breaks those references.
 
-> **Never run two pipeline stages at the same time.** Story Forge sends one job at a time and waits for each to finish before sending the next. Starting a new stage while one is running will submit conflicting jobs to ComfyUI and corrupt the output.
+> **Never run two pipeline stages at the same time.** Story Forge sends one job at a time. Starting a new stage while one is running will submit conflicting jobs.
 
-> **New Run.** The *New Run* button creates a fresh pipeline run for the same chapter, discarding all previous images and lip-sync data. TTS chunks are NOT discarded — they persist and can be reused in the new run's lip-sync stage without re-generating audio.
+> **Keep ComfyUI running while working.** Files are served through ComfyUI's HTTP server. If ComfyUI stops, images and audio will not display in Story Forge.
 
 ### Watching ComfyUI During a Run
 
-You do not need to interact with the ComfyUI web UI during a pipeline run — Story Forge handles everything automatically. But keeping a browser tab open to your ComfyUI instance (`http://your-ai-machine:8188`) is useful for:
-
-- **Seeing real-time render progress** — the output panel shows the image forming as it renders, which lets you catch bad outputs early.
-- **Spotting stalled jobs** — if Story Forge's progress bar hasn't moved in several minutes, check the ComfyUI queue. If the queue is empty but Story Forge is still "running", a network issue may have caused the poll to hang. Refresh Story Forge to recover.
-- **Identifying workflow errors** — if a node shows a red error border in ComfyUI, the workflow failed. Story Forge will surface the error message and stop the stage.
-- **Checking queue depth** — the queue status indicator in Settings (after testing the connection) shows how many jobs are pending. This should always be 0 or 1 during a Story Forge run.
-
-> The ComfyUI output panel is read-only during a Story Forge run. Do not queue additional jobs from the ComfyUI UI while a pipeline stage is running, as this can cause Story Forge to retrieve the wrong output file.
+Keeping a browser tab open to your ComfyUI instance (`http://your-ai-machine:8188`) is useful for:
+- Seeing real-time render progress
+- Spotting stalled jobs (if progress hasn't moved in several minutes)
+- Identifying workflow errors (red error borders on nodes)
+- Checking queue depth (should always be 0 or 1 during a run)
 
 ---
 
 ## Audiobook
 
-The Audiobook page provides standalone TTS generation outside the Pipeline. Select a chapter, and Story Forge splits the text into sentence-boundary chunks and lets you generate audio for each chunk individually or all at once via ComfyUI's TTS workflow.
+The Audiobook page provides standalone TTS generation outside the Pipeline. Features:
 
-Each chunk's audio URL is saved to the database once generated. You can preview playback inline. This page is useful for narrating chapters that aren't going through the full production pipeline, or for re-generating specific chunks with different voice settings.
+- **Chapter selector** -- choose which chapter to narrate
+- **Voice selector** -- 10 Kokoro voice profiles available
+- **Speed slider** -- 0.5x to 2.0x
+- **Prepare Chunks** -- splits chapter text into ~800 character segments at sentence boundaries
+- **Generate All / Resume** -- generates all chunks sequentially, skipping completed ones on resume
+- **Per-chunk controls** -- individual Generate/Redo buttons, Play/Stop buttons
+- **Play All** -- sequential playback with auto-advance between chunks
+- **Download All** -- fetches and saves all chunk audio files
 
-> The same TTS workflow and speaker/sample-rate settings from the Settings page are used here. Change the speaker or sample rate in Settings before generating if you want a different voice.
+Each chunk shows: text preview, status badge (pending/generating/uploading/completed/error), character count, and audio controls.
+
+Generated audio is uploaded to Supabase Storage (`audiobook-audio` bucket) for persistence.
+
+> Uses the same Kokoro TTS workflow and speaker settings. Change the speaker in Settings before generating if you want a different voice.
 
 ---
 
@@ -343,50 +511,84 @@ Each chunk's audio URL is saved to the database once generated. You can preview 
 Export your finished story in three formats:
 
 **HTML**
-A styled, self-contained HTML document. Scene images can be embedded as base64 data (no external dependencies) or linked by URL. Suitable for reading in a browser or sharing as a single file.
+A styled, self-contained HTML document using Playfair Display + Merriweather fonts. Features drop caps, ornamental separators, and responsive/print-friendly design. Scene images can be embedded as base64 data (no external dependencies) or linked by URL.
 
 **Markdown**
-Standard Markdown with image references. Compatible with Obsidian, Notion, GitHub, and most writing tools that accept Markdown.
+Standard GitHub-flavored Markdown with image references. Compatible with Obsidian, Notion, GitHub, and most writing tools.
 
 **Plain Text**
 Clean text only, no formatting or images. Useful for pasting into publishing platforms or further processing.
 
-All formats let you choose whether to include scene images and scene descriptions/notes. A preview is shown before downloading.
+All formats offer options:
+- Include/exclude scene images
+- Embed images as base64 (HTML only)
+- Include/exclude scene notes and descriptions
+
+A preview is shown before downloading. Copy to Clipboard is also available.
 
 ### Save & Load (JSON Backup)
 
-The Save/Load page exports the entire project as a JSON file — all scenes, chapters, characters, world elements, story bible, settings, and dossier. Use this to back up your work, transfer a project between machines, or restore from a previous state. Generated media files (images, audio, video) are not included in the backup, only the text data and URLs.
+The Save/Load page exports the entire project as a JSON file covering all tables:
+- Projects, outlines, chapters, scenes
+- Characters, places, things, technologies
+- Story events, character states, scene references, scene summaries
+- Story bible entries, style anchors, scene context tags
+- Story dossiers, scene briefs, editing passes, logic checks
+- Prohibited words, generation settings
 
-> Importing a backup creates a new project. It does not overwrite an existing one.
+**Export features:**
+- Image URL fields are stripped for portability
+- Downloads as timestamped JSON file
+
+**Import features:**
+- File validation and structure checking
+- Preview showing project metadata and table row counts
+- Full ID remapping (old IDs replaced with new UUIDs)
+- Foreign key remapping across all tables
+- Ordered table loading (respects dependencies)
+- Progress tracking per table
+- Creates a new project (never overwrites existing)
+- Sets imported project as active upon success
 
 ---
 
 ## Files & Storage
 
-All media generated by ComfyUI (images, animated GIFs, TTS audio, lip-sync video) is saved to ComfyUI's output directory on your AI machine. Story Forge never copies these files — it stores the URL that points to each file through ComfyUI's HTTP server.
+All media generated by ComfyUI (images, animated videos, TTS audio, lip-sync video) is saved to ComfyUI's output directory on your AI machine. Story Forge stores the URL that points to each file.
 
 | Content | Location |
 |---------|----------|
-| Scene images | `ComfyUI/output/` |
-| Animated GIFs | `ComfyUI/output/` |
-| TTS audio | `ComfyUI/output/` |
-| Lip-sync video | `ComfyUI/output/` |
-| Entity reference images | Supabase Storage (cloud) |
-| All text data | Supabase database (cloud) |
+| Scene images | `ComfyUI/output/` (served via ComfyUI HTTP) |
+| Animated GIFs/videos | `ComfyUI/output/` (served via ComfyUI HTTP) |
+| TTS audio chunks | `ComfyUI/output/` + Supabase Storage (backup) |
+| Assembled chapter audio | Supabase Storage (`pipeline-audio` bucket) |
+| Lip-sync video clips | `ComfyUI/output/` (served via ComfyUI HTTP) |
+| Entity reference images | Supabase Storage (`entity-images` bucket) |
+| Audiobook audio | Supabase Storage (`audiobook-audio` bucket) |
+| All text data | Supabase database |
+
+### Supabase Storage Buckets
+
+- `entity-images` -- uploaded reference images for world entities
+- `pipeline-images` -- backed-up scene images
+- `pipeline-animations` -- backed-up animation files
+- `pipeline-audio` -- assembled chapter audio files
+- `pipeline-lipsync` -- backed-up lip-sync videos
+- `pipeline-video` -- assembled video files
+- `audiobook-audio` -- standalone audiobook TTS chunks
 
 ### URL Format
 
-Every ComfyUI-generated file is accessed via ComfyUI's `/view` endpoint:
+ComfyUI-generated files are accessed via ComfyUI's `/view` endpoint:
 
 ```
 http://your-ai-machine:8188/view?filename=ComfyUI_00001_.png&subfolder=&type=output
 ```
 
-> **Never clear ComfyUI/output/ mid-pipeline.** The animation, TTS, and lip-sync stages depend on files produced by earlier stages. Deleting output files breaks those references permanently.
-
-> **Keep ComfyUI running while working.** Files are served through ComfyUI's HTTP server. If ComfyUI stops, images and audio will not display in Story Forge — but the files remain on disk and will work again once ComfyUI restarts.
-
-> **Lip-sync filenames.** The Pipeline page tracks the expected output filename for each lip-sync chunk (e.g. `ch01_lipsync_001.mp4`). Use these names to stitch clips together in the correct order in your external video tool.
+The `storageService` handles uploading files from ComfyUI URLs to Supabase Storage with:
+- MIME type detection from file extension
+- Query parameter parsing for ComfyUI URLs
+- Graceful fallback (returns original ComfyUI URL if Supabase upload fails)
 
 ---
 
@@ -394,58 +596,65 @@ http://your-ai-machine:8188/view?filename=ComfyUI_00001_.png&subfolder=&type=out
 
 Complete walkthrough from a blank project to a finished audiobook video chapter.
 
-### 1 — Project Setup
+### 1 -- Project Setup
 
 1. Create a project (Projects page) with title, genre, and description.
-2. Go to Settings, enter your LM Studio and ComfyUI endpoints, and test both connections.
-3. Select your ComfyUI checkpoint and configure image orientation and conditioning prompts.
-4. Set your TTS speaker voice and sample rate.
+2. Go to Settings, verify the Model Name is `Midnight-Miqu-70B-v1.5.Q4_K_M` and Context Length is 32768.
+3. Set the ComfyUI endpoint to `http://your-ai-machine:8188`.
+4. Test both connections (green dots confirm connectivity).
+5. Configure image orientation and TTS speaker voice.
 
-### 2 — World Building
+### 2 -- World Building
 
-1. Add your main characters in the World Library with physical descriptions, personalities, and backstory.
-2. Add key places, important objects, and any magic/technology systems.
-3. Add canonical facts to the Story Bible — rules the AI must never break.
-4. Paste reference writing passages into Style Anchors and activate 1–3.
-5. Load the prohibited words preset and add any project-specific terms to avoid.
+1. Add main characters in the World Library with physical descriptions, personalities, backstory, and personality slider positions.
+2. Upload reference images for key characters -- the vision model will auto-generate detailed descriptions.
+3. Map each character's Hero's Journey stage.
+4. Add key places, important objects, and any magic/technology systems.
+5. Add canonical facts to the Story Bible -- rules the AI must never break. Set importance levels (critical facts are always included in context).
+6. Paste reference writing passages into Style Anchors and activate 1-3.
+7. Load the prohibited words preset and add any project-specific terms to avoid.
 
-### 3 — Planning
+### 3 -- Planning
 
 1. Open the Dossier page, paste your story brain dump and genre tropes, and generate the dossier.
-2. Build your outline — create chapters with summaries, key events, POV character, and setting.
+2. Build your outline -- create outlines with synopsis/act structure/themes, then add chapters with summaries, key events, POV character (from World Library), and setting (from World Library).
 
-### 4 — Writing
+### 4 -- Writing
 
-1. Open the Write page, select a chapter and scene.
-2. Fill in the Scene Brief (what needs to happen), then generate content.
-3. Edit the generated text directly in the editor.
-4. Use the Editing Passes sidebar to run targeted refinement passes (pacing, dialogue, description, etc.).
-5. Attach a scene image if desired — either generate one via ComfyUI or upload your own.
-6. Update Character States and Story Events on the Consistency page as the story progresses.
-7. Repeat for each scene until the chapter is complete.
+1. Open the Write page, select a chapter and scene (or create a new scene).
+2. Use the Context Tags panel to tag which entities are relevant to this scene.
+3. Fill in the Scene Brief (10 fields -- can be AI-generated from outline data).
+4. Click Generate -- the AI produces scene content using the full context package.
+5. Edit the generated text directly in the editor.
+6. Use the Editing Pass panel for targeted refinement (generates improvement plan, then implements edits).
+7. Generate a Scene Summary for efficient distant context.
+8. Optionally generate a Scene Image via ComfyUI.
+9. Update Character States and Story Events on the Consistency page as the story progresses.
+10. Repeat for each scene until the chapter is complete.
 
-### 5 — Quality Review
+### 5 -- Quality Review
 
-1. Run a Logic Check on the chapter to catch inconsistencies or continuity errors.
-2. Fix any identified issues in the Write page.
-3. Re-run the check until it passes cleanly.
+1. Run a Logic Check on the chapter (or dossier, outline, characters, worldbuilding).
+2. Review the detailed audit report.
+3. Fix any identified issues in the Write page.
+4. Re-run the check until it passes cleanly.
 
-### 6 — Production Pipeline
+### 6 -- Production Pipeline
 
 1. Open the Pipeline page and select the finished chapter.
-2. Stage 1: Generate Images — review all images before continuing.
-3. Stage 2: Animate Images — review animations, or skip if you prefer stills.
-4. Stage 3: Generate TTS Audio — listen to all chunks for quality.
-5. Stage 4: Export Assembly Data — download the JSON for video assembly.
-6. Stage 5: Generate Lip-sync — select a character face image, generate all clips.
-7. Stitch the lip-sync clips together in filename order using an external video tool.
+2. **Stage 1:** Analyze & Generate Images -- review all images in the grid before continuing.
+3. **Stage 2:** Animate Images (optional) -- review animations via the toggle, or skip for still images.
+4. **Stage 3:** Generate TTS Audio -- listen to all chunks for quality.
+5. **Stage 4:** Audio Assembly & Export -- download the assembled audio and/or video assembly manifest JSON.
+6. **Stage 5:** Generate Lip-sync -- select a character face image, generate all clips.
+7. Lip-sync clips are named sequentially -- stitch in filename order using an external video tool.
 
-### 7 — Final Assembly (External)
+### 7 -- Final Assembly (External)
 
-1. Use the Assembly Data JSON to drive scene image changes in sync with the narration.
-2. Place the scene video (images + audio) in a smaller overlay window.
+1. Use the Video Assembly Manifest JSON to drive scene image changes in sync with the narration.
+2. Place the scene video (animated images + audio) in a smaller overlay window.
 3. Place the stitched lip-sync video in the main frame.
-4. Mute the overlay video — the lip-sync carries the same TTS audio.
+4. Mute the overlay video -- the lip-sync carries the same TTS audio.
 5. Add chapter title cards, intro/outro, and background music as desired.
 6. Export and upload to YouTube.
 
@@ -457,4 +666,16 @@ You can run the full production pipeline on an existing story without using the 
 
 1. Create a project and an outline with chapters matching your story's structure.
 2. On the Write page, paste your existing text into each scene's content field.
-3. Run the Pipeline — the LLM analyses your text exactly as it would for AI-written content.
+3. Run the Pipeline -- the LLM analyses your text exactly as it would for AI-written content.
+
+---
+
+### Standalone Audiobook (Without Pipeline)
+
+If you only want narrated audio without images/animation/lip-sync:
+
+1. Write or paste your chapter content.
+2. Go to the Audiobook page.
+3. Select the chapter, choose a Kokoro voice and speed.
+4. Click Prepare Chunks, then Generate All.
+5. Use Play All to preview, Download All to save.

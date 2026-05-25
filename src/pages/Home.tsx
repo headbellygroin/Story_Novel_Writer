@@ -141,11 +141,12 @@ export default function Home() {
 
             <h3 className="font-semibold text-slate-900 mt-6 mb-2">Recommended Models</h3>
             <div className="space-y-2 text-sm text-slate-700">
-              <div><strong>Writing LLM:</strong> MythoMax 13B, Nous Hermes 2 Yi 34B, Mistral 7B</div>
-              <div><strong>Image Gen:</strong> Any SD 1.5 / SDXL checkpoint</div>
-              <div><strong>TTS:</strong> XTTS, Coqui TTS, or Bark (via ComfyUI nodes)</div>
-              <div><strong>Animation:</strong> AnimateDiff, Stable Video Diffusion</div>
-              <div><strong>Lip-sync:</strong> SadTalker, Wav2Lip, MuseTalk (via ComfyUI nodes)</div>
+              <div><strong>Writing LLM:</strong> Midnight-Miqu-70B-v1.5.Q4_K_M (CPU, ~45 GB RAM)</div>
+              <div><strong>Vision:</strong> llava-v1.6-mistral-7b (CPU, ~6 GB RAM)</div>
+              <div><strong>Image Gen:</strong> NetaYume Lumina / Flux (GPU via ComfyUI)</div>
+              <div><strong>TTS:</strong> Kokoro TTS (GPU via ComfyUI)</div>
+              <div><strong>Animation:</strong> LTX 2.3 Text2Video (GPU via ComfyUI)</div>
+              <div><strong>Lip-sync:</strong> LTX 2.3 LipSync Portrait (GPU via ComfyUI)</div>
             </div>
           </div>
         </div>
