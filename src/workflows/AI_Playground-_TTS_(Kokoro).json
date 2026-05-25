@@ -1,0 +1,54 @@
+{
+  "2": {
+    "inputs": {
+      "text": "Hello. This is a Kokoro test.",
+      "speed": 1,
+      "lang": "English",
+      "speaker": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "KokoroGenerator",
+    "_meta": {
+      "title": "Kokoro Generator"
+    }
+  },
+  "3": {
+    "inputs": {
+      "speaker_name": "af_sarah"
+    },
+    "class_type": "KokoroSpeaker",
+    "_meta": {
+      "title": "Kokoro Speaker"
+    }
+  },
+  "5": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_zmozo_00001_.flac&type=temp&subfolder=&rand=0.38574663322332126",
+      "audio": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "6": {
+    "inputs": {
+      "filename_prefix": "audio/ComfyUI",
+      "quality": "V0",
+      "audioUI": "/api/view?filename=ComfyUI_00011_.mp3&type=output&subfolder=audio&rand=0.15876832549914965",
+      "audio": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "SaveAudioMP3",
+    "_meta": {
+      "title": "Save Audio (MP3)"
+    }
+  }
+}
