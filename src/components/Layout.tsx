@@ -32,7 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex justify-between h-16">
             <div className="flex">
               <Link to="/" className="flex items-center px-2 text-slate-900 font-bold text-xl">
-                Novel Writer
+                Story Forge
               </Link>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-6">
                 {NAV_ITEMS.map(item => (
