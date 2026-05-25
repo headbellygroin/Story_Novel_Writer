@@ -210,7 +210,7 @@ function ServicesSection() {
 
         <H3>LM Studio</H3>
         <ul className="space-y-2 text-sm text-slate-700 mb-4">
-          <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span>Start LM Studio on your AI machine, load a model, and enable the local server on port 1234.</span></li>
+          <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span>Start LM Studio on your AI machine, load your models, and enable the local server on port 1234.</span></li>
           <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span>In Settings, set the <strong>API Endpoint</strong> to <Code>http://your-ai-machine:1234/v1/chat/completions</Code> and the <strong>Model Name</strong> to match the Model ID shown in LM Studio's Local Server tab.</span></li>
           <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span>Click <strong>Test AI Connection</strong> to verify. A green dot means Story Forge can reach the server.</span></li>
           <li className="flex gap-2"><span className="text-slate-400 flex-shrink-0">—</span><span>For image analysis of reference photos, load a vision model (e.g. LLaVA) in LM Studio and set the <strong>Vision Model Name</strong> in Settings.</span></li>
@@ -218,6 +218,62 @@ function ServicesSection() {
         <Note color="sky">
           <strong>Context Length</strong> — set this to match your loaded model's actual context window (e.g. 4096, 8192, 32768).
           Story Forge uses this value to manage how much context is passed to the model during writing and analysis.
+        </Note>
+
+        <H3>Two-Model Setup (Recommended)</H3>
+        <P>
+          Story Forge uses two different kinds of AI model for different tasks. For best results you should
+          load both simultaneously in LM Studio:
+        </P>
+        <div className="space-y-3 mb-4">
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <p className="font-semibold text-slate-900 text-sm mb-1">Text Model (Writing, Analysis, Logic Checks)</p>
+            <p className="text-xs text-slate-600 mb-2">
+              This is the workhorse. It handles scene generation, summaries, image prompt writing, logic audits,
+              editing passes, voice chat, and all other text tasks. You need a model with strong reasoning and
+              a <strong>large context window (32K+ tokens minimum, 128K ideal)</strong>.
+            </p>
+            <p className="text-xs text-slate-600 font-medium">Recommended models:</p>
+            <ul className="text-xs text-slate-600 mt-1 space-y-0.5">
+              <li className="flex gap-2"><span className="text-slate-400">—</span>Qwen2.5 72B (128K context, strong creative writing)</li>
+              <li className="flex gap-2"><span className="text-slate-400">—</span>Llama 3.1 70B (128K context, good all-rounder)</li>
+              <li className="flex gap-2"><span className="text-slate-400">—</span>Mixtral 8x22B (64K context, fast on multi-GPU)</li>
+              <li className="flex gap-2"><span className="text-slate-400">—</span>Command R+ (128K context)</li>
+            </ul>
+            <p className="text-xs text-slate-500 mt-2">
+              Set this model name in Settings under <strong>Model Name</strong>.
+            </p>
+          </div>
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <p className="font-semibold text-slate-900 text-sm mb-1">Vision Model (Image Analysis Only)</p>
+            <p className="text-xs text-slate-600 mb-2">
+              Used only for analysing reference images you upload to the World Library (extracting character
+              descriptions from photos, describing place images, etc.). This model needs multimodal (image + text)
+              capability but does not need a large context window or strong creative writing ability.
+            </p>
+            <p className="text-xs text-slate-600 font-medium">Recommended models:</p>
+            <ul className="text-xs text-slate-600 mt-1 space-y-0.5">
+              <li className="flex gap-2"><span className="text-slate-400">—</span>LLaVA v1.6 34B (best quality vision analysis)</li>
+              <li className="flex gap-2"><span className="text-slate-400">—</span>LLaVA v1.6 13B (lighter, still good for descriptions)</li>
+            </ul>
+            <p className="text-xs text-slate-500 mt-2">
+              Set this model name in Settings under <strong>Vision Model Name</strong>.
+            </p>
+          </div>
+        </div>
+
+        <Note color="emerald">
+          <strong>LM Studio supports loading multiple models simultaneously</strong> (since v0.3.0). Load both your
+          text model and vision model at the same time. Story Forge sends each request to the correct model using
+          the Model Name you configured. You do not need to swap models between tasks — both are served
+          concurrently from the same endpoint on port 1234, limited only by your available VRAM/RAM.
+        </Note>
+
+        <Note color="red">
+          <strong>Do NOT use a vision model (like LLaVA) as your primary text model.</strong> Vision models have
+          small context windows (4K-8K tokens) and weaker text reasoning compared to dedicated language models.
+          They will produce poor results for writing, logic checks, and any task requiring a large context. Use
+          LLaVA only for the Vision Model Name field — never for the main Model Name field.
         </Note>
 
         <H3>ComfyUI</H3>
@@ -430,8 +486,12 @@ function ConsistencySection() {
           be reviewed at any time.
         </P>
         <Note color="amber">
-          Logic Checks consume significant context. Use a model with a large context window (32K+) for
-          best results, especially when auditing full chapters.
+          <strong>Logic Checks require your text model, not your vision model.</strong> Logic Checks consume
+          significant context — a full chapter audit can use 20K–40K tokens of input. Your primary text model
+          (configured as <strong>Model Name</strong> in Settings) must have a 32K+ context window. If you are
+          using LLaVA or another vision model as your main Model Name, Logic Checks will fail or produce
+          poor results due to context overflow. See the <strong>Two-Model Setup</strong> section under
+          Services & Settings for recommended text models.
         </Note>
       </Card>
     </>
@@ -780,7 +840,10 @@ function WorkflowSection() {
               phase: '1 — Project Setup',
               steps: [
                 'Create a project (Projects page) with title, genre, and description.',
-                'Go to Settings, enter your LM Studio and ComfyUI endpoints, and test both connections.',
+                'In LM Studio, load TWO models: a large-context text model (e.g. Qwen2.5 72B) as your writing model, and a vision model (e.g. LLaVA v1.6 34B) for image analysis. Both can be loaded simultaneously.',
+                'Go to Settings, enter your LM Studio endpoint and test the connection.',
+                'Set Model Name to your text model ID and Vision Model Name to your vision model ID.',
+                'Enter your ComfyUI endpoint and test the connection.',
                 'Select your ComfyUI checkpoint and configure image orientation and conditioning prompts.',
                 'Set your TTS speaker voice and sample rate.',
               ],
