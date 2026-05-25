@@ -71,14 +71,30 @@ function prepareWorkflow(
         }
         break;
 
+      case 'PrimitiveInt':
+        if (title === 'Width') {
+          inputs.value = width;
+          node.inputs = inputs;
+        } else if (title === 'Height') {
+          inputs.value = height;
+          node.inputs = inputs;
+        }
+        break;
+
       case 'KSampler':
       case 'KSamplerAdvanced':
         inputs.seed = seed;
         node.inputs = inputs;
         break;
 
+      case 'RandomNoise':
+        inputs.noise_seed = seed;
+        node.inputs = inputs;
+        break;
+
       case 'EmptyLatentImage':
       case 'EmptySD3LatentImage':
+      case 'EmptyFlux2LatentImage':
         inputs.width = width;
         inputs.height = height;
         inputs.batch_size = batchSize;
