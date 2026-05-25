@@ -64,7 +64,7 @@ function ConnDot({ status }: { status: ConnStatus }) {
 export default function Settings() {
   const { currentProjectId } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings>>({
-    model_name: 'local-model',
+    model_name: 'Midnight-Miqu-70B-v1.5.Q4_K_M',
     api_endpoint: 'http://localhost:1234/v1/chat/completions',
     temperature: 0.7,
     max_tokens: 1000,
@@ -73,11 +73,11 @@ export default function Settings() {
     repetition_penalty: 1.1,
     presence_penalty: 0,
     frequency_penalty: 0,
-    context_length: 4096,
+    context_length: 32768,
     system_prompt: 'You are a creative fiction writer helping to write a novel. Write engaging, vivid prose that matches the style and tone of the project.',
     style_guide: '',
     style_rules: {},
-    vision_model_name: 'llava-1.6-mistral-7b',
+    vision_model_name: 'llava-v1.6-mistral-7b',
     comfyui_endpoint: 'http://desktop-fbpj753:8188',
     comfyui_checkpoint: '',
     comfyui_workflow: null,
@@ -276,10 +276,10 @@ export default function Settings() {
                   value={settings.model_name || ''}
                   onChange={(e) => setSettings({ ...settings, model_name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
-                  placeholder="local-model"
+                  placeholder="Midnight-Miqu-70B-v1.5.Q4_K_M"
                 />
                 <p className="text-xs text-slate-400 mt-1">
-                  Copy the Model ID from LM Studio's Local Server tab (e.g. <code>llama-3.1-8b-instruct</code>).
+                  Copy the Model ID from LM Studio's Local Server tab (e.g. <code>Midnight-Miqu-70B-v1.5.Q4_K_M</code>).
                 </p>
               </div>
               <div>
@@ -475,13 +475,13 @@ export default function Settings() {
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Model Name</label>
               <input
                 type="text"
-                value={settings.vision_model_name || 'llava-1.6-mistral-7b'}
+                value={settings.vision_model_name || 'llava-v1.6-mistral-7b'}
                 onChange={(e) => setSettings({ ...settings, vision_model_name: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm"
-                placeholder="llava-1.6-mistral-7b"
+                placeholder="llava-v1.6-mistral-7b"
               />
               <p className="text-xs text-slate-400 mt-1">
-                The Model ID shown in LM Studio's Local Server tab when a vision model is loaded.
+                The Model ID shown in LM Studio's Local Server tab when a vision model is loaded (e.g. <code>llava-v1.6-mistral-7b</code>).
               </p>
             </div>
             <div className="flex flex-col justify-end">

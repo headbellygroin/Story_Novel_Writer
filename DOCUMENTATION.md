@@ -25,11 +25,35 @@ The application covers the full authoring lifecycle: brainstorming, world-buildi
 
 ### The Two Services
 
-**LM Studio — Text Generation**
-Handles all writing and analysis: generating scene content, summarising scenes, building image prompts, running logic audits, analysing reference images, and powering voice chat. Runs on your AI machine and exposes an OpenAI-compatible API on port 1234.
+**LM Studio — Text Generation (CPU / System RAM)**
+Handles all writing and analysis: generating scene content, summarising scenes, building image prompts, running logic audits, analysing reference images, and powering voice chat. Runs on your AI machine and exposes an OpenAI-compatible API on port 1234. Both models run entirely in system RAM (0 GPU layers) so the GPU stays free for ComfyUI.
 
-**ComfyUI — Media Generation**
-Handles all four media types: scene images (Stable Diffusion), animated GIFs (LTX 2.3 Text2Video), TTS narration audio, and lip-sync video (LTX 2.3 LipSync). All four use the same ComfyUI endpoint with built-in workflows — no workflow files to manage. Story Forge sends each job, polls for completion, and retrieves the output file automatically.
+**ComfyUI — Media Generation (GPU / VRAM)**
+Handles all four media types: scene images (Stable Diffusion), animated GIFs (LTX 2.3 Text2Video), TTS narration audio, and lip-sync video (LTX 2.3 LipSync). All four use the same ComfyUI endpoint with built-in workflows — no workflow files to manage. Story Forge sends each job, polls for completion, and retrieves the output file automatically. ComfyUI has exclusive access to the GPU — it never competes with LM Studio for VRAM.
+
+### Recommended Hardware & Models
+
+**Target Hardware:** Intel i7, NVIDIA RTX 5090 (32 GB VRAM), 196 GB DDR5 RAM
+
+| Role | Model | Runs On | RAM Usage | Speed |
+|------|-------|---------|-----------|-------|
+| Text (Writing) | Midnight-Miqu-70B-v1.5.Q4_K_M | System RAM (CPU) | ~45 GB | ~3-5 tok/s |
+| Vision (Image Analysis) | llava-v1.6-mistral-7b (Q5_K_M or Q6_K) | System RAM (CPU) | ~6 GB | ~15-20 tok/s |
+| Media Generation | ComfyUI (all workflows) | GPU (VRAM) | Up to 32 GB | Full GPU speed |
+
+**Total RAM used by LM Studio:** ~51 GB of 196 GB available.
+
+**Why this configuration:**
+
+- **Midnight Miqu 70B** — uncensored creative writing model based on Mistral Medium. Excellent prose quality, strong instruction following, 32K context window. No content refusals. At Q4_K_M quantization it fits comfortably in RAM with room to spare.
+- **LLaVA v1.6 Mistral 7B** — uncensored vision model for describing reference images. Small enough to load alongside the writing model without meaningful RAM pressure. Fast on CPU for the short image-description tasks it handles.
+- **0 GPU layers for both models** — this is critical. The RTX 5090's full 32 GB VRAM is dedicated exclusively to ComfyUI for image generation, animation, TTS, and lip-sync. LM Studio never touches the GPU.
+
+**LM Studio Load Settings:**
+1. Set GPU Offload to 0 layers for both models
+2. Set context length to 32768 for Midnight Miqu
+3. Set context length to 4096 for LLaVA (short context is sufficient for image analysis)
+4. Both models can be loaded simultaneously — LM Studio supports multiple models
 
 ### Feature Map
 
@@ -50,12 +74,16 @@ Both services are assumed to be running on your AI machine before you use Story 
 
 ### LM Studio
 
-- Start LM Studio on your AI machine, load a model, and enable the local server on port 1234.
-- In Settings, set the **API Endpoint** to `http://your-ai-machine:1234/v1/chat/completions` and the **Model Name** to match the Model ID shown in LM Studio's Local Server tab.
+- Start LM Studio on your AI machine, load both models (writing + vision), and enable the local server on port 1234.
+- Load **Midnight-Miqu-70B-v1.5.Q4_K_M** as your writing model with 0 GPU layers and 32768 context length.
+- Load **llava-v1.6-mistral-7b** as your vision model with 0 GPU layers and 4096 context length.
+- In Settings, set the **API Endpoint** to `http://your-ai-machine:1234/v1/chat/completions` and the **Model Name** to `Midnight-Miqu-70B-v1.5.Q4_K_M`.
+- Set the **Vision Model Name** to `llava-v1.6-mistral-7b`.
 - Click **Test AI Connection** to verify. A green dot means Story Forge can reach the server.
-- For image analysis of reference photos, load a vision model (e.g. LLaVA) in LM Studio and set the **Vision Model Name** in Settings.
 
-> **Context Length** — set this to match your loaded model's actual context window (e.g. 4096, 8192, 32768). Story Forge uses this value to manage how much context is passed to the model during writing and analysis.
+> **Context Length** — defaults to 32768, matching Midnight Miqu's context window. Story Forge uses this value to manage how much context is passed to the model during writing and analysis.
+
+> **GPU Offload = 0** — both models must run entirely in system RAM so ComfyUI has exclusive access to the GPU. With 196 GB DDR5, both models use only ~51 GB combined.
 
 ### ComfyUI
 
