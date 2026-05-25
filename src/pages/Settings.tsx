@@ -609,6 +609,12 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* ── Text2Image ─────────────────────────────────────────────────── */}
+          <div className="border-t border-slate-200 pt-6">
+            <h3 className="text-base font-semibold text-slate-800 mb-0.5">Text2Image</h3>
+            <p className="text-xs text-slate-400 mb-4">Configure the Flux workflow for scene image generation.</p>
+          </div>
+
           {/* --- Orientation --- */}
           <div>
             <p className="text-sm font-medium text-slate-700 mb-2">Output Orientation</p>
@@ -689,8 +695,8 @@ export default function Settings() {
           <div>
             <p className="text-sm font-medium text-slate-700 mb-1">Positive Conditioning</p>
             <p className="text-xs text-slate-400 mb-3">
-              These three fields are assembled into the prompt sent to the NetaYume Lumina workflow.
-              Describe what should appear in the image. The system prompt and negative conditioning are fixed in the workflow.
+              These three fields are assembled into the prompt sent to the Flux workflow.
+              Describe what should appear in the image. Model, steps, cfg, sampler, and negative prompt are fixed in the workflow.
             </p>
             <div className="space-y-3">
               <div>
