@@ -12,6 +12,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/lmstudio-api/, ''),
       },
+      '/comfyui-api': {
+        target: 'http://127.0.0.1:8188',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/comfyui-api/, ''),
+        ws: true,
+      },
     },
   },
 });
