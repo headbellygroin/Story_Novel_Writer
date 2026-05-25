@@ -1,4 +1,6 @@
 import { waitUntilQueueFree } from './comfyuiService';
+import type { VideoResult } from './comfyuiAnimationService';
+export type { VideoResult };
 
 export type LipsyncOrientation = 'portrait' | 'landscape' | 'square';
 export type LipsyncNoiseMode = 'random' | 'fixed';
@@ -95,18 +97,20 @@ async function getAudioDurationSeconds(audioUrl: string): Promise<number> {
 // Video output finder — checks SaveVideo node first, then any video file
 // ---------------------------------------------------------------------------
 
-function findVideoOutput(entry: HistoryEntry, endpoint: string): string | null {
+const VIDEO_EXTS = ['.mp4', '.webm', '.gif', '.mkv'];
+
+function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | null {
   for (const nodeOutput of Object.values(entry.outputs)) {
     const files = nodeOutput.gifs || nodeOutput.videos || nodeOutput.images;
     if (files && files.length > 0) {
       const file = files[0];
-      if (
-        file.filename.endsWith('.mp4') ||
-        file.filename.endsWith('.webm') ||
-        file.filename.endsWith('.gif') ||
-        file.filename.endsWith('.mkv')
-      ) {
-        return `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
+      if (VIDEO_EXTS.some((ext) => file.filename.endsWith(ext))) {
+        return {
+          comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+          filename: file.filename,
+          subfolder: file.subfolder,
+          type: file.type,
+        };
       }
     }
   }
@@ -119,7 +123,12 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): string | null {
     ];
     if (allFiles.length > 0) {
       const file = allFiles[0];
-      return `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
+      return {
+        comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+        filename: file.filename,
+        subfolder: file.subfolder,
+        type: file.type,
+      };
     }
   }
   return null;
@@ -224,7 +233,7 @@ export async function generateLipsync(
   audioUrl: string,
   settings: ComfyUILipsyncSettings,
   scenePrompt = ''
-): Promise<string> {
+): Promise<VideoResult> {
   const endpoint = settings.endpoint.replace(/\/$/, '');
 
   if (!settings.workflow) {
@@ -279,7 +288,7 @@ function waitForLipsyncResult(
   endpoint: string,
   promptId: string,
   clientId: string
-): Promise<string> {
+): Promise<VideoResult> {
   return new Promise((resolve, reject) => {
     const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
     let ws: WebSocket;
@@ -298,7 +307,7 @@ function waitForLipsyncResult(
       }
     }, 20 * 60 * 1000);
 
-    const fetchResult = async (): Promise<string | null> => {
+    const fetchResult = async (): Promise<VideoResult | null> => {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 10000);
@@ -328,11 +337,11 @@ function waitForLipsyncResult(
         const msg = JSON.parse(typeof event.data === 'string' ? event.data : '{}');
         if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
           await new Promise((r) => setTimeout(r, 500));
-          const url = await fetchResult();
-          if (url && !settled) {
+          const result = await fetchResult();
+          if (result && !settled) {
             cleanup();
             clearTimeout(overallTimeout);
-            resolve(url);
+            resolve(result);
           }
         }
         if (msg.type === 'execution_error' && msg.data?.prompt_id === promptId) {
@@ -363,7 +372,7 @@ function waitForLipsyncResult(
   });
 }
 
-async function pollLipsyncFallback(endpoint: string, promptId: string): Promise<string> {
+async function pollLipsyncFallback(endpoint: string, promptId: string): Promise<VideoResult> {
   const maxAttempts = 400;
   const pollInterval = 3000;
 
@@ -378,8 +387,8 @@ async function pollLipsyncFallback(endpoint: string, promptId: string): Promise<
       const history: Record<string, HistoryEntry> = await res.json();
       const entry = history[promptId];
       if (!entry) continue;
-      const url = findVideoOutput(entry, endpoint);
-      if (url) return url;
+      const result = findVideoOutput(entry, endpoint);
+      if (result) return result;
     } catch {
       continue;
     }

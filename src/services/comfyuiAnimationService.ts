@@ -36,18 +36,27 @@ interface HistoryEntry {
   outputs: Record<string, HistoryOutput>;
 }
 
-function findVideoOutput(entry: HistoryEntry, endpoint: string): string | null {
+export interface VideoResult {
+  comfyUrl: string;
+  filename: string;
+  subfolder: string;
+  type: string;
+}
+
+const VIDEO_EXTS = ['.gif', '.mp4', '.webm', '.webp', '.mkv'];
+
+function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | null {
   for (const nodeOutput of Object.values(entry.outputs)) {
     const files = nodeOutput.gifs || nodeOutput.videos || nodeOutput.images;
     if (files && files.length > 0) {
       const file = files[0];
-      if (
-        file.filename.endsWith('.gif') ||
-        file.filename.endsWith('.mp4') ||
-        file.filename.endsWith('.webm') ||
-        file.filename.endsWith('.webp')
-      ) {
-        return `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
+      if (VIDEO_EXTS.some((ext) => file.filename.endsWith(ext))) {
+        return {
+          comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+          filename: file.filename,
+          subfolder: file.subfolder,
+          type: file.type,
+        };
       }
     }
   }
@@ -59,7 +68,12 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): string | null {
     ];
     if (allFiles.length > 0) {
       const file = allFiles[0];
-      return `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
+      return {
+        comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+        filename: file.filename,
+        subfolder: file.subfolder,
+        type: file.type,
+      };
     }
   }
   return null;
@@ -144,7 +158,7 @@ export async function animateImage(
   imageUrl: string,
   animationPrompt: string,
   settings: ComfyUIAnimationSettings
-): Promise<string> {
+): Promise<VideoResult> {
   const endpoint = settings.endpoint.replace(/\/$/, '');
 
   if (!settings.workflow) {
@@ -173,7 +187,7 @@ function waitForAnimationResult(
   endpoint: string,
   promptId: string,
   clientId: string
-): Promise<string> {
+): Promise<VideoResult> {
   return new Promise((resolve, reject) => {
     const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
     let ws: WebSocket;
@@ -192,7 +206,7 @@ function waitForAnimationResult(
       }
     }, timeoutMs);
 
-    const fetchResult = async (): Promise<string | null> => {
+    const fetchResult = async (): Promise<VideoResult | null> => {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 10000);
@@ -222,11 +236,11 @@ function waitForAnimationResult(
         const msg = JSON.parse(typeof event.data === 'string' ? event.data : '{}');
         if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
           await new Promise((r) => setTimeout(r, 500));
-          const url = await fetchResult();
-          if (url && !settled) {
+          const result = await fetchResult();
+          if (result && !settled) {
             cleanup();
             clearTimeout(overallTimeout);
-            resolve(url);
+            resolve(result);
           }
         }
         if (msg.type === 'execution_error' && msg.data?.prompt_id === promptId) {
@@ -257,7 +271,7 @@ function waitForAnimationResult(
   });
 }
 
-async function pollAnimationFallback(endpoint: string, promptId: string): Promise<string> {
+async function pollAnimationFallback(endpoint: string, promptId: string): Promise<VideoResult> {
   const maxAttempts = 200;
   const pollInterval = 3000;
 
@@ -272,8 +286,8 @@ async function pollAnimationFallback(endpoint: string, promptId: string): Promis
       const history: Record<string, HistoryEntry> = await res.json();
       const entry = history[promptId];
       if (!entry) continue;
-      const url = findVideoOutput(entry, endpoint);
-      if (url) return url;
+      const result = findVideoOutput(entry, endpoint);
+      if (result) return result;
     } catch {
       continue;
     }

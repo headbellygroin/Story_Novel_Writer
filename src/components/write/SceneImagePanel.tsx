@@ -54,7 +54,8 @@ export default function SceneImagePanel({ scene, settings, projectId, onSceneUpd
         batchSize: 1,
       };
 
-      const imageUrl = await generateImage(prompt, comfySettings);
+      const imageResult = await generateImage(prompt, comfySettings);
+      const imageUrl = imageResult.comfyUrl;
 
       const { error: updateError } = await supabase
         .from('scenes')

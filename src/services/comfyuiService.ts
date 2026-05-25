@@ -221,10 +221,17 @@ export function buildImagePrompt(
 // Image generation
 // ---------------------------------------------------------------------------
 
+export interface ImageResult {
+  comfyUrl: string;
+  filename: string;
+  subfolder: string;
+  type: string;
+}
+
 export async function generateImage(
   prompt: string,
   settings: ComfyUISettings
-): Promise<string> {
+): Promise<ImageResult> {
   const endpoint = settings.endpoint.replace(/\/$/, '');
 
   // Wait for any in-progress job to finish before submitting
@@ -259,7 +266,7 @@ function waitForResultViaWebSocket(
   endpoint: string,
   promptId: string,
   clientId: string
-): Promise<string> {
+): Promise<ImageResult> {
   return new Promise((resolve, reject) => {
     const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
     let ws: WebSocket;
@@ -279,7 +286,7 @@ function waitForResultViaWebSocket(
       }
     }, 5 * 60 * 1000);
 
-    const fetchResult = async (): Promise<string | null> => {
+    const fetchResult = async (): Promise<ImageResult | null> => {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 10000);
@@ -292,7 +299,12 @@ function waitForResultViaWebSocket(
         for (const nodeOutput of Object.values(entry.outputs)) {
           if (nodeOutput.images && nodeOutput.images.length > 0) {
             const img = nodeOutput.images[0];
-            return `${endpoint}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`;
+            return {
+              comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`,
+              filename: img.filename,
+              subfolder: img.subfolder,
+              type: img.type,
+            };
           }
         }
       } catch { /* ignore */ }
@@ -316,11 +328,11 @@ function waitForResultViaWebSocket(
 
         if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
           await new Promise((r) => setTimeout(r, 300));
-          const url = await fetchResult();
-          if (url && !settled) {
+          const result = await fetchResult();
+          if (result && !settled) {
             cleanup();
             clearTimeout(overallTimeout);
-            resolve(url);
+            resolve(result);
           }
         }
 
@@ -352,7 +364,7 @@ function waitForResultViaWebSocket(
   });
 }
 
-async function pollFallback(endpoint: string, promptId: string): Promise<string> {
+async function pollFallback(endpoint: string, promptId: string): Promise<ImageResult> {
   const maxAttempts = 120;
   const pollInterval = 3000;
 
@@ -370,7 +382,12 @@ async function pollFallback(endpoint: string, promptId: string): Promise<string>
       for (const nodeOutput of Object.values(entry.outputs)) {
         if (nodeOutput.images && nodeOutput.images.length > 0) {
           const img = nodeOutput.images[0];
-          return `${endpoint}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`;
+          return {
+            comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`,
+            filename: img.filename,
+            subfolder: img.subfolder,
+            type: img.type,
+          };
         }
       }
     } catch {
