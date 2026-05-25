@@ -685,12 +685,6 @@ export default function Settings() {
             )}
           </div>
 
-          {/* --- Text2Image section header --- */}
-          <div className="border-t border-slate-200 pt-6">
-            <h3 className="text-base font-semibold text-slate-800 mb-0.5">Text2Image</h3>
-            <p className="text-xs text-slate-400 mb-4">Configure the prompt fields sent to the NetaYume workflow for scene image generation.</p>
-          </div>
-
           {/* --- Conditioning / Prompt --- */}
           <div>
             <p className="text-sm font-medium text-slate-700 mb-1">Positive Conditioning</p>
