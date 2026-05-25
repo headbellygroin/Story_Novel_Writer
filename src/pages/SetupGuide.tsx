@@ -564,7 +564,7 @@ function PipelineSection() {
               <p><strong>What happens:</strong> The LLM reads your full chapter text and identifies 3–12 key visual moments — dramatic reveals, location introductions, action peaks, emotional beats. For each moment it writes a detailed Stable Diffusion prompt and a short animation description. Then ComfyUI generates the images one at a time using the built-in NetaYume Lumina workflow with your configured checkpoint, orientation, and conditioning prompts.</p>
               <p><strong>Story Forge shows:</strong> <em>"Analyzing chapter for visual moments..."</em> then <em>"Generating image 1 of N..."</em> through <em>"Generating image N of N."</em></p>
               <p><strong>ComfyUI output panel shows:</strong> Each image job appearing in the queue, rendering progress, then completing. One job at a time.</p>
-              <p><strong>When done:</strong> The image grid appears below. Review all images. If any are wrong, click <strong>New Run</strong> to start over — this discards the current run's images and begins fresh.</p>
+              <p><strong>When done:</strong> The image grid appears below. For each image you can <strong>click the prompt text to edit it</strong> and <strong>regenerate just that one image</strong> — the new result replaces the old in the same position. If the entire set is wrong, click <strong>New Run</strong> to discard and start fresh.</p>
               <p className="text-xs text-slate-500"><strong>Review gate:</strong> The Stage 2 button only appears after Stage 1 completes. You decide when to proceed.</p>
             </div>
           </div>

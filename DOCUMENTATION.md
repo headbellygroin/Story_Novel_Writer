@@ -389,7 +389,12 @@ The `imagePromptService` converts scene context into Stable Diffusion prompts by
 
 **Story Forge shows:** "Analyzing chapter for visual moments..." then "Generating image 1 of N..." through completion.
 
-**When done:** The Image Review Grid appears showing all images with their order index, text anchor, image prompt, and animation prompt. Review all images. Click **New Run** to discard and start over.
+**When done:** The Image Review Grid appears showing all images with their order index, text anchor, image prompt, and animation prompt. For each image you can:
+1. **Review** -- see the generated image alongside its prompt and text anchor
+2. **Edit prompt** -- click the prompt text to enter edit mode. Adjust the wording to fix composition, add details, or change the scene
+3. **Regenerate** -- click the orange Regenerate button to re-send just that one image to ComfyUI with the updated prompt. The new image replaces the old one in the same position -- no need to regenerate all images
+
+If the entire set is wrong, click **New Run** to discard everything and start fresh.
 
 ---
 

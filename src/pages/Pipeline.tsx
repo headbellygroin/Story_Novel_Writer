@@ -20,7 +20,8 @@ import {
   setPipelineError,
   buildVideoAssemblyManifest,
 } from '../services/pipelineService';
-import { ComfyUISettings } from '../services/comfyuiService';
+import { ComfyUISettings, generateImage } from '../services/comfyuiService';
+import { fetchAndUploadSafe } from '../services/storageService';
 import { ComfyUITtsSettings } from '../services/comfyuiTtsService';
 import { ComfyUIAnimationSettings } from '../services/comfyuiAnimationService';
 import { ComfyUILipsyncSettings } from '../services/comfyuiLipsyncService';
@@ -313,6 +314,40 @@ export default function Pipeline() {
     await loadPipelineRun();
   }
 
+  async function handleRegenerateImage(imageId: string, newPrompt: string) {
+    if (!pipelineRun) return;
+    const comfySettings = getComfySettings();
+    if (!comfySettings.workflow) throw new Error('No image workflow configured. Import one in Settings.');
+
+    const img = images.find((i) => i.id === imageId);
+    if (!img) throw new Error('Image not found');
+
+    await supabase.from('pipeline_images').update({
+      status: 'generating',
+      image_prompt: newPrompt,
+    }).eq('id', imageId);
+
+    const result = await generateImage(newPrompt, comfySettings);
+
+    const ext = result.filename.split('.').pop() || 'png';
+    const storagePath = `${currentProjectId}/${selectedChapterId}/${pipelineRun.id}/img_${String(img.order_index).padStart(3, '0')}.${ext}`;
+    const { publicUrl, storagePath: savedPath } = await fetchAndUploadSafe(
+      result.comfyUrl,
+      'pipeline-images',
+      storagePath
+    );
+
+    await supabase.from('pipeline_images').update({
+      image_url: publicUrl,
+      image_storage_path: savedPath,
+      image_prompt: newPrompt,
+      animated_url: '',
+      status: 'generated',
+    }).eq('id', imageId);
+
+    await loadPipelineRun();
+  }
+
   const currentStage: PipelineStage = (pipelineRun?.current_stage as PipelineStage) || 'idle';
   const currentStatus = pipelineRun?.status || 'idle';
 
@@ -442,7 +477,12 @@ export default function Pipeline() {
                   </label>
                 )}
               </div>
-              <ImageReviewGrid images={images} showAnimated={showAnimated} />
+              <ImageReviewGrid
+                images={images}
+                showAnimated={showAnimated}
+                onRegenerateImage={handleRegenerateImage}
+                disabled={isRunning}
+              />
             </div>
           )}
 
