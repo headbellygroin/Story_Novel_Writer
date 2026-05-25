@@ -5,8 +5,7 @@ import { Database } from '../lib/database.types';
 import ProjectSelector from '../components/ProjectSelector';
 import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
 import { checkVisionConnection } from '../services/visionService';
-import { checkComfyUIConnection, getAvailableCheckpoints, getQueueStatus, QueueStatus, IMAGE_DIMENSIONS, ImageOrientation, ImageNoiseMode } from '../services/comfyuiService';
-import { DEFAULT_ART_STYLE_PRESETS, ArtStylePreset } from '../lib/artStylePresets';
+import { checkComfyUIConnection, getQueueStatus, QueueStatus, IMAGE_DIMENSIONS, ImageOrientation, ImageNoiseMode } from '../services/comfyuiService';
 import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
 import { LIPSYNC_DIMENSIONS, LipsyncOrientation, LipsyncNoiseMode } from '../services/comfyuiLipsyncService';
 
@@ -109,12 +108,9 @@ export default function Settings() {
   const [comfyStatus, setComfyStatus] = useState<ConnStatus>('unchecked');
   const [comfyError, setComfyError] = useState('');
   const [comfyQueue, setComfyQueue] = useState<QueueStatus | null>(null);
-  const [checkpoints, setCheckpoints] = useState<string[]>([]);
-
 
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentProjectId) loadSettings();
@@ -209,11 +205,7 @@ export default function Settings() {
     const result = await checkComfyUIConnection(endpoint);
     if (result.ok) {
       setComfyStatus('connected');
-      const [ckpts, queue] = await Promise.all([
-        getAvailableCheckpoints(endpoint),
-        getQueueStatus(endpoint),
-      ]);
-      setCheckpoints(ckpts);
+      const queue = await getQueueStatus(endpoint);
       setComfyQueue(queue);
     } else {
       setComfyStatus('disconnected');
@@ -224,51 +216,6 @@ export default function Settings() {
   // ---------------------------------------------------------------------------
   // Workflow imports
   // ---------------------------------------------------------------------------
-
-  // ---------------------------------------------------------------------------
-  // Art style preset helpers
-  // ---------------------------------------------------------------------------
-
-  function getArtPresets(): ArtStylePreset[] {
-    const p = settings.art_style_presets;
-    if (Array.isArray(p)) return p as unknown as ArtStylePreset[];
-    return [];
-  }
-
-  function setArtPresets(presets: ArtStylePreset[]) {
-    setSettings({ ...settings, art_style_presets: JSON.parse(JSON.stringify(presets)) });
-  }
-
-  function updateArtPreset(id: string, field: keyof ArtStylePreset, value: string | number | null) {
-    setArtPresets(getArtPresets().map((p) => (p.id === id ? { ...p, [field]: value } : p)));
-  }
-
-  function addDefaultPresets() {
-    const existing = getArtPresets();
-    const ids = new Set(existing.map((p) => p.id));
-    setArtPresets([...existing, ...DEFAULT_ART_STYLE_PRESETS.filter((p) => !ids.has(p.id))]);
-  }
-
-  function removePreset(id: string) {
-    setArtPresets(getArtPresets().filter((p) => p.id !== id));
-    if (editingPresetId === id) setEditingPresetId(null);
-  }
-
-  function addCustomPreset() {
-    const preset: ArtStylePreset = {
-      id: `custom-${Date.now()}`,
-      name: 'New Style',
-      checkpoint: '',
-      promptPrefix: '',
-      promptSuffix: '',
-      negativePrompt: '',
-      samplerOverride: '',
-      stepsOverride: null,
-      cfgOverride: null,
-    };
-    setArtPresets([...getArtPresets(), preset]);
-    setEditingPresetId(preset.id);
-  }
 
   // ---------------------------------------------------------------------------
 
@@ -618,7 +565,7 @@ export default function Settings() {
           {/* --- Orientation --- */}
           <div>
             <p className="text-sm font-medium text-slate-700 mb-2">Output Orientation</p>
-            <p className="text-xs text-slate-400 mb-3">Sets the image resolution. Batch size is always 4 for user-initiated generation.</p>
+            <p className="text-xs text-slate-400 mb-3">Sets the image resolution. One image is generated at a time.</p>
             <div className="grid grid-cols-3 gap-3">
               {(Object.entries(IMAGE_DIMENSIONS) as [ImageOrientation, { width: number; height: number }][]).map(
                 ([key, dims]) => {
@@ -740,130 +687,14 @@ export default function Settings() {
             <p className="font-medium text-slate-600 mb-1">What Story Forge injects automatically</p>
             <ul className="space-y-0.5 text-slate-500">
               <li>· Width &amp; Height — from orientation above</li>
-              <li>· Batch Size — 4 (user generation) or 1 (automated pipeline)</li>
+              <li>· Batch Size — always 1</li>
               <li>· Seed — random or fixed value above</li>
               <li>· Model, steps, cfg, sampler, negative prompt — fixed in the workflow</li>
             </ul>
           </div>
         </Section>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Art Style Presets                                                   */}
-        {/* ------------------------------------------------------------------ */}
-        <Section
-          title="Art Style Presets"
-          description="Map art styles to specific checkpoint models and prompt modifiers. Pick a preset when generating scene images."
-        >
-          <div className="flex gap-2">
-            <button type="button" onClick={addDefaultPresets}
-              className="px-3 py-1.5 bg-slate-700 text-white text-xs rounded-lg hover:bg-slate-800 transition-colors">
-              Add Default Presets
-            </button>
-            <button type="button" onClick={addCustomPreset}
-              className="px-3 py-1.5 bg-sky-600 text-white text-xs rounded-lg hover:bg-sky-700 transition-colors">
-              Add Custom Preset
-            </button>
-          </div>
 
-          {getArtPresets().length === 0 && (
-            <p className="text-xs text-slate-400 italic">No presets configured.</p>
-          )}
-
-          {getArtPresets().map((preset) => (
-            <div key={preset.id} className="border border-slate-200 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-slate-900">{preset.name}</span>
-                  {preset.checkpoint && (
-                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{preset.checkpoint}</span>
-                  )}
-                </div>
-                <div className="flex gap-1">
-                  <button type="button"
-                    onClick={() => setEditingPresetId(editingPresetId === preset.id ? null : preset.id)}
-                    className="px-2 py-1 text-xs text-slate-600 hover:text-slate-800 transition-colors">
-                    {editingPresetId === preset.id ? 'Collapse' : 'Edit'}
-                  </button>
-                  <button type="button" onClick={() => removePreset(preset.id)}
-                    className="px-2 py-1 text-xs text-red-600 hover:text-red-800 transition-colors">
-                    Remove
-                  </button>
-                </div>
-              </div>
-
-              {editingPresetId === preset.id && (
-                <div className="space-y-3 pt-2 border-t border-slate-100 mt-2">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Style Name</label>
-                    <input type="text" value={preset.name}
-                      onChange={(e) => updateArtPreset(preset.id, 'name', e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Checkpoint Model</label>
-                    {checkpoints.length > 0 ? (
-                      <select value={preset.checkpoint}
-                        onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400">
-                        <option value="">Use default checkpoint</option>
-                        {checkpoints.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    ) : (
-                      <input type="text" value={preset.checkpoint}
-                        onChange={(e) => updateArtPreset(preset.id, 'checkpoint', e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                        placeholder="Leave empty to use default" />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Prefix</label>
-                    <input type="text" value={preset.promptPrefix}
-                      onChange={(e) => updateArtPreset(preset.id, 'promptPrefix', e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      placeholder="e.g. epic fantasy illustration, detailed digital painting," />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Prompt Suffix</label>
-                    <input type="text" value={preset.promptSuffix}
-                      onChange={(e) => updateArtPreset(preset.id, 'promptSuffix', e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      placeholder="e.g. cinematic lighting, 8k, highly detailed" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Negative Prompt Override</label>
-                    <input type="text" value={preset.negativePrompt}
-                      onChange={(e) => updateArtPreset(preset.id, 'negativePrompt', e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      placeholder="Leave empty to use default negative prompt" />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Steps Override</label>
-                      <input type="number" value={preset.stepsOverride ?? ''}
-                        onChange={(e) => updateArtPreset(preset.id, 'stepsOverride', e.target.value ? parseInt(e.target.value) : null)}
-                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                        placeholder="Default" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">CFG Override</label>
-                      <input type="number" step="0.5" value={preset.cfgOverride ?? ''}
-                        onChange={(e) => updateArtPreset(preset.id, 'cfgOverride', e.target.value ? parseFloat(e.target.value) : null)}
-                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                        placeholder="Default" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Sampler Override</label>
-                      <input type="text" value={preset.samplerOverride}
-                        onChange={(e) => updateArtPreset(preset.id, 'samplerOverride', e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
-                        placeholder="Default" />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </Section>
 
         {/* ------------------------------------------------------------------ */}
         {/* TTS                                                                 */}

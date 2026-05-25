@@ -52,7 +52,7 @@ function prepareWorkflow(
   const w: Record<string, unknown> = JSON.parse(JSON.stringify(workflow));
 
   const { width, height } = IMAGE_DIMENSIONS[settings.orientation ?? 'portrait'];
-  const batchSize = settings.batchSize ?? 4;
+  const batchSize = settings.batchSize ?? 1;
   const seed = settings.noiseMode === 'fixed' && settings.noiseSeed != null
     ? settings.noiseSeed
     : Math.floor(Math.random() * 2 ** 32);
