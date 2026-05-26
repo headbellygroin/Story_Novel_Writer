@@ -341,8 +341,8 @@ export default function Settings() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Temperature</label>
-              <input type="number" step="0.05" min="0" max="2"
-                value={settings.temperature || 0.7}
+              <input type="number" step="any" min="0" max="2"
+                value={settings.temperature ?? 0.85}
                 onChange={(e) => setSettings({ ...settings, temperature: parseFloat(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
@@ -350,8 +350,8 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Max Tokens</label>
-              <input type="number" step="100" min="100" max="8000"
-                value={settings.max_tokens || 1000}
+              <input type="number" step="1" min="1" max="32000"
+                value={settings.max_tokens ?? 4000}
                 onChange={(e) => setSettings({ ...settings, max_tokens: parseInt(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
@@ -359,35 +359,35 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Top P</label>
-              <input type="number" step="0.05" min="0" max="1"
-                value={settings.top_p || 0.9}
+              <input type="number" step="any" min="0" max="1"
+                value={settings.top_p ?? 0.92}
                 onChange={(e) => setSettings({ ...settings, top_p: parseFloat(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
-              <p className="text-xs text-slate-400 mt-1">Nucleus sampling — 0.9 recommended</p>
+              <p className="text-xs text-slate-400 mt-1">Nucleus sampling — 0.92 recommended</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Top K</label>
-              <input type="number" step="5" min="0" max="200"
-                value={settings.top_k || 40}
+              <input type="number" step="1" min="0" max="200"
+                value={settings.top_k ?? 0}
                 onChange={(e) => setSettings({ ...settings, top_k: parseInt(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
-              <p className="text-xs text-slate-400 mt-1">40 recommended; 0 = disabled</p>
+              <p className="text-xs text-slate-400 mt-1">0 = disabled; lets Top P handle sampling alone</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Repetition Penalty</label>
-              <input type="number" step="0.05" min="1" max="1.5"
-                value={settings.repetition_penalty || 1.1}
+              <input type="number" step="any" min="1" max="2"
+                value={settings.repetition_penalty ?? 1.15}
                 onChange={(e) => setSettings({ ...settings, repetition_penalty: parseFloat(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
-              <p className="text-xs text-slate-400 mt-1">1.0–1.5 — prevents repeated phrases</p>
+              <p className="text-xs text-slate-400 mt-1">1.0–2.0 — prevents repeated phrases</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Presence Penalty</label>
-              <input type="number" step="0.1" min="-2" max="2"
-                value={settings.presence_penalty || 0}
+              <input type="number" step="any" min="-2" max="2"
+                value={settings.presence_penalty ?? 0.1}
                 onChange={(e) => setSettings({ ...settings, presence_penalty: parseFloat(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
@@ -395,8 +395,8 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Frequency Penalty</label>
-              <input type="number" step="0.1" min="-2" max="2"
-                value={settings.frequency_penalty || 0}
+              <input type="number" step="any" min="-2" max="2"
+                value={settings.frequency_penalty ?? 0.05}
                 onChange={(e) => setSettings({ ...settings, frequency_penalty: parseFloat(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
               />
