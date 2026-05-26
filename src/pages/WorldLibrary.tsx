@@ -246,6 +246,7 @@ function EntityForm({
             entityName={formData.name || ''}
             imageUrl={formData.image_url || ''}
             imageDescription={formData.image_description || ''}
+            entityDescription={formData.description || ''}
             projectId={currentProjectId}
             onImageChange={(url, desc) =>
               setFormData({ ...formData, image_url: url, image_description: desc })
