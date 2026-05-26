@@ -69,6 +69,7 @@ export interface Database {
           dialogue_style: string
           character_arc: Json
           infrastructure_sliders: Json | null
+          emergent_character: boolean
           dossier: string
           created_at: string
           updated_at: string
@@ -102,6 +103,7 @@ export interface Database {
           dialogue_style?: string
           character_arc?: Json
           infrastructure_sliders?: Json | null
+          emergent_character?: boolean
           dossier?: string
           created_at?: string
           updated_at?: string
@@ -135,6 +137,7 @@ export interface Database {
           dialogue_style?: string
           character_arc?: Json
           infrastructure_sliders?: Json | null
+          emergent_character?: boolean
           dossier?: string
           created_at?: string
           updated_at?: string
@@ -153,6 +156,8 @@ export interface Database {
           image_url: string
           image_description: string
           canon_status: string
+          emergent_character: boolean
+          infrastructure_sliders: Json | null
           created_at: string
           updated_at: string
         }
@@ -168,6 +173,8 @@ export interface Database {
           image_url?: string
           image_description?: string
           canon_status?: string
+          emergent_character?: boolean
+          infrastructure_sliders?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -183,6 +190,8 @@ export interface Database {
           image_url?: string
           image_description?: string
           canon_status?: string
+          emergent_character?: boolean
+          infrastructure_sliders?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -200,6 +209,8 @@ export interface Database {
           image_url: string
           image_description: string
           canon_status: string
+          emergent_character: boolean
+          infrastructure_sliders: Json | null
           created_at: string
           updated_at: string
         }
@@ -215,6 +226,8 @@ export interface Database {
           image_url?: string
           image_description?: string
           canon_status?: string
+          emergent_character?: boolean
+          infrastructure_sliders?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -230,6 +243,8 @@ export interface Database {
           image_url?: string
           image_description?: string
           canon_status?: string
+          emergent_character?: boolean
+          infrastructure_sliders?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -247,6 +262,8 @@ export interface Database {
           image_url: string
           image_description: string
           canon_status: string
+          emergent_character: boolean
+          infrastructure_sliders: Json | null
           created_at: string
           updated_at: string
         }
@@ -262,6 +279,8 @@ export interface Database {
           image_url?: string
           image_description?: string
           canon_status?: string
+          emergent_character?: boolean
+          infrastructure_sliders?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -277,6 +296,8 @@ export interface Database {
           image_url?: string
           image_description?: string
           canon_status?: string
+          emergent_character?: boolean
+          infrastructure_sliders?: Json | null
           created_at?: string
           updated_at?: string
         }

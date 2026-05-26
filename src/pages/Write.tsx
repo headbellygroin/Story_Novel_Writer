@@ -278,15 +278,21 @@ export default function Write() {
         };
       }));
 
+      const enrichEntitiesWithInfra = (entities: any[]) => entities.map((e: any) => {
+        if (!e.emergent_character || !e.infrastructure_sliders) return e;
+        const sliders = typeof e.infrastructure_sliders === 'string' ? JSON.parse(e.infrastructure_sliders) : e.infrastructure_sliders;
+        return { ...e, infrastructure_sliders_text: formatInfraSlidersForPrompt(sliders) };
+      });
+
       const content = await generateScene({
         sceneDescription: scene.description,
         context: {
           outlineSynopsis: outline?.data?.synopsis,
           chapterSummary: chapter.data?.summary,
           characters: enrichedCharacters,
-          places,
-          things,
-          technologies,
+          places: enrichEntitiesWithInfra(places),
+          things: enrichEntitiesWithInfra(things),
+          technologies: enrichEntitiesWithInfra(technologies),
           previousScenes: previousScenes || undefined,
           previousSceneSummaries: sceneSummaries.length > 0 ? sceneSummaries : undefined,
           storyEvents: storyEvents.length > 0 ? storyEvents : undefined,

@@ -52,9 +52,9 @@ export interface GenerateSceneRequest {
   sceneDescription: string;
   context: {
     characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; infrastructure_sliders_text?: string; dossier?: string; canon_status?: string }>;
-    places?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string }>;
-    things?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string }>;
-    technologies?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string }>;
+    places?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string; emergent_character?: boolean; infrastructure_sliders_text?: string }>;
+    things?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string; emergent_character?: boolean; infrastructure_sliders_text?: string }>;
+    technologies?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string; emergent_character?: boolean; infrastructure_sliders_text?: string }>;
     previousScenes?: string;
     previousSceneSummaries?: SceneSummaryData[];
     chapterSummary?: string;
@@ -341,8 +341,10 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
     const activePlaces = context.places.filter(p => p.canon_status !== 'deprecated');
     const placeInfo = activePlaces.map(p => {
       const statusTag = p.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
-      let info = `- ${p.name} (${p.type})${statusTag}: ${p.description}`;
+      const emergentTag = p.emergent_character ? ' [EMERGENT CHARACTER]' : '';
+      let info = `- ${p.name} (${p.type})${statusTag}${emergentTag}: ${p.description}`;
       if (p.image_description) info += `\n  Visual: ${p.image_description}`;
+      if (p.emergent_character && p.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${p.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
     if (placeInfo) sections.push({ key: 'places', content: `=== SETTING ===\n${placeInfo}`, priority: 3 });
@@ -352,8 +354,10 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
     const activeThings = context.things.filter(t => t.canon_status !== 'deprecated');
     const thingInfo = activeThings.map(t => {
       const statusTag = t.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
-      let info = `- ${t.name} (${t.type})${statusTag}: ${t.description}`;
+      const emergentTag = t.emergent_character ? ' [EMERGENT CHARACTER]' : '';
+      let info = `- ${t.name} (${t.type})${statusTag}${emergentTag}: ${t.description}`;
       if (t.image_description) info += `\n  Visual: ${t.image_description}`;
+      if (t.emergent_character && t.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${t.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
     if (thingInfo) sections.push({ key: 'things', content: `=== IMPORTANT OBJECTS ===\n${thingInfo}`, priority: 2 });
@@ -363,8 +367,10 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
     const activeTech = context.technologies.filter(t => t.canon_status !== 'deprecated');
     const techInfo = activeTech.map(t => {
       const statusTag = t.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
-      let info = `- ${t.name} (${t.type})${statusTag}: ${t.description}`;
+      const emergentTag = t.emergent_character ? ' [EMERGENT CHARACTER]' : '';
+      let info = `- ${t.name} (${t.type})${statusTag}${emergentTag}: ${t.description}`;
       if (t.image_description) info += `\n  Visual: ${t.image_description}`;
+      if (t.emergent_character && t.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${t.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
     if (techInfo) sections.push({ key: 'tech', content: `=== TECHNOLOGY/MAGIC SYSTEMS ===\n${techInfo}`, priority: 2 });
