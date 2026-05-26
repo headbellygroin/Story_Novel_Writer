@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore';
 import ProjectSelector from '../components/ProjectSelector';
 import EntityImageUpload from '../components/EntityImageUpload';
 import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySliders';
+import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infrastructureSliders';
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 
@@ -220,6 +221,7 @@ function EntityForm({
   const fields = getFieldsForType(type);
   const [journeyOpen, setJourneyOpen] = useState(false);
   const [slidersOpen, setSlidersOpen] = useState(false);
+  const [infraSlidersOpen, setInfraSlidersOpen] = useState(false);
   const [dossierOpen, setDossierOpen] = useState(false);
 
   const filledStages = type === 'characters'
@@ -228,6 +230,9 @@ function EntityForm({
 
   const sliders = (formData.personality_sliders || {}) as Record<string, number>;
   const configuredSliders = Object.keys(sliders).filter(k => sliders[k] !== undefined).length;
+
+  const infraSliders = (formData.infrastructure_sliders || {}) as Record<string, number>;
+  const configuredInfraSliders = Object.keys(infraSliders).filter(k => infraSliders[k] !== undefined).length;
 
   return (
     <div className="mb-8 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -397,6 +402,74 @@ function EntityForm({
                             setFormData({ ...formData, personality_sliders: updated });
                           }}
                           className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                        />
+                        <span className="text-xs text-slate-400 w-20 shrink-0">{slider.positivePole}</span>
+                      </div>
+                      {desc && (
+                        <p className="text-xs text-slate-500 mt-1 ml-[calc(5rem+0.75rem)]">{desc}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {type === 'characters' && (
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setInfraSlidersOpen(!infraSlidersOpen)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-800">Infrastructure Traits</span>
+                {configuredInfraSliders > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-sky-100 text-sky-700 rounded-full font-medium">
+                    {configuredInfraSliders}/{INFRASTRUCTURE_SLIDERS.length} set
+                  </span>
+                )}
+              </div>
+              <svg
+                className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${infraSlidersOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {infraSlidersOpen && (
+              <div className="p-4 space-y-5 border-t border-slate-200">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  For ships, stations, or other infrastructure-as-character entities. These traits describe how the structure behaves, feels, and relates to its occupants. Range: -10 to +10.
+                </p>
+                {INFRASTRUCTURE_SLIDERS.map(slider => {
+                  const value = infraSliders[slider.id] ?? 0;
+                  const desc = getInfraSliderDescription(slider.id, value);
+                  return (
+                    <div key={slider.id}>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-slate-700">{slider.label}</label>
+                        <span className="text-xs font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {value}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-slate-400 w-20 text-right shrink-0">{slider.negativePole}</span>
+                        <input
+                          type="range"
+                          min={-10}
+                          max={10}
+                          step={1}
+                          value={value}
+                          onChange={(e) => {
+                            const updated = { ...infraSliders, [slider.id]: parseInt(e.target.value) };
+                            setFormData({ ...formData, infrastructure_sliders: updated });
+                          }}
+                          className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
                         />
                         <span className="text-xs text-slate-400 w-20 shrink-0">{slider.positivePole}</span>
                       </div>

@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
 import { generateScene } from '../services/aiService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
+import { formatInfraSlidersForPrompt } from '../lib/infrastructureSliders';
 import { getAcceptedArcEventsForCharacter, computeEvolvedSliders } from '../services/arcAnalysisService';
 import ProjectSelector from '../components/ProjectSelector';
 import SceneSummaryPanel from '../components/write/SceneSummaryPanel';
@@ -264,10 +265,16 @@ export default function Write() {
           slidersText = formatSlidersForPrompt(evolved);
         }
 
+        const infraSliders = c.infrastructure_sliders
+          ? (typeof c.infrastructure_sliders === 'string' ? JSON.parse(c.infrastructure_sliders) : c.infrastructure_sliders)
+          : null;
+        const infraText = infraSliders ? formatInfraSlidersForPrompt(infraSliders) : undefined;
+
         return {
           ...c,
           dialogue_style: c.dialogue_style || undefined,
           personality_sliders_text: slidersText,
+          infrastructure_sliders_text: infraText,
         };
       }));
 
