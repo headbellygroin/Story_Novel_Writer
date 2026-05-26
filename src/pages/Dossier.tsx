@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import ProjectSelector from '../components/ProjectSelector';
@@ -15,15 +15,19 @@ interface DossierData {
 }
 
 export default function Dossier() {
-  const { currentProjectId } = useStore();
+  const { currentProjectId, backgroundTasks, addBackgroundTask, updateBackgroundTask } = useStore();
   const [dossier, setDossier] = useState<DossierData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [braindump, setBraindump] = useState('');
   const [genreTropes, setGenreTropes] = useState('');
   const [content, setContent] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const dossierTask = backgroundTasks.find(
+    (t) => t.id === `dossier-${currentProjectId}` && t.status === 'running'
+  );
+  const generating = !!dossierTask;
 
   useEffect(() => {
     if (currentProjectId) {
@@ -107,7 +111,7 @@ export default function Dossier() {
     }
   }
 
-  async function generateDossier() {
+  const generateDossier = useCallback(async () => {
     if (!currentProjectId || !braindump.trim()) return;
 
     const settingsRes = await supabase
@@ -121,38 +125,43 @@ export default function Dossier() {
       return;
     }
 
-    setGenerating(true);
+    const taskId = `dossier-${currentProjectId}`;
+    addBackgroundTask({ id: taskId, label: 'Generating Story Dossier', status: 'running' });
     setContent('');
-    try {
-      const prompt = buildDossierPrompt(braindump, genreTropes, projectTitle || 'Untitled');
 
-      const result = await generateSceneStreaming(
-        {
-          sceneDescription: prompt,
-          context: {},
-          settings: {
-            ...settingsRes.data,
-            style_rules: (settingsRes.data.style_rules as Record<string, boolean>) || undefined,
-          },
-        },
-        (streamedText) => {
-          setContent(streamedText);
-        },
-      );
+    const capturedBraindump = braindump;
+    const capturedGenreTropes = genreTropes;
+    const capturedDossier = dossier;
 
+    const prompt = buildDossierPrompt(capturedBraindump, capturedGenreTropes, projectTitle || 'Untitled');
+
+    generateSceneStreaming(
+      {
+        sceneDescription: prompt,
+        context: {},
+        settings: {
+          ...settingsRes.data,
+          style_rules: (settingsRes.data.style_rules as Record<string, boolean>) || undefined,
+        },
+      },
+      (streamedText) => {
+        setContent(streamedText);
+        updateBackgroundTask(taskId, { progress: `${streamedText.length} chars` });
+      },
+    ).then(async (result) => {
       setContent(result);
 
       const payload = {
         project_id: currentProjectId,
-        braindump,
-        genre_tropes: genreTropes,
+        braindump: capturedBraindump,
+        genre_tropes: capturedGenreTropes,
         content: result,
         status: 'complete',
         updated_at: new Date().toISOString(),
       };
 
-      if (dossier) {
-        await supabase.from('story_dossiers').update(payload).eq('id', dossier.id);
+      if (capturedDossier) {
+        await supabase.from('story_dossiers').update(payload).eq('id', capturedDossier.id);
       } else {
         const { data } = await supabase
           .from('story_dossiers')
@@ -161,13 +170,13 @@ export default function Dossier() {
           .single();
         if (data) setDossier(data);
       }
-    } catch (error) {
+
+      updateBackgroundTask(taskId, { status: 'complete', completedAt: Date.now() });
+    }).catch((error) => {
       console.error('Error generating dossier:', error);
-      alert('Failed to generate dossier. Check AI settings and ensure your model is running.');
-    } finally {
-      setGenerating(false);
-    }
-  }
+      updateBackgroundTask(taskId, { status: 'error', progress: 'Generation failed' });
+    });
+  }, [currentProjectId, braindump, genreTropes, projectTitle, dossier, addBackgroundTask, updateBackgroundTask]);
 
   if (!currentProjectId) {
     return (

@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useStore } from '../store/useStore';
 
 const NAV_ITEMS = [
   { path: '/projects', label: 'Projects' },
@@ -23,8 +24,13 @@ const NAV_ITEMS = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const { backgroundTasks, removeBackgroundTask } = useStore();
 
   const isActive = (path: string) => location.pathname === path;
+  const activeTasks = backgroundTasks.filter((t) => t.status === 'running');
+  const completedTasks = backgroundTasks.filter(
+    (t) => t.status === 'complete' || t.status === 'error'
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -54,6 +60,53 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </nav>
+
+      {(activeTasks.length > 0 || completedTasks.length > 0) && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+          {activeTasks.map((task) => (
+            <div
+              key={task.id}
+              className="bg-white border border-slate-200 shadow-lg rounded-lg px-4 py-3 flex items-center gap-3"
+            >
+              <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 truncate">{task.label}</p>
+                {task.progress && (
+                  <p className="text-xs text-slate-500">{task.progress}</p>
+                )}
+              </div>
+            </div>
+          ))}
+          {completedTasks.map((task) => (
+            <div
+              key={task.id}
+              className={`border shadow-lg rounded-lg px-4 py-3 flex items-center gap-3 ${
+                task.status === 'complete'
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200'
+              }`}
+            >
+              <div
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  task.status === 'complete' ? 'bg-green-500' : 'bg-red-500'
+                }`}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 truncate">
+                  {task.label} -- {task.status === 'complete' ? 'Done' : 'Failed'}
+                </p>
+              </div>
+              <button
+                onClick={() => removeBackgroundTask(task.id)}
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <main>{children}</main>
     </div>
   );
