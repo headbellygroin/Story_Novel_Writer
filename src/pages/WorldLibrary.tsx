@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore';
 import ProjectSelector from '../components/ProjectSelector';
 import EntityImageUpload from '../components/EntityImageUpload';
 import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySliders';
+import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -218,6 +219,7 @@ function EntityForm({
   const fields = getFieldsForType(type);
   const [journeyOpen, setJourneyOpen] = useState(false);
   const [slidersOpen, setSlidersOpen] = useState(false);
+  const [dossierOpen, setDossierOpen] = useState(false);
 
   const filledStages = type === 'characters'
     ? HEROS_JOURNEY_FIELDS.filter(f => formData[f.key]?.trim()).length
@@ -387,6 +389,59 @@ function EntityForm({
           </div>
         )}
 
+        {type === 'characters' && (
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setDossierOpen(!dossierOpen)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-800">Character Dossier</span>
+                {countFilledSections(formData.dossier || '') > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">
+                    {countFilledSections(formData.dossier || '')}/{DOSSIER_SECTIONS.length} sections
+                  </span>
+                )}
+              </div>
+              <svg
+                className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${dossierOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {dossierOpen && (
+              <div className="p-4 space-y-3 border-t border-slate-200">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Deep character development profile. Covers emotional role, dual appearance (public vs. internal),
+                  relationships, fears, flaws, quiet moments, comedy, symbolism, and arc. Fill in what applies -- leave
+                  irrelevant sections blank.
+                </p>
+                {!formData.dossier?.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, dossier: CHARACTER_DOSSIER_TEMPLATE })}
+                    className="px-3 py-1.5 bg-orange-600 text-white text-xs font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                  >
+                    Load Template
+                  </button>
+                )}
+                <textarea
+                  value={formData.dossier || ''}
+                  onChange={(e) => setFormData({ ...formData, dossier: e.target.value })}
+                  rows={24}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 font-mono text-sm leading-relaxed"
+                  placeholder="Click 'Load Template' above to start with the guided template, or write freeform..."
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button
             onClick={onSave}
@@ -428,6 +483,7 @@ function EntityCard({
   const sliderCount = type === 'characters'
     ? Object.keys(entitySliders).filter(k => entitySliders[k] !== undefined).length
     : 0;
+  const dossierSections = type === 'characters' ? countFilledSections(entity.dossier || '') : 0;
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
@@ -469,8 +525,23 @@ function EntityCard({
         {preview && (
           <p className="text-slate-600 text-sm line-clamp-4">{preview}</p>
         )}
-        {type === 'characters' && (journeyStages > 0 || sliderCount > 0) && (
+        {type === 'characters' && (journeyStages > 0 || sliderCount > 0 || dossierSections > 0) && (
           <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+            {dossierSections > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex gap-0.5">
+                  {Array.from({ length: DOSSIER_SECTIONS.length }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-2 h-2 rounded-full ${
+                        i < dossierSections ? 'bg-orange-500' : 'bg-slate-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-slate-500">{dossierSections}/{DOSSIER_SECTIONS.length} dossier</span>
+              </div>
+            )}
             {journeyStages > 0 && (
               <div className="flex items-center gap-2">
                 <div className="flex gap-0.5">

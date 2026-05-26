@@ -74,7 +74,7 @@ export default function SceneBriefPanel({ chapterId, projectId, chapterTitle, ch
       const [settingsRes, outlineRes, charsRes, placesRes, thingsRes, techsRes, projectRes] = await Promise.all([
         supabase.from('generation_settings').select('*').eq('project_id', projectId).maybeSingle(),
         supabase.from('outlines').select('synopsis').eq('project_id', projectId).limit(1),
-        supabase.from('characters').select('name, role, personality, background, description, dialogue_style, personality_sliders').eq('project_id', projectId),
+        supabase.from('characters').select('name, role, personality, background, description, dialogue_style, personality_sliders, dossier').eq('project_id', projectId),
         supabase.from('places').select('name, type, description').eq('project_id', projectId),
         supabase.from('things').select('name, type, description').eq('project_id', projectId),
         supabase.from('technologies').select('name, type, description').eq('project_id', projectId),

@@ -68,6 +68,7 @@ export interface Database {
           personality_sliders: Json
           dialogue_style: string
           character_arc: Json
+          dossier: string
           created_at: string
           updated_at: string
         }
@@ -99,6 +100,7 @@ export interface Database {
           personality_sliders?: Json
           dialogue_style?: string
           character_arc?: Json
+          dossier?: string
           created_at?: string
           updated_at?: string
         }
@@ -130,6 +132,7 @@ export interface Database {
           personality_sliders?: Json
           dialogue_style?: string
           character_arc?: Json
+          dossier?: string
           created_at?: string
           updated_at?: string
         }

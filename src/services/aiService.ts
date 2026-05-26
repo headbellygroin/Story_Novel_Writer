@@ -50,7 +50,7 @@ export interface SceneSummaryData {
 export interface GenerateSceneRequest {
   sceneDescription: string;
   context: {
-    characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string }>;
+    characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; dossier?: string }>;
     places?: Array<{ name: string; type: string; description: string; image_description?: string }>;
     things?: Array<{ name: string; type: string; description: string; image_description?: string }>;
     technologies?: Array<{ name: string; type: string; description: string; image_description?: string }>;
@@ -227,6 +227,7 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       if (c.dialogue_style) info += `\n  Dialogue Style: ${c.dialogue_style}`;
       if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map(l => `    ${l}`).join('\n')}`;
       if (c.image_description) info += `\n  Visual: ${c.image_description}`;
+      if (c.dossier?.trim()) info += `\n  Character Dossier:\n${c.dossier.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
     sections.push({ key: 'characters', content: `=== CHARACTERS IN THIS SCENE ===\n${charInfo}`, priority: 4 });
