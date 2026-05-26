@@ -215,33 +215,20 @@ export default function StoryBible() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                <div className="flex gap-2">
-                  <select
-                    value={formCategories.some(c => c.key === formData.category) ? formData.category : '__custom__'}
-                    onChange={(e) => {
-                      if (e.target.value === '__custom__') {
-                        setFormData({ ...formData, category: '' });
-                      } else {
-                        setFormData({ ...formData, category: e.target.value });
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                  >
-                    {formCategories.map(c => (
-                      <option key={c.key} value={c.key}>{c.label}</option>
-                    ))}
-                    <option value="__custom__">Custom...</option>
-                  </select>
-                  {!formCategories.some(c => c.key === formData.category) && (
-                    <input
-                      type="text"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      placeholder="Custom category"
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                    />
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                >
+                  {formCategories.map(c => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
+                  {formData.category && !formCategories.some(c => c.key === formData.category) && (
+                    <option value={formData.category}>
+                      {formData.category.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}
+                    </option>
                   )}
-                </div>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Importance</label>
