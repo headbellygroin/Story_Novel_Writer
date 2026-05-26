@@ -39,6 +39,7 @@ export interface StoryBibleFact {
   fact: string;
   importance: string;
   category: string;
+  canon_status?: string;
 }
 
 export interface SceneSummaryData {
@@ -50,10 +51,10 @@ export interface SceneSummaryData {
 export interface GenerateSceneRequest {
   sceneDescription: string;
   context: {
-    characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; dossier?: string }>;
-    places?: Array<{ name: string; type: string; description: string; image_description?: string }>;
-    things?: Array<{ name: string; type: string; description: string; image_description?: string }>;
-    technologies?: Array<{ name: string; type: string; description: string; image_description?: string }>;
+    characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; dossier?: string; canon_status?: string }>;
+    places?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string }>;
+    things?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string }>;
+    technologies?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string }>;
     previousScenes?: string;
     previousSceneSummaries?: SceneSummaryData[];
     chapterSummary?: string;
@@ -170,12 +171,16 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
   const sections: ContextSection[] = [];
 
   if (context.storyBibleFacts && context.storyBibleFacts.length > 0) {
-    const sorted = [...context.storyBibleFacts].sort((a, b) => {
+    const activeFacts = context.storyBibleFacts.filter(f => f.canon_status !== 'deprecated');
+    const sorted = [...activeFacts].sort((a, b) => {
       const rank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
       return (rank[b.importance] || 0) - (rank[a.importance] || 0);
     });
     const facts = sorted
-      .map(f => `[${f.importance.toUpperCase()}] ${f.subject}: ${f.fact}`)
+      .map(f => {
+        const tag = f.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+        return `[${f.importance.toUpperCase()}] ${f.subject}${tag}: ${f.fact}`;
+      })
       .join('\n');
     sections.push({
       key: 'bible',
@@ -222,42 +227,50 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
   }
 
   if (context.characters && context.characters.length > 0) {
-    const charInfo = context.characters.map(c => {
-      let info = `- ${c.name} (${c.role}): ${c.personality}\n  Background: ${c.background}`;
+    const activeChars = context.characters.filter(c => c.canon_status !== 'deprecated');
+    const charInfo = activeChars.map(c => {
+      const statusTag = c.canon_status === 'experimental' ? ' [EXPERIMENTAL - may not be canon]' : '';
+      let info = `- ${c.name} (${c.role})${statusTag}: ${c.personality}\n  Background: ${c.background}`;
       if (c.dialogue_style) info += `\n  Dialogue Style: ${c.dialogue_style}`;
-      if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map(l => `    ${l}`).join('\n')}`;
+      if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       if (c.image_description) info += `\n  Visual: ${c.image_description}`;
       if (c.dossier?.trim()) info += `\n  Character Dossier:\n${c.dossier.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
-    sections.push({ key: 'characters', content: `=== CHARACTERS IN THIS SCENE ===\n${charInfo}`, priority: 4 });
+    if (charInfo) sections.push({ key: 'characters', content: `=== CHARACTERS IN THIS SCENE ===\n${charInfo}`, priority: 4 });
   }
 
   if (context.places && context.places.length > 0) {
-    const placeInfo = context.places.map(p => {
-      let info = `- ${p.name} (${p.type}): ${p.description}`;
+    const activePlaces = context.places.filter(p => p.canon_status !== 'deprecated');
+    const placeInfo = activePlaces.map(p => {
+      const statusTag = p.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+      let info = `- ${p.name} (${p.type})${statusTag}: ${p.description}`;
       if (p.image_description) info += `\n  Visual: ${p.image_description}`;
       return info;
     }).join('\n');
-    sections.push({ key: 'places', content: `=== SETTING ===\n${placeInfo}`, priority: 3 });
+    if (placeInfo) sections.push({ key: 'places', content: `=== SETTING ===\n${placeInfo}`, priority: 3 });
   }
 
   if (context.things && context.things.length > 0) {
-    const thingInfo = context.things.map(t => {
-      let info = `- ${t.name} (${t.type}): ${t.description}`;
+    const activeThings = context.things.filter(t => t.canon_status !== 'deprecated');
+    const thingInfo = activeThings.map(t => {
+      const statusTag = t.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+      let info = `- ${t.name} (${t.type})${statusTag}: ${t.description}`;
       if (t.image_description) info += `\n  Visual: ${t.image_description}`;
       return info;
     }).join('\n');
-    sections.push({ key: 'things', content: `=== IMPORTANT OBJECTS ===\n${thingInfo}`, priority: 2 });
+    if (thingInfo) sections.push({ key: 'things', content: `=== IMPORTANT OBJECTS ===\n${thingInfo}`, priority: 2 });
   }
 
   if (context.technologies && context.technologies.length > 0) {
-    const techInfo = context.technologies.map(t => {
-      let info = `- ${t.name} (${t.type}): ${t.description}`;
+    const activeTech = context.technologies.filter(t => t.canon_status !== 'deprecated');
+    const techInfo = activeTech.map(t => {
+      const statusTag = t.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+      let info = `- ${t.name} (${t.type})${statusTag}: ${t.description}`;
       if (t.image_description) info += `\n  Visual: ${t.image_description}`;
       return info;
     }).join('\n');
-    sections.push({ key: 'tech', content: `=== TECHNOLOGY/MAGIC SYSTEMS ===\n${techInfo}`, priority: 2 });
+    if (techInfo) sections.push({ key: 'tech', content: `=== TECHNOLOGY/MAGIC SYSTEMS ===\n${techInfo}`, priority: 2 });
   }
 
   if (context.referencedScenes && context.referencedScenes.length > 0) {

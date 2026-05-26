@@ -5,6 +5,7 @@ import ProjectSelector from '../components/ProjectSelector';
 import EntityImageUpload from '../components/EntityImageUpload';
 import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySliders';
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
+import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -246,6 +247,27 @@ function EntityForm({
             }
           />
         )}
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Canon Status</label>
+          <div className="flex flex-wrap gap-2">
+            {CANON_STATUSES.map(status => (
+              <button
+                key={status.key}
+                type="button"
+                onClick={() => setFormData({ ...formData, canon_status: status.key })}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                  (formData.canon_status || 'draft') === status.key
+                    ? `${CANON_STATUS_COLORS[status.key]} ring-2 ring-offset-1 ring-current`
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+                }`}
+                title={status.description}
+              >
+                {status.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {fields.map((field) => (
           <div key={field.key}>
@@ -503,7 +525,15 @@ function EntityCard({
       )}
       <div className="p-6">
         <div className="flex justify-between items-start mb-3">
-          <h3 className="text-lg font-semibold text-slate-900">{entity.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-slate-900">{entity.name}</h3>
+            {entity.canon_status && entity.canon_status !== 'draft' && (
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${CANON_STATUS_COLORS[entity.canon_status] || ''}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${CANON_STATUS_DOT[entity.canon_status] || ''}`} />
+                {CANON_STATUSES.find(s => s.key === entity.canon_status)?.label}
+              </span>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={onEdit}

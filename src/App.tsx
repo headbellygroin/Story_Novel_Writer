@@ -18,6 +18,7 @@ import VoiceChat from './pages/VoiceChat';
 import Audiobook from './pages/Audiobook';
 import Pipeline from './pages/Pipeline';
 import SetupGuide from './pages/SetupGuide';
+import RevealTimeline from './pages/RevealTimeline';
 
 export default function App() {
   return (
@@ -149,6 +150,14 @@ export default function App() {
           element={
             <Layout>
               <Pipeline />
+            </Layout>
+          }
+        />
+        <Route
+          path="/reveals"
+          element={
+            <Layout>
+              <RevealTimeline />
             </Layout>
           }
         />

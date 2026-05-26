@@ -184,6 +184,7 @@ export default function Write() {
         fact: b.fact,
         importance: b.importance,
         category: b.category,
+        canon_status: b.canon_status || 'canon',
       }));
 
       const taggedBibleIds = contextTags

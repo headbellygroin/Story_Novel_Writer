@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { path: '/story-bible', label: 'Story Bible' },
   { path: '/style-anchors', label: 'Style' },
   { path: '/prohibited-words', label: 'Words' },
+  { path: '/reveals', label: 'Reveals' },
   { path: '/consistency', label: 'Consistency' },
   { path: '/logic-checks', label: 'Logic' },
   { path: '/voice-chat', label: 'Voice' },

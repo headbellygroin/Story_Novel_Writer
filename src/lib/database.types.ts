@@ -149,6 +149,7 @@ export interface Database {
           notes: string
           image_url: string
           image_description: string
+          canon_status: string
           created_at: string
           updated_at: string
         }
@@ -163,6 +164,7 @@ export interface Database {
           notes?: string
           image_url?: string
           image_description?: string
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -177,6 +179,7 @@ export interface Database {
           notes?: string
           image_url?: string
           image_description?: string
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -193,6 +196,7 @@ export interface Database {
           notes: string
           image_url: string
           image_description: string
+          canon_status: string
           created_at: string
           updated_at: string
         }
@@ -207,6 +211,7 @@ export interface Database {
           notes?: string
           image_url?: string
           image_description?: string
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -221,6 +226,7 @@ export interface Database {
           notes?: string
           image_url?: string
           image_description?: string
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -237,6 +243,7 @@ export interface Database {
           notes: string
           image_url: string
           image_description: string
+          canon_status: string
           created_at: string
           updated_at: string
         }
@@ -251,6 +258,7 @@ export interface Database {
           notes?: string
           image_url?: string
           image_description?: string
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -265,6 +273,7 @@ export interface Database {
           notes?: string
           image_url?: string
           image_description?: string
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -703,6 +712,7 @@ export interface Database {
           source_scene_id: string | null
           importance: string
           tags: string[]
+          canon_status: string
           created_at: string
           updated_at: string
         }
@@ -715,6 +725,7 @@ export interface Database {
           source_scene_id?: string | null
           importance?: string
           tags?: string[]
+          canon_status?: string
           created_at?: string
           updated_at?: string
         }
@@ -727,6 +738,51 @@ export interface Database {
           source_scene_id?: string | null
           importance?: string
           tags?: string[]
+          canon_status?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      reveal_timeline: {
+        Row: {
+          id: string
+          project_id: string
+          entity_type: string
+          entity_id: string | null
+          entity_name: string
+          fact: string
+          book_number: number
+          act: string
+          reveal_method: string
+          notes: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          entity_type?: string
+          entity_id?: string | null
+          entity_name?: string
+          fact?: string
+          book_number?: number
+          act?: string
+          reveal_method?: string
+          notes?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          entity_type?: string
+          entity_id?: string | null
+          entity_name?: string
+          fact?: string
+          book_number?: number
+          act?: string
+          reveal_method?: string
+          notes?: string
           created_at?: string
           updated_at?: string
         }

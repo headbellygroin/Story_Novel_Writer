@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
 import ProjectSelector from '../components/ProjectSelector';
+import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 
 type BibleEntry = Database['public']['Tables']['story_bible_entries']['Row'];
 
@@ -39,6 +40,7 @@ export default function StoryBible() {
     fact: '',
     importance: 'medium',
     tags: '',
+    canon_status: 'canon',
   });
 
   useEffect(() => {
@@ -75,6 +77,7 @@ export default function StoryBible() {
         subject: formData.subject,
         fact: formData.fact,
         importance: formData.importance,
+        canon_status: formData.canon_status,
         tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
         updated_at: new Date().toISOString(),
       };
@@ -108,6 +111,7 @@ export default function StoryBible() {
       fact: entry.fact,
       importance: entry.importance,
       tags: entry.tags.join(', '),
+      canon_status: (entry as any).canon_status || 'canon',
     });
     setShowForm(true);
   }
@@ -115,7 +119,7 @@ export default function StoryBible() {
   function resetForm() {
     setShowForm(false);
     setEditingId(null);
-    setFormData({ category: 'general', subject: '', fact: '', importance: 'medium', tags: '' });
+    setFormData({ category: 'general', subject: '', fact: '', importance: 'medium', tags: '', canon_status: 'canon' });
   }
 
   const filtered = entries.filter(e => {
@@ -196,7 +200,7 @@ export default function StoryBible() {
         <div className="mb-8 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
           <h2 className="text-lg font-semibold mb-4">{editingId ? 'Edit' : 'Add'} Story Bible Entry</h2>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
                 <select
@@ -218,6 +222,18 @@ export default function StoryBible() {
                 >
                   {IMPORTANCE_LEVELS.map(level => (
                     <option key={level} value={level}>{level.charAt(0).toUpperCase() + level.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Canon Status</label>
+                <select
+                  value={formData.canon_status}
+                  onChange={(e) => setFormData({ ...formData, canon_status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                >
+                  {CANON_STATUSES.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
                   ))}
                 </select>
               </div>
@@ -287,6 +303,12 @@ export default function StoryBible() {
                     <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded border ${IMPORTANCE_COLORS[entry.importance]}`}>
                       {entry.importance}
                     </span>
+                    {(entry as any).canon_status && (entry as any).canon_status !== 'canon' && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${CANON_STATUS_COLORS[(entry as any).canon_status] || ''}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${CANON_STATUS_DOT[(entry as any).canon_status] || ''}`} />
+                        {CANON_STATUSES.find(s => s.key === (entry as any).canon_status)?.label}
+                      </span>
+                    )}
                     <span className="text-xs text-slate-400">
                       {CATEGORIES.find(c => c.key === entry.category)?.label || entry.category}
                     </span>
