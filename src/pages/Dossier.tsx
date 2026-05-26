@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import ProjectSelector from '../components/ProjectSelector';
-import { generateScene } from '../services/aiService';
+import { generateSceneStreaming } from '../services/aiService';
 import { buildDossierPrompt } from '../services/workflowPrompts';
 
 interface DossierData {
@@ -122,17 +122,23 @@ export default function Dossier() {
     }
 
     setGenerating(true);
+    setContent('');
     try {
       const prompt = buildDossierPrompt(braindump, genreTropes, projectTitle || 'Untitled');
 
-      const result = await generateScene({
-        sceneDescription: prompt,
-        context: {},
-        settings: {
-          ...settingsRes.data,
-          style_rules: (settingsRes.data.style_rules as Record<string, boolean>) || undefined,
+      const result = await generateSceneStreaming(
+        {
+          sceneDescription: prompt,
+          context: {},
+          settings: {
+            ...settingsRes.data,
+            style_rules: (settingsRes.data.style_rules as Record<string, boolean>) || undefined,
+          },
         },
-      });
+        (streamedText) => {
+          setContent(streamedText);
+        },
+      );
 
       setContent(result);
 
@@ -237,24 +243,32 @@ export default function Dossier() {
           </button>
         </div>
 
-        {content && (
+        {(content || generating) && (
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold text-slate-900">Generated Dossier</h2>
-              {dossier?.status === 'complete' && (
-                <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Complete</span>
-              )}
+              <div className="flex items-center gap-2">
+                {generating && (
+                  <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full font-medium animate-pulse">
+                    Streaming...
+                  </span>
+                )}
+                {!generating && dossier?.status === 'complete' && (
+                  <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Complete</span>
+                )}
+              </div>
             </div>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              readOnly={generating}
               rows={25}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-mono"
             />
             <div className="mt-3 flex justify-end">
               <button
                 onClick={saveDossier}
-                disabled={saving}
+                disabled={saving || generating}
                 className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm transition-colors"
               >
                 {saving ? 'Saving...' : 'Save Changes'}

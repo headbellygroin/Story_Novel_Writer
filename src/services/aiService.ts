@@ -109,35 +109,32 @@ ${sceneDescription}
 
 Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`;
 
-  // LM Studio and OpenAI-compatible servers support both endpoints:
-  // /v1/chat/completions — chat format, better for instruction-tuned models
-  // /v1/completions     — legacy text-in/text-out format
   const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
 
+  const baseBody: Record<string, unknown> = {
+    temperature: settings.temperature,
+    max_tokens: settings.max_tokens,
+  };
+
+  if (settings.model_name) baseBody.model = settings.model_name;
+  if (settings.top_p !== undefined) baseBody.top_p = settings.top_p;
+  if (settings.top_k !== undefined) baseBody.top_k = settings.top_k;
+  if (settings.repetition_penalty !== undefined) baseBody.repetition_penalty = settings.repetition_penalty;
+  if (settings.presence_penalty !== undefined) baseBody.presence_penalty = settings.presence_penalty;
+  if (settings.frequency_penalty !== undefined) baseBody.frequency_penalty = settings.frequency_penalty;
+  if (settings.stop_sequences && settings.stop_sequences.length > 0) {
+    baseBody.stop = settings.stop_sequences;
+  }
+
+  const requestBody: Record<string, unknown> = isChatEndpoint
+    ? { ...baseBody, messages: [{ role: 'user', content: fullPrompt }] }
+    : { ...baseBody, prompt: fullPrompt };
+
   try {
-    const baseBody: Record<string, unknown> = {
-      temperature: settings.temperature,
-      max_tokens: settings.max_tokens,
-    };
-
-    if (settings.model_name) baseBody.model = settings.model_name;
-    if (settings.top_p !== undefined) baseBody.top_p = settings.top_p;
-    if (settings.top_k !== undefined) baseBody.top_k = settings.top_k;
-    if (settings.repetition_penalty !== undefined) baseBody.repetition_penalty = settings.repetition_penalty;
-    if (settings.presence_penalty !== undefined) baseBody.presence_penalty = settings.presence_penalty;
-    if (settings.frequency_penalty !== undefined) baseBody.frequency_penalty = settings.frequency_penalty;
-    if (settings.stop_sequences && settings.stop_sequences.length > 0) {
-      baseBody.stop = settings.stop_sequences;
-    }
-
-    const requestBody: Record<string, unknown> = isChatEndpoint
-      ? { ...baseBody, messages: [{ role: 'user', content: fullPrompt }] }
-      : { ...baseBody, prompt: fullPrompt };
-
     const response = await fetch(settings.api_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({ ...requestBody, stream: false }),
     });
 
     if (!response.ok) {
@@ -146,8 +143,6 @@ Write this scene with vivid detail, engaging dialogue, and strong character voic
 
     const data = await response.json();
 
-    // Chat completions: { choices: [{ message: { content } }] }
-    // Legacy completions: { choices: [{ text }] } or { text } or { results: [{ text }] }
     return (
       data.choices?.[0]?.message?.content ||
       data.choices?.[0]?.text ||
@@ -159,6 +154,107 @@ Write this scene with vivid detail, engaging dialogue, and strong character voic
     console.error('Error generating scene:', error);
     throw error;
   }
+}
+
+export async function generateSceneStreaming(
+  request: GenerateSceneRequest,
+  onChunk: (text: string) => void,
+): Promise<string> {
+  const { sceneDescription, context, settings } = request;
+
+  const contextLength = settings.context_length || 4096;
+  const reservedForOutput = settings.max_tokens;
+  const reservedForPromptFrame = 300;
+  const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
+
+  const contextPrompt = buildContextPrompt(context, availableForContext);
+
+  const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
+  const rulesBlock = activeRules.length > 0
+    ? `\n\n=== ENFORCED STYLE RULES ===\n${activeRules.join('\n\n')}\n`
+    : '';
+
+  const prohibitedBlock = context.prohibitedWords && context.prohibitedWords.length > 0
+    ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
+    : '';
+
+  const fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
+
+${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
+
+Scene to write:
+${sceneDescription}
+
+Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`;
+
+  const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
+
+  const baseBody: Record<string, unknown> = {
+    temperature: settings.temperature,
+    max_tokens: settings.max_tokens,
+    stream: true,
+  };
+
+  if (settings.model_name) baseBody.model = settings.model_name;
+  if (settings.top_p !== undefined) baseBody.top_p = settings.top_p;
+  if (settings.top_k !== undefined) baseBody.top_k = settings.top_k;
+  if (settings.repetition_penalty !== undefined) baseBody.repetition_penalty = settings.repetition_penalty;
+  if (settings.presence_penalty !== undefined) baseBody.presence_penalty = settings.presence_penalty;
+  if (settings.frequency_penalty !== undefined) baseBody.frequency_penalty = settings.frequency_penalty;
+  if (settings.stop_sequences && settings.stop_sequences.length > 0) {
+    baseBody.stop = settings.stop_sequences;
+  }
+
+  const requestBody: Record<string, unknown> = isChatEndpoint
+    ? { ...baseBody, messages: [{ role: 'user', content: fullPrompt }] }
+    : { ...baseBody, prompt: fullPrompt };
+
+  const response = await fetch(settings.api_endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body reader available');
+
+  const decoder = new TextDecoder();
+  let accumulated = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      if (!trimmed.startsWith('data: ')) continue;
+
+      try {
+        const json = JSON.parse(trimmed.slice(6));
+        const token = isChatEndpoint
+          ? json.choices?.[0]?.delta?.content || ''
+          : json.choices?.[0]?.text || '';
+        if (token) {
+          accumulated += token;
+          onChunk(accumulated);
+        }
+      } catch {
+        // skip malformed SSE lines
+      }
+    }
+  }
+
+  return accumulated || 'No content generated';
 }
 
 interface ContextSection {
