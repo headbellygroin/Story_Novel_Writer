@@ -38,7 +38,7 @@ export async function analyzeImageWithVision(params: {
   model?: string;
 }): Promise<string> {
   const { imageBase64, entityType, entityName, model } = params;
-  const modelName = model || 'llava-1.6-mistral-7b';
+  const modelName = model || 'llava-v1.6-mistral-7b';
 
   let dataUri = imageBase64;
   if (!dataUri.startsWith('data:')) {

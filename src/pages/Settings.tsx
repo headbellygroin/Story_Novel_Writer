@@ -64,15 +64,15 @@ function ConnDot({ status }: { status: ConnStatus }) {
 export default function Settings() {
   const { currentProjectId } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings>>({
-    model_name: 'Midnight-Miqu-70B-v1.5.Q4_K_M',
+    model_name: 'midnight-miqu-70b-v1.5',
     api_endpoint: 'http://localhost:1234/v1/chat/completions',
-    temperature: 0.7,
-    max_tokens: 1000,
-    top_p: 0.9,
-    top_k: 40,
-    repetition_penalty: 1.1,
-    presence_penalty: 0,
-    frequency_penalty: 0,
+    temperature: 0.85,
+    max_tokens: 4000,
+    top_p: 0.92,
+    top_k: 0,
+    repetition_penalty: 1.15,
+    presence_penalty: 0.1,
+    frequency_penalty: 0.05,
     context_length: 32768,
     system_prompt: 'You are a creative fiction writer helping to write a novel. Write engaging, vivid prose that matches the style and tone of the project.',
     style_guide: '',
