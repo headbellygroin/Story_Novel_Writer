@@ -1152,6 +1152,44 @@ export interface Database {
           created_at?: string
         }
       }
+      character_arc_events: {
+        Row: {
+          id: string
+          project_id: string
+          character_id: string
+          scene_id: string
+          slider_id: string
+          delta: number
+          reasoning: string
+          status: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          character_id: string
+          scene_id: string
+          slider_id?: string
+          delta?: number
+          reasoning?: string
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          character_id?: string
+          scene_id?: string
+          slider_id?: string
+          delta?: number
+          reasoning?: string
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       pipeline_lipsync_chunks: {
         Row: {
           id: string

@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
 import { generateScene } from '../services/aiService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
+import { getAcceptedArcEventsForCharacter, computeEvolvedSliders } from '../services/arcAnalysisService';
 import ProjectSelector from '../components/ProjectSelector';
 import SceneSummaryPanel from '../components/write/SceneSummaryPanel';
 import ContextTagsPanel from '../components/write/ContextTagsPanel';
@@ -251,12 +252,23 @@ export default function Write() {
         ? recentScenes.map(s => `${s.title}:\n${s.content}`).join('\n\n---\n\n')
         : undefined;
 
-      const enrichedCharacters = characters.map((c: any) => ({
-        ...c,
-        dialogue_style: c.dialogue_style || undefined,
-        personality_sliders_text: c.personality_sliders
-          ? formatSlidersForPrompt(typeof c.personality_sliders === 'string' ? JSON.parse(c.personality_sliders) : c.personality_sliders)
-          : undefined,
+      const enrichedCharacters = await Promise.all(characters.map(async (c: any) => {
+        const baseSliders = c.personality_sliders
+          ? (typeof c.personality_sliders === 'string' ? JSON.parse(c.personality_sliders) : c.personality_sliders)
+          : null;
+
+        let slidersText: string | undefined;
+        if (baseSliders) {
+          const arcEvents = await getAcceptedArcEventsForCharacter(currentProjectId!, c.id);
+          const evolved = arcEvents.length > 0 ? computeEvolvedSliders(baseSliders, arcEvents) : baseSliders;
+          slidersText = formatSlidersForPrompt(evolved);
+        }
+
+        return {
+          ...c,
+          dialogue_style: c.dialogue_style || undefined,
+          personality_sliders_text: slidersText,
+        };
       }));
 
       const content = await generateScene({

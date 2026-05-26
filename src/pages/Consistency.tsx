@@ -6,12 +6,13 @@ import ProjectSelector from '../components/ProjectSelector';
 import StoryEvents from '../components/consistency/StoryEvents';
 import CharacterStates from '../components/consistency/CharacterStates';
 import SceneReferences from '../components/consistency/SceneReferences';
+import CharacterArc from '../components/consistency/CharacterArc';
 
 type Character = Database['public']['Tables']['characters']['Row'];
 type Scene = Database['public']['Tables']['scenes']['Row'];
 type Chapter = Database['public']['Tables']['chapters']['Row'];
 
-type TabKey = 'events' | 'states' | 'references';
+type TabKey = 'events' | 'states' | 'arc' | 'references';
 
 export default function Consistency() {
   const { currentProjectId, currentOutlineId } = useStore();
@@ -56,6 +57,7 @@ export default function Consistency() {
   const tabs: { key: TabKey; label: string; description: string }[] = [
     { key: 'events', label: 'Story Events', description: 'Track important plot points for continuity' },
     { key: 'states', label: 'Character States', description: 'Track how characters change across scenes' },
+    { key: 'arc', label: 'Character Arc', description: 'AI-tracked personality evolution across the story' },
     { key: 'references', label: 'Scene References', description: 'Mark scenes the AI should reference' },
   ];
 
@@ -103,6 +105,13 @@ export default function Consistency() {
       )}
       {activeTab === 'states' && (
         <CharacterStates
+          projectId={currentProjectId}
+          characters={characters}
+          scenes={scenes}
+        />
+      )}
+      {activeTab === 'arc' && (
+        <CharacterArc
           projectId={currentProjectId}
           characters={characters}
           scenes={scenes}
