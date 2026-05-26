@@ -7,15 +7,14 @@ import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/ca
 
 type BibleEntry = Database['public']['Tables']['story_bible_entries']['Row'];
 
-const CATEGORIES = [
-  { key: 'all', label: 'All' },
+const DEFAULT_CATEGORIES = [
   { key: 'character_fact', label: 'Character Facts' },
   { key: 'world_rule', label: 'World Rules' },
   { key: 'timeline', label: 'Timeline' },
   { key: 'relationship', label: 'Relationships' },
   { key: 'plot_point', label: 'Plot Points' },
   { key: 'general', label: 'General' },
-] as const;
+];
 
 const IMPORTANCE_LEVELS = ['critical', 'high', 'medium', 'low'] as const;
 
@@ -122,6 +121,19 @@ export default function StoryBible() {
     setFormData({ category: 'general', subject: '', fact: '', importance: 'medium', tags: '', canon_status: 'canon' });
   }
 
+  const categories = (() => {
+    const defaultKeys = new Set(DEFAULT_CATEGORIES.map(c => c.key));
+    const extras = entries
+      .map(e => e.category)
+      .filter(c => !defaultKeys.has(c))
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort()
+      .map(key => ({ key, label: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }));
+    return [{ key: 'all', label: 'All' }, ...DEFAULT_CATEGORIES, ...extras];
+  })();
+
+  const formCategories = categories.filter(c => c.key !== 'all');
+
   const filtered = entries.filter(e => {
     const matchesCategory = activeCategory === 'all' || e.category === activeCategory;
     const matchesSearch = !searchQuery ||
@@ -175,7 +187,7 @@ export default function StoryBible() {
 
       <div className="mb-6 border-b border-slate-200">
         <nav className="-mb-px flex space-x-6 overflow-x-auto">
-          {CATEGORIES.map(cat => (
+          {categories.map(cat => (
             <button
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
@@ -203,15 +215,33 @@ export default function StoryBible() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                >
-                  {CATEGORIES.filter(c => c.key !== 'all').map(c => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={formCategories.some(c => c.key === formData.category) ? formData.category : '__custom__'}
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setFormData({ ...formData, category: '' });
+                      } else {
+                        setFormData({ ...formData, category: e.target.value });
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                  >
+                    {formCategories.map(c => (
+                      <option key={c.key} value={c.key}>{c.label}</option>
+                    ))}
+                    <option value="__custom__">Custom...</option>
+                  </select>
+                  {!formCategories.some(c => c.key === formData.category) && (
+                    <input
+                      type="text"
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      placeholder="Custom category"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                    />
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Importance</label>
@@ -310,7 +340,7 @@ export default function StoryBible() {
                       </span>
                     )}
                     <span className="text-xs text-slate-400">
-                      {CATEGORIES.find(c => c.key === entry.category)?.label || entry.category}
+                      {categories.find(c => c.key === entry.category)?.label || entry.category}
                     </span>
                   </div>
                   <h3 className="font-semibold text-slate-900 text-sm">{entry.subject}</h3>
