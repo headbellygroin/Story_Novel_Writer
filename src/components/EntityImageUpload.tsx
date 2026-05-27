@@ -4,6 +4,7 @@ import { analyzeImageWithVision } from '../services/visionService';
 import { generateImage, ComfyUISettings, ImageOrientation } from '../services/comfyuiService';
 import { proxyImageUrl, comfyProxyGet } from '../lib/proxyFetch';
 import { getEndpointConfig } from '../lib/endpointResolver';
+import ImageLightbox from './ImageLightbox';
 
 interface EntityImageUploadProps {
   entityType: string;
@@ -58,6 +59,7 @@ export default function EntityImageUpload({
   const [customPrompt, setCustomPrompt] = useState('');
   const [orientation, setOrientation] = useState<ImageOrientation>('portrait');
   const [comfyEndpoint, setComfyEndpoint] = useState('');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -260,29 +262,37 @@ export default function EntityImageUpload({
         <div className="h-48 bg-slate-100 rounded-lg animate-pulse" />
       ) : imageUrl && comfyEndpoint ? (
         <div className="space-y-3">
-          <div className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+          <div className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-900">
             <img
               src={proxyImageUrl(imageUrl, comfyEndpoint)}
               alt={entityName || 'Entity reference'}
-              className="w-full h-48 object-cover"
+              className="w-full h-64 object-cover cursor-zoom-in transition-transform group-hover:scale-[1.01]"
+              onClick={() => setLightboxOpen(true)}
             />
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 pointer-events-none">
               <button
                 type="button"
-                onClick={handleRemove}
-                className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                onClick={(e) => { e.stopPropagation(); handleRemove(); }}
+                className="px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors pointer-events-auto"
               >
                 Remove
               </button>
               <button
                 type="button"
-                onClick={openPromptEditor}
-                className="px-3 py-1.5 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 transition-colors"
+                onClick={(e) => { e.stopPropagation(); openPromptEditor(); }}
+                className="px-3 py-1.5 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 transition-colors pointer-events-auto"
               >
                 Regenerate
               </button>
             </div>
           </div>
+          {lightboxOpen && (
+            <ImageLightbox
+              src={proxyImageUrl(imageUrl, comfyEndpoint)}
+              alt={entityName || 'Entity reference'}
+              onClose={() => setLightboxOpen(false)}
+            />
+          )}
 
           <div className="flex gap-2">
             <button

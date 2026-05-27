@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { generateImage, ComfyUISettings } from '../../services/comfyuiService';
 import { buildImagePrompt } from '../../services/imagePromptService';
 import { Database } from '../../lib/database.types';
+import ImageLightbox from '../ImageLightbox';
 
 type Scene = Database['public']['Tables']['scenes']['Row'];
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
@@ -19,6 +20,7 @@ export default function SceneImagePanel({ scene, settings, projectId, onSceneUpd
   const [error, setError] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState('');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   async function handleGenerate(customPrompt?: string) {
     setGenerating(true);
@@ -199,17 +201,31 @@ export default function SceneImagePanel({ scene, settings, projectId, onSceneUpd
         )}
 
         {hasImage && (
-          <div className="mb-3 relative group">
+          <div className="mb-3 relative group cursor-zoom-in" onClick={() => setLightboxOpen(true)}>
             <img
               src={scene.generated_image_url}
               alt={`Scene: ${scene.title}`}
-              className="w-full rounded-lg border border-slate-200 shadow-sm"
+              className="w-full rounded-lg border border-slate-200 shadow-sm transition-transform group-hover:scale-[1.01]"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors" />
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="w-7 h-7 rounded-full bg-black/40 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9m11.25-5.25v4.5m0-4.5h-4.5m4.5 0L15 9m-11.25 11.25v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 5.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
+                </svg>
+              </div>
+            </div>
           </div>
+        )}
+        {lightboxOpen && scene.generated_image_url && (
+          <ImageLightbox
+            src={scene.generated_image_url}
+            alt={`Scene: ${scene.title}`}
+            onClose={() => setLightboxOpen(false)}
+          />
         )}
 
         {!editingPrompt && (

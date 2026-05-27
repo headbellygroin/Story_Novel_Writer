@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Database } from '../../lib/database.types';
+import ImageLightbox from '../ImageLightbox';
 
 type PipelineImage = Database['public']['Tables']['pipeline_images']['Row'];
 
@@ -14,6 +15,7 @@ export default function ImageReviewGrid({ images, showAnimated, onRegenerateImag
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrompt, setEditPrompt] = useState('');
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   function handleStartEdit(img: PipelineImage) {
     setEditingId(img.id);
@@ -71,7 +73,7 @@ export default function ImageReviewGrid({ images, showAnimated, onRegenerateImag
                 : 'border-slate-200'
             }`}
           >
-            <div className="aspect-video bg-slate-100 relative">
+            <div className="aspect-video bg-slate-900 relative group">
               {isRegenerating ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex items-center gap-2 text-orange-600">
@@ -86,17 +88,19 @@ export default function ImageReviewGrid({ images, showAnimated, onRegenerateImag
                 isAnimated ? (
                   <video
                     src={mediaUrl}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover cursor-zoom-in"
                     autoPlay
                     loop
                     muted
                     playsInline
+                    onClick={() => setLightboxSrc(mediaUrl)}
                   />
                 ) : (
                   <img
                     src={mediaUrl}
                     alt={`Scene ${img.order_index + 1}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover cursor-zoom-in transition-transform group-hover:scale-[1.02]"
+                    onClick={() => setLightboxSrc(mediaUrl)}
                   />
                 )
               ) : (
@@ -208,6 +212,9 @@ export default function ImageReviewGrid({ images, showAnimated, onRegenerateImag
           </div>
         );
       })}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
     </div>
   );
 }

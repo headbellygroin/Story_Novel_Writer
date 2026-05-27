@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import ProjectSelector from '../components/ProjectSelector';
 import EntityImageUpload from '../components/EntityImageUpload';
+import ImageLightbox from '../components/ImageLightbox';
 import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySliders';
 import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infrastructureSliders';
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
@@ -602,6 +603,7 @@ function EntityImage({ url, comfyEndpoint, alt, described }: { url: string; comf
   const [src, setSrc] = useState(() => proxyImageUrl(url, comfyEndpoint));
   const [failed, setFailed] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const handleError = useCallback(async () => {
     if (failed) return;
@@ -624,14 +626,30 @@ function EntityImage({ url, comfyEndpoint, alt, described }: { url: string; comf
   if (hidden) return null;
 
   return (
-    <div className="relative h-40 bg-slate-100">
-      <img src={src} alt={alt} className="w-full h-full object-cover" onError={handleError} />
-      {described && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-1.5">
-          <span className="text-xs text-white/80">AI-described</span>
+    <>
+      <div
+        className="relative h-52 bg-slate-900 cursor-zoom-in group"
+        onClick={() => setLightboxOpen(true)}
+      >
+        <img src={src} alt={alt} className="w-full h-full object-cover transition-transform group-hover:scale-[1.02]" onError={handleError} />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="w-7 h-7 rounded-full bg-black/40 flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9m11.25-5.25v4.5m0-4.5h-4.5m4.5 0L15 9m-11.25 11.25v-4.5m0 4.5h4.5m-4.5 0L9 15m11.25 5.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
+            </svg>
+          </div>
         </div>
+        {described && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-1.5">
+            <span className="text-xs text-white/80">AI-described</span>
+          </div>
+        )}
+      </div>
+      {lightboxOpen && (
+        <ImageLightbox src={src} alt={alt} onClose={() => setLightboxOpen(false)} />
       )}
-    </div>
+    </>
   );
 }
 
