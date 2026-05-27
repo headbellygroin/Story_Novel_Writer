@@ -18,65 +18,238 @@ import {
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
 async function buildProjectContext(projectId: string): Promise<string> {
-  const [charsRes, placesRes, thingsRes, outlinesRes, bibleRes] = await Promise.all([
-    supabase.from('characters').select('name, role, description, personality, background, goals').eq('project_id', projectId),
-    supabase.from('places').select('name, type, description, significance').eq('project_id', projectId),
-    supabase.from('things').select('name, type, description, properties').eq('project_id', projectId),
-    supabase.from('outlines').select('title, synopsis, themes').eq('project_id', projectId),
-    supabase.from('story_bible_entries').select('category, subject, fact, importance').eq('project_id', projectId).order('importance', { ascending: true }).limit(30),
+  const [projectRes, charsRes, placesRes, thingsRes, techRes, outlinesRes, chaptersRes, bibleRes, dossierRes, styleAnchorsRes] = await Promise.all([
+    supabase.from('projects').select('title, description, genre').eq('id', projectId).maybeSingle(),
+    supabase.from('characters').select('name, role, description, personality, background, goals, relationships, notes, dialogue_style, dossier').eq('project_id', projectId),
+    supabase.from('places').select('name, type, description, history, significance, notes').eq('project_id', projectId),
+    supabase.from('things').select('name, type, description, properties, history, notes').eq('project_id', projectId),
+    supabase.from('technologies').select('name, type, description, rules, applications, notes').eq('project_id', projectId),
+    supabase.from('outlines').select('title, synopsis, act_structure, themes, notes').eq('project_id', projectId),
+    supabase.from('chapters').select('title, summary, order_index, key_events, notes').eq('project_id', projectId).order('order_index', { ascending: true }),
+    supabase.from('story_bible_entries').select('category, subject, fact, importance').eq('project_id', projectId).order('importance', { ascending: true }).limit(50),
+    supabase.from('story_dossiers').select('content, genre_tropes, braindump').eq('project_id', projectId).maybeSingle(),
+    supabase.from('style_anchors').select('label, passage, notes').eq('project_id', projectId).eq('active', true),
   ]);
 
   const parts: string[] = [];
 
+  if (projectRes.data) {
+    const p = projectRes.data;
+    parts.push(`## Project: ${p.title}`);
+    if (p.genre) parts.push(`Genre: ${p.genre}`);
+    if (p.description) parts.push(`Description: ${p.description}`);
+  }
+
+  if (dossierRes.data) {
+    const d = dossierRes.data;
+    parts.push('\n## Story Dossier (Guide)');
+    if (d.content) parts.push(d.content);
+    if (d.genre_tropes) parts.push(`\nGenre/Tropes: ${d.genre_tropes}`);
+    if (d.braindump) parts.push(`\nBraindump/Notes: ${d.braindump}`);
+  }
+
   if (outlinesRes.data?.length) {
-    parts.push('## Story Outlines');
+    parts.push('\n## Story Outlines');
     for (const o of outlinesRes.data) {
       parts.push(`- "${o.title}"${o.synopsis ? `: ${o.synopsis}` : ''}${o.themes ? ` | Themes: ${o.themes}` : ''}`);
+      if (o.act_structure) parts.push(`  Act Structure: ${o.act_structure}`);
+    }
+  }
+
+  if (chaptersRes.data?.length) {
+    parts.push('\n## Chapters');
+    for (const c of chaptersRes.data) {
+      let line = `${c.order_index + 1}. "${c.title}"`;
+      if (c.summary) line += ` - ${c.summary}`;
+      if (c.key_events) line += ` | Key Events: ${c.key_events}`;
+      parts.push(line);
     }
   }
 
   if (charsRes.data?.length) {
     parts.push('\n## Characters');
     for (const c of charsRes.data) {
-      let line = `- ${c.name}`;
+      let line = `### ${c.name}`;
       if (c.role) line += ` (${c.role})`;
-      if (c.description) line += `: ${c.description}`;
-      if (c.personality) line += ` | Personality: ${c.personality}`;
-      if (c.background) line += ` | Background: ${c.background}`;
-      if (c.goals) line += ` | Goals: ${c.goals}`;
       parts.push(line);
+      if (c.description) parts.push(`Description: ${c.description}`);
+      if (c.personality) parts.push(`Personality: ${c.personality}`);
+      if (c.background) parts.push(`Background: ${c.background}`);
+      if (c.goals) parts.push(`Goals: ${c.goals}`);
+      if (c.dialogue_style) parts.push(`Dialogue Style: ${c.dialogue_style}`);
+      if (c.relationships && Array.isArray(c.relationships) && (c.relationships as unknown[]).length > 0) {
+        parts.push(`Relationships: ${JSON.stringify(c.relationships)}`);
+      }
+      if (c.dossier) parts.push(`Dossier: ${c.dossier}`);
+      if (c.notes) parts.push(`Notes: ${c.notes}`);
     }
   }
 
   if (placesRes.data?.length) {
     parts.push('\n## Places');
     for (const p of placesRes.data) {
-      let line = `- ${p.name}`;
+      let line = `### ${p.name}`;
       if (p.type) line += ` (${p.type})`;
-      if (p.description) line += `: ${p.description}`;
-      if (p.significance) line += ` | Significance: ${p.significance}`;
       parts.push(line);
+      if (p.description) parts.push(`Description: ${p.description}`);
+      if (p.history) parts.push(`History: ${p.history}`);
+      if (p.significance) parts.push(`Significance: ${p.significance}`);
+      if (p.notes) parts.push(`Notes: ${p.notes}`);
     }
   }
 
   if (thingsRes.data?.length) {
     parts.push('\n## Things/Items');
     for (const t of thingsRes.data) {
-      let line = `- ${t.name}`;
+      let line = `### ${t.name}`;
       if (t.type) line += ` (${t.type})`;
-      if (t.description) line += `: ${t.description}`;
       parts.push(line);
+      if (t.description) parts.push(`Description: ${t.description}`);
+      if (t.properties) parts.push(`Properties: ${t.properties}`);
+      if (t.history) parts.push(`History: ${t.history}`);
+      if (t.notes) parts.push(`Notes: ${t.notes}`);
+    }
+  }
+
+  if (techRes.data?.length) {
+    parts.push('\n## Technologies');
+    for (const t of techRes.data) {
+      let line = `### ${t.name}`;
+      if (t.type) line += ` (${t.type})`;
+      parts.push(line);
+      if (t.description) parts.push(`Description: ${t.description}`);
+      if (t.rules) parts.push(`Rules: ${t.rules}`);
+      if (t.applications) parts.push(`Applications: ${t.applications}`);
+      if (t.notes) parts.push(`Notes: ${t.notes}`);
     }
   }
 
   if (bibleRes.data?.length) {
     parts.push('\n## Story Bible (Key Facts)');
     for (const b of bibleRes.data) {
-      parts.push(`- [${b.category}] ${b.subject}: ${b.fact}`);
+      parts.push(`- [${b.category}/${b.importance}] ${b.subject}: ${b.fact}`);
+    }
+  }
+
+  if (styleAnchorsRes.data?.length) {
+    parts.push('\n## Style Anchors (Reference Passages)');
+    for (const s of styleAnchorsRes.data) {
+      parts.push(`- ${s.label}: "${s.passage}"${s.notes ? ` (${s.notes})` : ''}`);
     }
   }
 
   return parts.join('\n');
+}
+
+interface EditCommand {
+  table: string;
+  action: 'update' | 'create';
+  name: string;
+  fields: Record<string, string>;
+}
+
+const EDIT_INSTRUCTIONS = `
+# Edit Capability
+You can make edits to the project data. When the user asks you to change something, include an edit command in your response using this exact format:
+
+[EDIT:table=characters|action=update|name=Captain Dax|field_description=She grew up on a mining colony|field_goals=Find her lost sister]
+[EDIT:table=places|action=create|name=The Rusty Nail|field_type=Bar|field_description=A seedy dive bar on deck 7]
+[EDIT:table=story_bible_entries|action=create|name=New Fact|field_category=world_rule|field_subject=Faster-than-light|field_fact=FTL travel requires quantum crystals]
+
+Supported tables: characters, places, things, technologies, story_bible_entries
+Supported actions: update (modifies existing by name), create (adds new)
+Field names use the prefix "field_" followed by the column name.
+
+For characters: description, personality, background, goals, role, notes, dialogue_style, dossier
+For places: type, description, history, significance, notes
+For things: type, description, properties, history, notes
+For technologies: type, description, rules, applications, notes
+For story_bible_entries: category, subject, fact, importance (critical/high/medium/low)
+
+Place the [EDIT:...] command at the END of your response after your conversational reply. You can include multiple edit commands.
+Always confirm what you changed in your spoken response.`;
+
+function parseEditCommands(text: string): { cleanText: string; commands: EditCommand[] } {
+  const commands: EditCommand[] = [];
+  const editRegex = /\[EDIT:([^\]]+)\]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = editRegex.exec(text)) !== null) {
+    const parts = match[1].split('|');
+    const cmd: Partial<EditCommand> & { fields: Record<string, string> } = { fields: {} };
+
+    for (const part of parts) {
+      const eqIdx = part.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = part.slice(0, eqIdx).trim();
+      const val = part.slice(eqIdx + 1).trim();
+
+      if (key === 'table') cmd.table = val;
+      else if (key === 'action') cmd.action = val as 'update' | 'create';
+      else if (key === 'name') cmd.name = val;
+      else if (key.startsWith('field_')) cmd.fields[key.slice(6)] = val;
+    }
+
+    if (cmd.table && cmd.action && cmd.name) {
+      commands.push(cmd as EditCommand);
+    }
+  }
+
+  const cleanText = text.replace(/\[EDIT:[^\]]+\]\s*/g, '').trim();
+  return { cleanText, commands };
+}
+
+async function executeEditCommands(commands: EditCommand[], projectId: string): Promise<string[]> {
+  const results: string[] = [];
+
+  for (const cmd of commands) {
+    try {
+      if (cmd.action === 'update') {
+        const { data: existing } = await supabase
+          .from(cmd.table as 'characters')
+          .select('id')
+          .eq('project_id', projectId)
+          .ilike('name', cmd.name)
+          .maybeSingle();
+
+        if (!existing) {
+          results.push(`Could not find "${cmd.name}" in ${cmd.table} to update`);
+          continue;
+        }
+
+        const updatePayload: Record<string, string> = { ...cmd.fields, updated_at: new Date().toISOString() };
+        const { error } = await supabase
+          .from(cmd.table as 'characters')
+          .update(updatePayload)
+          .eq('id', existing.id);
+
+        if (error) results.push(`Error updating ${cmd.name}: ${error.message}`);
+        else results.push(`Updated ${cmd.name} in ${cmd.table}`);
+      } else if (cmd.action === 'create') {
+        const insertPayload: Record<string, string> = {
+          project_id: projectId,
+          name: cmd.name,
+          ...cmd.fields,
+        };
+
+        if (cmd.table === 'story_bible_entries') {
+          if (!insertPayload.subject) insertPayload.subject = cmd.name;
+          delete insertPayload.name;
+        }
+
+        const { error } = await supabase
+          .from(cmd.table as 'characters')
+          .insert(insertPayload);
+
+        if (error) results.push(`Error creating ${cmd.name}: ${error.message}`);
+        else results.push(`Created ${cmd.name} in ${cmd.table}`);
+      }
+    } catch (err) {
+      results.push(`Failed to execute edit for ${cmd.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  return results;
 }
 
 export default function VoiceChat() {
@@ -150,11 +323,6 @@ export default function VoiceChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => {
-    return () => {
-      stopSpeaking();
-    };
-  }, []);
 
   async function loadSettings() {
     setLoading(true);
@@ -191,8 +359,8 @@ export default function VoiceChat() {
       const basePrompt = (settings.system_prompt as string) ||
         'You are a helpful creative writing assistant. Keep responses concise and conversational for voice chat.';
       const systemPrompt = projectContext
-        ? `${basePrompt}\n\n# Project Knowledge\nBelow is the current state of the creative project you are assisting with. Use this to answer questions accurately.\n\n${projectContext}`
-        : basePrompt;
+        ? `${basePrompt}\n\n# Project Knowledge\nBelow is the current state of the creative project you are assisting with. Use this to answer questions accurately.\n\n${projectContext}\n${EDIT_INSTRUCTIONS}`
+        : `${basePrompt}\n${EDIT_INSTRUCTIONS}`;
 
       const response = await sendChatMessage(
         text.trim(),
@@ -202,12 +370,24 @@ export default function VoiceChat() {
         (settings.model_name as string) || undefined
       );
 
-      const assistantMessage: ChatMessage = { role: 'assistant', content: response, timestamp: Date.now() };
+      const { cleanText, commands } = parseEditCommands(response);
+
+      let editFeedback = '';
+      if (commands.length > 0 && currentProjectId) {
+        const results = await executeEditCommands(commands, currentProjectId);
+        editFeedback = '\n[' + results.join('; ') + ']';
+        buildProjectContext(currentProjectId).then(setProjectContext);
+      }
+
+      const displayText = cleanText;
+      const storedText = editFeedback ? `${cleanText}${editFeedback}` : cleanText;
+
+      const assistantMessage: ChatMessage = { role: 'assistant', content: storedText, timestamp: Date.now() };
       addVoiceChatMessage(assistantMessage);
 
       if (synthSupported) {
         setIsSpeaking(true);
-        speak(response, getVoiceConfig(), () => {
+        speak(displayText, getVoiceConfig(), () => {
           setIsSpeaking(false);
           if (autoListen && speechSupported) {
             startListening();
@@ -219,7 +399,7 @@ export default function VoiceChat() {
     } finally {
       setIsProcessing(false);
     }
-  }, [settings, messages, synthSupported, speechSupported, autoListen, getVoiceConfig]);
+  }, [settings, messages, synthSupported, speechSupported, autoListen, getVoiceConfig, currentProjectId, projectContext]);
 
   const startListening = useCallback(() => {
     if (!speechSupported) return;
@@ -398,22 +578,33 @@ export default function VoiceChat() {
                 </div>
               )}
 
-              {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
+              {messages.map((msg, i) => {
+                const hasEditResult = msg.role === 'assistant' && msg.content.includes('\n[');
+                const contentParts = hasEditResult ? msg.content.split(/\n(\[.+\])$/) : [msg.content];
+                return (
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-sky-600 text-white'
-                        : 'bg-slate-100 text-slate-900'
-                    }`}
+                    key={i}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    {msg.content}
+                    <div className="max-w-[80%] space-y-1">
+                      <div
+                        className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                          msg.role === 'user'
+                            ? 'bg-sky-600 text-white'
+                            : 'bg-slate-100 text-slate-900'
+                        }`}
+                      >
+                        {contentParts[0]}
+                      </div>
+                      {contentParts[1] && (
+                        <div className="rounded-lg px-3 py-1.5 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {contentParts[1]}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {isProcessing && (
                 <div className="flex justify-start">
