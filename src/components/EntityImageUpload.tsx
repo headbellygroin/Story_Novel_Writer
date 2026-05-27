@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { analyzeImageWithVision } from '../services/visionService';
 import { generateImage, ComfyUISettings, ImageOrientation } from '../services/comfyuiService';
-import { proxyImageUrl } from '../lib/proxyFetch';
+import { proxyImageUrl, comfyProxyGet } from '../lib/proxyFetch';
 import { getEndpointConfig } from '../lib/endpointResolver';
 
 interface EntityImageUploadProps {
@@ -183,13 +183,44 @@ export default function EntityImageUpload({
       const prompt = customPrompt.trim() || buildEntityPrompt(entityType, entityName, descForPrompt);
       const result = await generateImage(prompt, comfySettings);
 
-      onImageChange(result.comfyUrl, imageDescription || prompt);
+      // Persist image to Supabase storage so it's always accessible
+      const persistedUrl = await persistComfyImage(result.comfyUrl, settings.comfyui_endpoint);
+      onImageChange(persistedUrl, imageDescription || prompt);
       setShowPromptEditor(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Generation failed';
       setError(msg);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function persistComfyImage(comfyUrl: string, endpoint: string): Promise<string> {
+    try {
+      const viewMatch = comfyUrl.match(/\/view\?.+$/);
+      if (!viewMatch) return comfyUrl;
+
+      const path = viewMatch[0];
+      const res = await comfyProxyGet(endpoint, path);
+      if (!res.ok) return comfyUrl;
+
+      const blob = await res.blob();
+      const ext = blob.type.includes('png') ? 'png' : 'jpg';
+      const storagePath = `${projectId}/${entityType}/${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('entity-images')
+        .upload(storagePath, blob, { upsert: true, contentType: blob.type });
+
+      if (uploadError) return comfyUrl;
+
+      const { data: urlData } = supabase.storage
+        .from('entity-images')
+        .getPublicUrl(storagePath);
+
+      return urlData.publicUrl;
+    } catch {
+      return comfyUrl;
     }
   }
 

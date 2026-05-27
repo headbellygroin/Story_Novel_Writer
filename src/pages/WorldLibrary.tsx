@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import ProjectSelector from '../components/ProjectSelector';
@@ -7,7 +7,7 @@ import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySli
 import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infrastructureSliders';
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
-import { proxyImageUrl } from '../lib/proxyFetch';
+import { proxyImageUrl, comfyProxyGet } from '../lib/proxyFetch';
 import { getEndpointConfig } from '../lib/endpointResolver';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
@@ -594,6 +594,43 @@ function EntityForm({
   );
 }
 
+function EntityImage({ url, comfyEndpoint, alt, described }: { url: string; comfyEndpoint: string; alt: string; described: boolean }) {
+  const [src, setSrc] = useState(() => proxyImageUrl(url, comfyEndpoint));
+  const [failed, setFailed] = useState(false);
+  const [hidden, setHidden] = useState(false);
+
+  const handleError = useCallback(async () => {
+    if (failed) return;
+    setFailed(true);
+    const viewMatch = url.match(/\/view\?.+$/);
+    if (!viewMatch) { setHidden(true); return; }
+    try {
+      const res = await comfyProxyGet(comfyEndpoint, viewMatch[0]);
+      if (res.ok) {
+        const blob = await res.blob();
+        setSrc(URL.createObjectURL(blob));
+      } else {
+        setHidden(true);
+      }
+    } catch {
+      setHidden(true);
+    }
+  }, [url, comfyEndpoint, failed]);
+
+  if (hidden) return null;
+
+  return (
+    <div className="relative h-40 bg-slate-100">
+      <img src={src} alt={alt} className="w-full h-full object-cover" onError={handleError} />
+      {described && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-1.5">
+          <span className="text-xs text-white/80">AI-described</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EntityCard({
   entity,
   type,
@@ -622,18 +659,7 @@ function EntityCard({
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
       {entity.image_url && comfyEndpoint && (
-        <div className="relative h-40 bg-slate-100">
-          <img
-            src={proxyImageUrl(entity.image_url, comfyEndpoint)}
-            alt={entity.name}
-            className="w-full h-full object-cover"
-          />
-          {entity.image_description && (
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-1.5">
-              <span className="text-xs text-white/80">AI-described</span>
-            </div>
-          )}
-        </div>
+        <EntityImage url={entity.image_url} comfyEndpoint={comfyEndpoint} alt={entity.name} described={!!entity.image_description} />
       )}
       <div className="p-6">
         <div className="flex justify-between items-start mb-3">
