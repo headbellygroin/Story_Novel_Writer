@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     port: 4800,
     host: true,
+    allowedHosts: ['desktop-fbpj753'],
     proxy: {
       '/lmstudio-api': {
         target: 'http://127.0.0.1:1234',
