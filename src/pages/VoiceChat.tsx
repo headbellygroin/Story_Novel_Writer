@@ -7,7 +7,7 @@ import {
   isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
   getAvailableVoices,
-  createRecognition,
+  createContinuousRecognition,
   speak,
   stopSpeaking,
   sendChatMessage,
@@ -297,6 +297,8 @@ export default function VoiceChat() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [interimText, setInterimText] = useState('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState('');
   const [speechRate, setSpeechRate] = useState(1.0);
@@ -446,15 +448,36 @@ export default function VoiceChat() {
   const startListening = useCallback(() => {
     if (!speechSupported) return;
     setError('');
-    recognitionRef.current = createRecognition(
-      (transcript) => handleSendMessage(transcript),
+    setVoiceTranscript('');
+    setInterimText('');
+    recognitionRef.current = createContinuousRecognition(
+      (finalText, interim) => {
+        setVoiceTranscript(finalText);
+        setInterimText(interim);
+      },
       () => setIsListening(false),
       (errMsg) => { setError(`Speech recognition error: ${errMsg}`); setIsListening(false); }
     );
     if (recognitionRef.current) { recognitionRef.current.start(); setIsListening(true); }
-  }, [speechSupported, handleSendMessage]);
+  }, [speechSupported]);
 
-  function stopListening() { recognitionRef.current?.stop(); setIsListening(false); }
+  function stopListeningAndSend() {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+    const text = voiceTranscript.trim() || interimText.trim();
+    if (text) {
+      handleSendMessage(text);
+    }
+    setVoiceTranscript('');
+    setInterimText('');
+  }
+
+  function stopListeningCancel() {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+    setVoiceTranscript('');
+    setInterimText('');
+  }
   function handleStopSpeaking() { stopSpeaking(); setIsSpeaking(false); }
   function clearChat() { clearVoiceChatMessages(); stopSpeaking(); setIsSpeaking(false); }
 
@@ -653,17 +676,47 @@ export default function VoiceChat() {
             )}
 
             <div className="border-t border-slate-200 p-4">
+              {/* Voice recording area -- shown when actively recording */}
+              {isListening && (
+                <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-sm font-medium text-red-700">Recording — take your time, click Stop when done</span>
+                  </div>
+                  <div className="min-h-[2.5rem] text-sm text-slate-800 bg-white rounded p-2 border border-red-100">
+                    {voiceTranscript || interimText ? (
+                      <>
+                        {voiceTranscript && <span>{voiceTranscript}</span>}
+                        {interimText && <span className="text-slate-400">{interimText}</span>}
+                      </>
+                    ) : (
+                      <span className="text-slate-400">Speak now...</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={stopListeningAndSend}
+                      className="flex-1 px-3 py-2 text-sm font-medium bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
+                    >
+                      Stop & Send
+                    </button>
+                    <button
+                      onClick={stopListeningCancel}
+                      className="px-3 py-2 text-sm font-medium bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
-                {speechSupported && (
+                {speechSupported && !isListening && (
                   <button
-                    onClick={isListening ? stopListening : startListening}
+                    onClick={startListening}
                     disabled={isProcessing || isSpeaking}
-                    className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                      isListening
-                        ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
-                        : 'bg-sky-600 text-white hover:bg-sky-700 shadow-md'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    title={isListening ? 'Stop listening' : 'Start voice input'}
+                    className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center bg-sky-600 text-white hover:bg-sky-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    title="Start recording"
                   >
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
@@ -686,7 +739,7 @@ export default function VoiceChat() {
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputText); } }}
-                  placeholder={isListening ? 'Listening...' : 'Type a message...'}
+                  placeholder={isListening ? 'Recording...' : 'Type a message...'}
                   disabled={isListening || isProcessing}
                   className="flex-1 px-4 py-2.5 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm disabled:opacity-50"
                 />
@@ -701,13 +754,6 @@ export default function VoiceChat() {
                   </svg>
                 </button>
               </div>
-
-              {isListening && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-red-600">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  Listening... speak now
-                </div>
-              )}
             </div>
           </div>
         </div>

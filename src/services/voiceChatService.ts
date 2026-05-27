@@ -72,6 +72,72 @@ export function createRecognition(
   };
 }
 
+interface ContinuousRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { results: SpeechRecognitionResultList; resultIndex: number }) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: { isFinal: boolean; [index: number]: { transcript: string } };
+}
+
+export function createContinuousRecognition(
+  onTranscript: (finalText: string, interimText: string) => void,
+  onEnd: () => void,
+  onError: (error: string) => void
+): { start: () => void; stop: () => void } | null {
+  if (!SpeechRecognitionAPI) return null;
+
+  const recognition = new (SpeechRecognitionAPI as unknown as new () => ContinuousRecognitionLike)();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  let stoppedByUser = false;
+
+  recognition.onresult = (event) => {
+    let finalTranscript = '';
+    let interimTranscript = '';
+    for (let i = 0; i < event.results.length; i++) {
+      const result = event.results[i];
+      if (result.isFinal) {
+        finalTranscript += result[0].transcript;
+      } else {
+        interimTranscript += result[0].transcript;
+      }
+    }
+    onTranscript(finalTranscript, interimTranscript);
+  };
+
+  recognition.onend = () => {
+    if (!stoppedByUser) {
+      // Browser killed recognition (timeout, etc.) -- restart
+      try { recognition.start(); } catch { onEnd(); }
+    } else {
+      onEnd();
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error === 'no-speech') return;
+    if (event.error === 'aborted') return;
+    onError(event.error);
+  };
+
+  return {
+    start: () => { stoppedByUser = false; recognition.start(); },
+    stop: () => { stoppedByUser = true; recognition.stop(); },
+  };
+}
+
 export function speak(
   text: string,
   config: VoiceChatConfig,
