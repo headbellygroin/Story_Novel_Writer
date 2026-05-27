@@ -10,6 +10,7 @@ import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } fro
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 import { proxyImageUrl, comfyProxyGet } from '../lib/proxyFetch';
 import { getEndpointConfig } from '../lib/endpointResolver';
+import LocationExportButton from '../components/LocationExportButton';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -175,13 +176,14 @@ export default function WorldLibrary() {
         </nav>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-4">
         <button
           onClick={() => setShowForm(true)}
           className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
           Add {tabs.find((t) => t.key === activeTab)?.label.slice(0, -1)}
         </button>
+        {activeTab === 'places' && <LocationExportButton />}
       </div>
 
       {showForm && <EntityForm
