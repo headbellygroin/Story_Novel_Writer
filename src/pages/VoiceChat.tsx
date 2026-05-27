@@ -17,6 +17,68 @@ import {
 
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
+async function buildProjectContext(projectId: string): Promise<string> {
+  const [charsRes, placesRes, thingsRes, outlinesRes, bibleRes] = await Promise.all([
+    supabase.from('characters').select('name, role, description, personality, background, goals').eq('project_id', projectId),
+    supabase.from('places').select('name, type, description, significance').eq('project_id', projectId),
+    supabase.from('things').select('name, type, description, properties').eq('project_id', projectId),
+    supabase.from('outlines').select('title, synopsis, themes').eq('project_id', projectId),
+    supabase.from('story_bible_entries').select('category, subject, fact, importance').eq('project_id', projectId).order('importance', { ascending: true }).limit(30),
+  ]);
+
+  const parts: string[] = [];
+
+  if (outlinesRes.data?.length) {
+    parts.push('## Story Outlines');
+    for (const o of outlinesRes.data) {
+      parts.push(`- "${o.title}"${o.synopsis ? `: ${o.synopsis}` : ''}${o.themes ? ` | Themes: ${o.themes}` : ''}`);
+    }
+  }
+
+  if (charsRes.data?.length) {
+    parts.push('\n## Characters');
+    for (const c of charsRes.data) {
+      let line = `- ${c.name}`;
+      if (c.role) line += ` (${c.role})`;
+      if (c.description) line += `: ${c.description}`;
+      if (c.personality) line += ` | Personality: ${c.personality}`;
+      if (c.background) line += ` | Background: ${c.background}`;
+      if (c.goals) line += ` | Goals: ${c.goals}`;
+      parts.push(line);
+    }
+  }
+
+  if (placesRes.data?.length) {
+    parts.push('\n## Places');
+    for (const p of placesRes.data) {
+      let line = `- ${p.name}`;
+      if (p.type) line += ` (${p.type})`;
+      if (p.description) line += `: ${p.description}`;
+      if (p.significance) line += ` | Significance: ${p.significance}`;
+      parts.push(line);
+    }
+  }
+
+  if (thingsRes.data?.length) {
+    parts.push('\n## Things/Items');
+    for (const t of thingsRes.data) {
+      let line = `- ${t.name}`;
+      if (t.type) line += ` (${t.type})`;
+      if (t.description) line += `: ${t.description}`;
+      parts.push(line);
+    }
+  }
+
+  if (bibleRes.data?.length) {
+    parts.push('\n## Story Bible (Key Facts)');
+    for (const b of bibleRes.data) {
+      parts.push(`- [${b.category}] ${b.subject}: ${b.fact}`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
 export default function VoiceChat() {
   const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings> | null>(null);
@@ -32,6 +94,7 @@ export default function VoiceChat() {
   const [autoListen, setAutoListen] = useState(false);
   const [error, setError] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [projectContext, setProjectContext] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null);
 
@@ -41,7 +104,10 @@ export default function VoiceChat() {
   const synthSupported = isSpeechSynthesisSupported();
 
   useEffect(() => {
-    if (currentProjectId) loadSettings();
+    if (currentProjectId) {
+      loadSettings();
+      buildProjectContext(currentProjectId).then(setProjectContext);
+    }
   }, [currentProjectId]);
 
   useEffect(() => {
@@ -84,6 +150,12 @@ export default function VoiceChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+    };
+  }, []);
+
   async function loadSettings() {
     setLoading(true);
     try {
@@ -116,8 +188,11 @@ export default function VoiceChat() {
     setError('');
 
     try {
-      const systemPrompt = (settings.system_prompt as string) ||
+      const basePrompt = (settings.system_prompt as string) ||
         'You are a helpful creative writing assistant. Keep responses concise and conversational for voice chat.';
+      const systemPrompt = projectContext
+        ? `${basePrompt}\n\n# Project Knowledge\nBelow is the current state of the creative project you are assisting with. Use this to answer questions accurately.\n\n${projectContext}`
+        : basePrompt;
 
       const response = await sendChatMessage(
         text.trim(),

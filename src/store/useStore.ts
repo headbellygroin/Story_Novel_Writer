@@ -41,6 +41,12 @@ interface AppState {
 const stored = {
   projectId: localStorage.getItem('currentProjectId'),
   outlineId: localStorage.getItem('currentOutlineId'),
+  voiceChatMessages: (() => {
+    try {
+      const raw = localStorage.getItem('voiceChatMessages');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  })(),
 };
 
 export const useStore = create<AppState>((set) => ({
@@ -75,12 +81,17 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({
       backgroundTasks: state.backgroundTasks.filter((t) => t.status === 'running'),
     })),
-  voiceChatMessages: [],
+  voiceChatMessages: stored.voiceChatMessages,
   addVoiceChatMessage: (msg) =>
-    set((state) => ({
-      voiceChatMessages: [...state.voiceChatMessages, msg],
-    })),
-  clearVoiceChatMessages: () => set({ voiceChatMessages: [] }),
+    set((state) => {
+      const updated = [...state.voiceChatMessages, msg];
+      localStorage.setItem('voiceChatMessages', JSON.stringify(updated.slice(-100)));
+      return { voiceChatMessages: updated };
+    }),
+  clearVoiceChatMessages: () => {
+    localStorage.removeItem('voiceChatMessages');
+    set({ voiceChatMessages: [] });
+  },
   aiConnStatus: 'unchecked',
   visionConnStatus: 'unchecked',
   comfyConnStatus: 'unchecked',
