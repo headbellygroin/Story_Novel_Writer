@@ -10,7 +10,6 @@ import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } fro
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 import { proxyImageUrl, comfyProxyGet } from '../lib/proxyFetch';
 import { getEndpointConfig } from '../lib/endpointResolver';
-import LocationExportButton from '../components/LocationExportButton';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -38,6 +37,7 @@ export default function WorldLibrary() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [comfyEndpoint, setComfyEndpoint] = useState('');
+  const [exportingLocations, setExportingLocations] = useState(false);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -56,6 +56,64 @@ export default function WorldLibrary() {
       loadEntities();
     }
   }, [currentProjectId, activeTab]);
+
+  async function handleExportLocations() {
+    if (!currentProjectId) return;
+    setExportingLocations(true);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const { data: places, error } = await supabase
+        .from('places')
+        .select('name, description, image_url')
+        .eq('project_id', currentProjectId)
+        .order('name');
+      if (error) throw error;
+      if (!places || places.length === 0) {
+        alert('No locations found.');
+        setExportingLocations(false);
+        return;
+      }
+      const config = await getEndpointConfig();
+      const endpoint = config.isRemote && config.remoteComfy
+        ? config.remoteComfy
+        : config.localComfy || 'http://127.0.0.1:8188';
+      const zip = new JSZip();
+      const mdResponse = await fetch('/downloads/sailor_town_locations.md');
+      if (mdResponse.ok) {
+        zip.file('universe_map_locations.md', await mdResponse.text());
+      }
+      const imagesFolder = zip.folder('images');
+      for (const place of places) {
+        if (!place.image_url) continue;
+        try {
+          const resolvedUrl = proxyImageUrl(place.image_url, endpoint);
+          const imgResponse = await fetch(resolvedUrl);
+          if (imgResponse.ok) {
+            const blob = await imgResponse.blob();
+            const ext = blob.type.includes('png') ? 'png' : 'jpg';
+            const safeName = place.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+            imagesFolder!.file(`${safeName}.${ext}`, blob);
+          }
+        } catch (imgErr) {
+          console.warn(`Failed to fetch image for ${place.name}:`, imgErr);
+        }
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'universe_map_locations.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed. Check console.');
+    } finally {
+      setExportingLocations(false);
+    }
+  }
 
   async function loadEntities() {
     if (!currentProjectId) return;
@@ -183,7 +241,15 @@ export default function WorldLibrary() {
         >
           Add {tabs.find((t) => t.key === activeTab)?.label.slice(0, -1)}
         </button>
-        {activeTab === 'places' && <LocationExportButton />}
+        {activeTab === 'places' && (
+          <button
+            onClick={handleExportLocations}
+            disabled={exportingLocations}
+            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {exportingLocations ? 'Exporting...' : 'Download Map Package'}
+          </button>
+        )}
       </div>
 
       {showForm && <EntityForm

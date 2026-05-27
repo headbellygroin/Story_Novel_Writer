@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import JSZip from 'jszip';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { proxyImageUrl } from '../lib/proxyFetch';
@@ -17,6 +16,8 @@ export default function LocationExportButton() {
     setProgress('Fetching locations...');
 
     try {
+      const JSZip = (await import('jszip')).default;
+
       const { data: places, error } = await supabase
         .from('places')
         .select('name, description, image_url')
