@@ -8,6 +8,7 @@ import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infras
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 import { proxyImageUrl } from '../lib/proxyFetch';
+import { getEndpointConfig } from '../lib/endpointResolver';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -34,18 +35,17 @@ export default function WorldLibrary() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
-  const [comfyEndpoint, setComfyEndpoint] = useState('http://127.0.0.1:8188');
+  const [comfyEndpoint, setComfyEndpoint] = useState('');
 
   useEffect(() => {
     if (currentProjectId) {
-      supabase
-        .from('generation_settings')
-        .select('comfyui_endpoint')
-        .eq('project_id', currentProjectId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data?.comfyui_endpoint) setComfyEndpoint(data.comfyui_endpoint);
-        });
+      getEndpointConfig().then((config) => {
+        if (config.isRemote && config.remoteComfy) {
+          setComfyEndpoint(config.remoteComfy);
+        } else {
+          setComfyEndpoint(config.localComfy || 'http://127.0.0.1:8188');
+        }
+      });
     }
   }, [currentProjectId]);
 
@@ -621,7 +621,7 @@ function EntityCard({
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-      {entity.image_url && (
+      {entity.image_url && comfyEndpoint && (
         <div className="relative h-40 bg-slate-100">
           <img
             src={proxyImageUrl(entity.image_url, comfyEndpoint)}
