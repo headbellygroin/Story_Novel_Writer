@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface BackgroundTask {
   id: string;
@@ -38,64 +39,52 @@ interface AppState {
   setComfyConnStatus: (s: ConnStatus) => void;
 }
 
-const stored = {
-  projectId: localStorage.getItem('currentProjectId'),
-  outlineId: localStorage.getItem('currentOutlineId'),
-  voiceChatMessages: (() => {
-    try {
-      const raw = localStorage.getItem('voiceChatMessages');
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  })(),
-};
-
-export const useStore = create<AppState>((set) => ({
-  currentProjectId: stored.projectId,
-  setCurrentProjectId: (id) => {
-    if (id) localStorage.setItem('currentProjectId', id);
-    else localStorage.removeItem('currentProjectId');
-    set({ currentProjectId: id });
-  },
-  currentOutlineId: stored.outlineId,
-  setCurrentOutlineId: (id) => {
-    if (id) localStorage.setItem('currentOutlineId', id);
-    else localStorage.removeItem('currentOutlineId');
-    set({ currentOutlineId: id });
-  },
-  backgroundTasks: [],
-  addBackgroundTask: (task) =>
-    set((state) => ({
-      backgroundTasks: [...state.backgroundTasks, { ...task, startedAt: Date.now() }],
-    })),
-  updateBackgroundTask: (id, updates) =>
-    set((state) => ({
-      backgroundTasks: state.backgroundTasks.map((t) =>
-        t.id === id ? { ...t, ...updates } : t
-      ),
-    })),
-  removeBackgroundTask: (id) =>
-    set((state) => ({
-      backgroundTasks: state.backgroundTasks.filter((t) => t.id !== id),
-    })),
-  dismissCompletedTasks: () =>
-    set((state) => ({
-      backgroundTasks: state.backgroundTasks.filter((t) => t.status === 'running'),
-    })),
-  voiceChatMessages: stored.voiceChatMessages,
-  addVoiceChatMessage: (msg) =>
-    set((state) => {
-      const updated = [...state.voiceChatMessages, msg];
-      localStorage.setItem('voiceChatMessages', JSON.stringify(updated.slice(-100)));
-      return { voiceChatMessages: updated };
+export const useStore = create<AppState>()(
+  persist(
+    (set) => ({
+      currentProjectId: null,
+      setCurrentProjectId: (id) => set({ currentProjectId: id }),
+      currentOutlineId: null,
+      setCurrentOutlineId: (id) => set({ currentOutlineId: id }),
+      backgroundTasks: [],
+      addBackgroundTask: (task) =>
+        set((state) => ({
+          backgroundTasks: [...state.backgroundTasks, { ...task, startedAt: Date.now() }],
+        })),
+      updateBackgroundTask: (id, updates) =>
+        set((state) => ({
+          backgroundTasks: state.backgroundTasks.map((t) =>
+            t.id === id ? { ...t, ...updates } : t
+          ),
+        })),
+      removeBackgroundTask: (id) =>
+        set((state) => ({
+          backgroundTasks: state.backgroundTasks.filter((t) => t.id !== id),
+        })),
+      dismissCompletedTasks: () =>
+        set((state) => ({
+          backgroundTasks: state.backgroundTasks.filter((t) => t.status === 'running'),
+        })),
+      voiceChatMessages: [],
+      addVoiceChatMessage: (msg) =>
+        set((state) => ({
+          voiceChatMessages: [...state.voiceChatMessages, msg].slice(-100),
+        })),
+      clearVoiceChatMessages: () => set({ voiceChatMessages: [] }),
+      aiConnStatus: 'unchecked',
+      visionConnStatus: 'unchecked',
+      comfyConnStatus: 'unchecked',
+      setAiConnStatus: (s) => set({ aiConnStatus: s }),
+      setVisionConnStatus: (s) => set({ visionConnStatus: s }),
+      setComfyConnStatus: (s) => set({ comfyConnStatus: s }),
     }),
-  clearVoiceChatMessages: () => {
-    localStorage.removeItem('voiceChatMessages');
-    set({ voiceChatMessages: [] });
-  },
-  aiConnStatus: 'unchecked',
-  visionConnStatus: 'unchecked',
-  comfyConnStatus: 'unchecked',
-  setAiConnStatus: (s) => set({ aiConnStatus: s }),
-  setVisionConnStatus: (s) => set({ visionConnStatus: s }),
-  setComfyConnStatus: (s) => set({ comfyConnStatus: s }),
-}));
+    {
+      name: 'story-forge-store',
+      partialize: (state) => ({
+        currentProjectId: state.currentProjectId,
+        currentOutlineId: state.currentOutlineId,
+        voiceChatMessages: state.voiceChatMessages,
+      }),
+    }
+  )
+);
