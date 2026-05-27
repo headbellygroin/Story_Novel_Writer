@@ -290,20 +290,15 @@ async function executeEdit(cmd: EditCommand, projectId: string): Promise<string>
 // --- Component ---
 
 export default function VoiceChat() {
-  const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages } = useStore();
+  const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages, voiceChatState, setVoiceChatState } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings> | null>(null);
   const [loading, setLoading] = useState(true);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [inputText, setInputText] = useState('');
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [interimText, setInterimText] = useState('');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState('');
-  const [speechRate, setSpeechRate] = useState(1.0);
-  const [speechPitch, setSpeechPitch] = useState(1.0);
-  const [autoListen, setAutoListen] = useState(false);
   const [error, setError] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [projectContext, setProjectContext] = useState('');
@@ -322,6 +317,12 @@ export default function VoiceChat() {
   const messages = voiceChatMessages as ChatMessage[];
   const speechSupported = isSpeechRecognitionSupported();
   const synthSupported = isSpeechSynthesisSupported();
+
+  const selectedVoice = voiceChatState.voice;
+  const speechRate = voiceChatState.rate;
+  const speechPitch = voiceChatState.pitch;
+  const autoListen = voiceChatState.autoListen;
+  const isProcessing = voiceChatState.isProcessing;
 
   useEffect(() => {
     localStorage.setItem('pendingEdits', JSON.stringify(pendingEdits));
@@ -360,9 +361,13 @@ export default function VoiceChat() {
   }, [synthSupported]);
 
   useEffect(() => {
-    if (settings?.voice_chat_voice) setSelectedVoice(settings.voice_chat_voice as string);
-    if (settings?.voice_chat_rate) setSpeechRate(Number(settings.voice_chat_rate));
-    if (settings?.voice_chat_pitch) setSpeechPitch(Number(settings.voice_chat_pitch));
+    if (settings && !voiceChatState.voice && settings.voice_chat_voice) {
+      setVoiceChatState({
+        voice: settings.voice_chat_voice as string,
+        rate: Number(settings.voice_chat_rate) || 1.0,
+        pitch: Number(settings.voice_chat_pitch) || 1.0,
+      });
+    }
   }, [settings]);
 
   useEffect(() => {
@@ -389,7 +394,7 @@ export default function VoiceChat() {
     voiceName: selectedVoice,
     rate: speechRate,
     pitch: speechPitch,
-  }), [selectedVoice, speechRate, speechPitch]);
+  }), [voiceChatState]);
 
   const handleSendMessage = useCallback(async (text: string) => {
     if (!text.trim() || !settings?.api_endpoint) return;
@@ -397,7 +402,7 @@ export default function VoiceChat() {
     const userMessage: ChatMessage = { role: 'user', content: text.trim(), timestamp: Date.now() };
     addVoiceChatMessage(userMessage);
     setInputText('');
-    setIsProcessing(true);
+    setVoiceChatState({ isProcessing: true });
     setError('');
 
     try {
@@ -441,9 +446,9 @@ export default function VoiceChat() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get response');
     } finally {
-      setIsProcessing(false);
+      setVoiceChatState({ isProcessing: false });
     }
-  }, [settings, messages, synthSupported, speechSupported, autoListen, getVoiceConfig, currentProjectId, projectContext]);
+  }, [settings, messages, synthSupported, speechSupported, voiceChatState, getVoiceConfig, currentProjectId, projectContext]);
 
   const startListening = useCallback(() => {
     if (!speechSupported) return;
@@ -581,7 +586,7 @@ export default function VoiceChat() {
               <label className="block text-xs font-medium text-slate-600 mb-1">Voice</label>
               <select
                 value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
+                onChange={(e) => setVoiceChatState({ voice: e.target.value })}
                 className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
               >
                 <option value="">System Default</option>
@@ -594,17 +599,17 @@ export default function VoiceChat() {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Speed: {speechRate.toFixed(1)}x</label>
               <input type="range" min="0.5" max="2" step="0.1" value={speechRate}
-                onChange={(e) => setSpeechRate(parseFloat(e.target.value))} className="w-full accent-sky-600" />
+                onChange={(e) => setVoiceChatState({ rate: parseFloat(e.target.value) })} className="w-full accent-sky-600" />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Pitch: {speechPitch.toFixed(1)}</label>
               <input type="range" min="0.5" max="2" step="0.1" value={speechPitch}
-                onChange={(e) => setSpeechPitch(parseFloat(e.target.value))} className="w-full accent-sky-600" />
+                onChange={(e) => setVoiceChatState({ pitch: parseFloat(e.target.value) })} className="w-full accent-sky-600" />
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={autoListen} onChange={(e) => setAutoListen(e.target.checked)}
+              <input type="checkbox" checked={autoListen} onChange={(e) => setVoiceChatState({ autoListen: e.target.checked })}
                 className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
               <span className="text-xs text-slate-700">Auto-listen after response</span>
             </label>

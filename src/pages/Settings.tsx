@@ -1160,32 +1160,28 @@ export default function Settings() {
 
       {/* Quick reference */}
       <div className="mt-6 bg-slate-50 rounded-lg border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-3">Quick Reference — Common Endpoints</h2>
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-xs text-slate-600">
-          <div>
-            <span className="font-medium text-slate-700">LM Studio (recommended):</span>{' '}
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Quick Reference — What Goes Where</h2>
+        <div className="space-y-3 text-xs text-slate-600">
+          <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1.5">
+            <span className="font-semibold text-slate-800 col-span-2 border-b border-slate-200 pb-1 mb-1">Writing AI (LM Studio)</span>
+            <span className="font-medium text-slate-700">API Endpoint (Local):</span>
             <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:1234/v1/chat/completions</code>
+            <span className="font-medium text-slate-700">Remote / Tailscale:</span>
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://100.81.168.74:1234/v1/chat/completions</code>
+
+            <span className="font-semibold text-slate-800 col-span-2 border-b border-slate-200 pb-1 mt-3 mb-1">ComfyUI (Images / TTS / Video)</span>
+            <span className="font-medium text-slate-700">ComfyUI (Local):</span>
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://127.0.0.1:8188</code>
+            <span className="font-medium text-slate-700">Remote / Tailscale:</span>
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://100.81.168.74:8188</code>
+
+            <span className="font-semibold text-slate-800 col-span-2 border-b border-slate-200 pb-1 mt-3 mb-1">Vision (Image Analysis)</span>
+            <span className="font-medium text-slate-700">Vision Endpoint:</span>
+            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://100.81.168.74:1234/v1/chat/completions</code>
           </div>
-          <div>
-            <span className="font-medium text-slate-700">text-generation-webui:</span>{' '}
-            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:5000/v1/completions</code>
-          </div>
-          <div>
-            <span className="font-medium text-slate-700">KoboldAI:</span>{' '}
-            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:5001/api/v1/generate</code>
-          </div>
-          <div>
-            <span className="font-medium text-slate-700">LocalAI:</span>{' '}
-            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:8080/v1/completions</code>
-          </div>
-          <div>
-            <span className="font-medium text-slate-700">ComfyUI (local):</span>{' '}
-            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:8188</code>
-          </div>
-          <div>
-            <span className="font-medium text-slate-700">ComfyUI (network):</span>{' '}
-            <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://desktop-fbpj753:8188</code>
-          </div>
+          <p className="text-[11px] text-slate-500 mt-3 pt-2 border-t border-slate-200">
+            Local endpoints work on the AI machine. From the school laptop, the app auto-falls back to the Tailscale IP (100.81.168.74).
+          </p>
         </div>
       </div>
     </div>

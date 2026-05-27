@@ -18,6 +18,14 @@ export interface VoiceChatMessage {
 
 export type ConnStatus = 'unchecked' | 'connected' | 'disconnected' | 'checking';
 
+interface VoiceChatState {
+  voice: string;
+  rate: number;
+  pitch: number;
+  autoListen: boolean;
+  isProcessing: boolean;
+}
+
 interface AppState {
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
@@ -31,6 +39,8 @@ interface AppState {
   voiceChatMessages: VoiceChatMessage[];
   addVoiceChatMessage: (msg: VoiceChatMessage) => void;
   clearVoiceChatMessages: () => void;
+  voiceChatState: VoiceChatState;
+  setVoiceChatState: (updates: Partial<VoiceChatState>) => void;
   aiConnStatus: ConnStatus;
   visionConnStatus: ConnStatus;
   comfyConnStatus: ConnStatus;
@@ -71,6 +81,11 @@ export const useStore = create<AppState>()(
           voiceChatMessages: [...state.voiceChatMessages, msg].slice(-100),
         })),
       clearVoiceChatMessages: () => set({ voiceChatMessages: [] }),
+      voiceChatState: { voice: '', rate: 1.0, pitch: 1.0, autoListen: false, isProcessing: false },
+      setVoiceChatState: (updates) =>
+        set((state) => ({
+          voiceChatState: { ...state.voiceChatState, ...updates },
+        })),
       aiConnStatus: 'unchecked',
       visionConnStatus: 'unchecked',
       comfyConnStatus: 'unchecked',
@@ -84,6 +99,7 @@ export const useStore = create<AppState>()(
         currentProjectId: state.currentProjectId,
         currentOutlineId: state.currentOutlineId,
         voiceChatMessages: state.voiceChatMessages,
+        voiceChatState: state.voiceChatState,
       }),
     }
   )
