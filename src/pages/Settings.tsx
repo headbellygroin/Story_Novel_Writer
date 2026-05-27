@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useStore } from '../store/useStore';
+import { useStore, ConnStatus } from '../store/useStore';
 import { Database } from '../lib/database.types';
 import ProjectSelector from '../components/ProjectSelector';
 import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
@@ -12,7 +12,6 @@ import { LIPSYNC_DIMENSIONS, LipsyncOrientation, LipsyncNoiseMode } from '../ser
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
-type ConnStatus = 'unchecked' | 'connected' | 'disconnected' | 'checking';
 
 // ---------------------------------------------------------------------------
 // Small helper: collapsible section wrapper
@@ -101,11 +100,9 @@ export default function Settings() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [existingId, setExistingId] = useState<string | null>(null);
 
-  // Connection states
-  const [aiStatus, setAiStatus] = useState<ConnStatus>('unchecked');
+  // Connection states - persisted in store so they survive navigation
+  const { aiConnStatus: aiStatus, visionConnStatus: visionStatus, comfyConnStatus: comfyStatus, setAiConnStatus: setAiStatus, setVisionConnStatus: setVisionStatus, setComfyConnStatus: setComfyStatus } = useStore();
   const [aiError, setAiError] = useState('');
-  const [visionStatus, setVisionStatus] = useState<ConnStatus>('unchecked');
-  const [comfyStatus, setComfyStatus] = useState<ConnStatus>('unchecked');
   const [comfyError, setComfyError] = useState('');
   const [comfyQueue, setComfyQueue] = useState<QueueStatus | null>(null);
 

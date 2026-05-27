@@ -15,6 +15,8 @@ export interface VoiceChatMessage {
   timestamp: number;
 }
 
+export type ConnStatus = 'unchecked' | 'connected' | 'disconnected' | 'checking';
+
 interface AppState {
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
@@ -28,6 +30,12 @@ interface AppState {
   voiceChatMessages: VoiceChatMessage[];
   addVoiceChatMessage: (msg: VoiceChatMessage) => void;
   clearVoiceChatMessages: () => void;
+  aiConnStatus: ConnStatus;
+  visionConnStatus: ConnStatus;
+  comfyConnStatus: ConnStatus;
+  setAiConnStatus: (s: ConnStatus) => void;
+  setVisionConnStatus: (s: ConnStatus) => void;
+  setComfyConnStatus: (s: ConnStatus) => void;
 }
 
 const stored = {
@@ -73,4 +81,10 @@ export const useStore = create<AppState>((set) => ({
       voiceChatMessages: [...state.voiceChatMessages, msg],
     })),
   clearVoiceChatMessages: () => set({ voiceChatMessages: [] }),
+  aiConnStatus: 'unchecked',
+  visionConnStatus: 'unchecked',
+  comfyConnStatus: 'unchecked',
+  setAiConnStatus: (s) => set({ aiConnStatus: s }),
+  setVisionConnStatus: (s) => set({ visionConnStatus: s }),
+  setComfyConnStatus: (s) => set({ comfyConnStatus: s }),
 }));
