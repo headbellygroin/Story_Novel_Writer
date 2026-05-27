@@ -25,7 +25,9 @@ const w = window as unknown as Record<string, unknown>;
 const SpeechRecognitionAPI = w.SpeechRecognition || w.webkitSpeechRecognition;
 
 export function isSpeechRecognitionSupported(): boolean {
-  return !!SpeechRecognitionAPI;
+  if (!SpeechRecognitionAPI) return false;
+  if (window.isSecureContext === false) return false;
+  return true;
 }
 
 export function isSpeechSynthesisSupported(): boolean {
@@ -107,7 +109,8 @@ export async function sendChatMessage(
   message: string,
   history: ChatMessage[],
   apiEndpoint: string,
-  systemPrompt: string
+  systemPrompt: string,
+  modelName?: string
 ): Promise<string> {
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -117,15 +120,18 @@ export async function sendChatMessage(
 
   const chatEndpoint = apiEndpoint.replace('/v1/completions', '/v1/chat/completions');
 
+  const body: Record<string, unknown> = {
+    messages,
+    temperature: 0.7,
+    max_tokens: 1000,
+    stream: false,
+  };
+  if (modelName) body.model = modelName;
+
   const res = await fetch(chatEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages,
-      temperature: 0.7,
-      max_tokens: 1000,
-      stream: false,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

@@ -102,7 +102,8 @@ export default function VoiceChat() {
         text.trim(),
         messages,
         settings.api_endpoint as string,
-        systemPrompt
+        systemPrompt,
+        (settings.model_name as string) || undefined
       );
 
       const assistantMessage: ChatMessage = { role: 'assistant', content: response, timestamp: Date.now() };
@@ -189,7 +190,7 @@ export default function VoiceChat() {
       {(!speechSupported || !synthSupported) && (
         <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
           <p className="text-sm text-amber-800">
-            {!speechSupported && 'Speech recognition is not supported in this browser. Use Chrome or Edge for voice input. '}
+            {!speechSupported && 'Voice input requires a secure context (HTTPS or localhost). You can still type messages below. '}
             {!synthSupported && 'Speech synthesis is not available in this browser.'}
           </p>
         </div>
