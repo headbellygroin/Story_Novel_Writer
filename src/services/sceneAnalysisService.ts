@@ -1,4 +1,5 @@
 import { GenerationSettings } from './aiService';
+import { aiProxyFetch } from '../lib/proxyFetch';
 
 export interface VisualMoment {
   textAnchor: string;
@@ -24,11 +25,7 @@ export async function analyzeChapterForVisuals(
     requestBody.stop = settings.stop_sequences;
   }
 
-  const response = await fetch(settings.api_endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
+  const response = await aiProxyFetch(settings.api_endpoint, requestBody);
 
   if (!response.ok) {
     throw new Error(`Scene analysis API request failed: ${response.statusText}`);

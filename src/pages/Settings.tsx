@@ -6,6 +6,7 @@ import ProjectSelector from '../components/ProjectSelector';
 import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
 import { checkVisionConnection } from '../services/visionService';
 import { checkComfyUIConnection, getQueueStatus, QueueStatus, IMAGE_DIMENSIONS, ImageOrientation, ImageNoiseMode } from '../services/comfyuiService';
+import { aiProxyGet } from '../lib/proxyFetch';
 import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
 import { LIPSYNC_DIMENSIONS, LipsyncOrientation, LipsyncNoiseMode } from '../services/comfyuiLipsyncService';
 
@@ -173,9 +174,8 @@ export default function Settings() {
     setAiError('');
     const endpoint = settings.api_endpoint || 'http://localhost:1234/v1/chat/completions';
     try {
-      // Derive the models list URL from the configured endpoint
       const base = endpoint.replace(/\/v1\/.*$/, '');
-      const res = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(5000) });
+      const res = await aiProxyGet(`${base}/v1/models`);
       if (res.ok) {
         setAiStatus('connected');
       } else {

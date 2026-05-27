@@ -128,12 +128,11 @@ export interface QueueStatus {
   isBusy: boolean;
 }
 
+import { comfyProxyGet, comfyProxyPost, comfyProxyMediaUrl } from '../lib/proxyFetch';
+
 export async function getQueueStatus(endpoint: string): Promise<QueueStatus> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${endpoint.replace(/\/$/, '')}/queue`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const res = await comfyProxyGet(endpoint.replace(/\/$/, ''), '/queue');
     if (!res.ok) return { queueRunning: 0, queuePending: 0, isBusy: false };
     const data = await res.json();
     const running: unknown[] = data?.queue_running ?? [];
@@ -163,30 +162,21 @@ export async function waitUntilQueueFree(endpoint: string, timeoutMs = 10 * 60 *
 export async function checkComfyUIConnection(endpoint: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const normalizedEndpoint = endpoint.replace(/\/$/, '');
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${normalizedEndpoint}/system_stats`, {
-      signal: controller.signal,
-      mode: 'cors',
-    });
-    clearTimeout(timeoutId);
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}: ${res.statusText}` };
+    const res = await comfyProxyGet(normalizedEndpoint, '/system_stats');
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, error: `HTTP ${res.status}: ${body}` };
+    }
     return { ok: true };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    if (errorMsg.includes('AbortError') || errorMsg.includes('abort')) {
-      return { ok: false, error: 'Connection timeout (5s)' };
-    }
     return { ok: false, error: `Network error: ${errorMsg}` };
   }
 }
 
 export async function getAvailableCheckpoints(endpoint: string): Promise<string[]> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${endpoint}/object_info/CheckpointLoaderSimple`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const res = await comfyProxyGet(endpoint, '/object_info/CheckpointLoaderSimple');
     if (!res.ok) return [];
     const data = await res.json();
     const inputs = data?.CheckpointLoaderSimple?.input?.required?.ckpt_name;
@@ -199,10 +189,7 @@ export async function getAvailableCheckpoints(endpoint: string): Promise<string[
 
 export async function getAvailableSamplers(endpoint: string): Promise<string[]> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(`${endpoint}/object_info/KSampler`, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const res = await comfyProxyGet(endpoint, '/object_info/KSampler');
     if (!res.ok) return [];
     const data = await res.json();
     const inputs = data?.KSampler?.input?.required?.sampler_name;
@@ -246,7 +233,6 @@ export async function generateImage(
 ): Promise<ImageResult> {
   const endpoint = settings.endpoint.replace(/\/$/, '');
 
-  // Wait for any in-progress job to finish before submitting
   await waitUntilQueueFree(endpoint);
 
   if (!settings.workflow) {
@@ -255,11 +241,7 @@ export async function generateImage(
   const workflow = prepareWorkflow(settings.workflow, prompt, settings);
 
   const clientId = generateClientId();
-  const queueRes = await fetch(`${endpoint}/prompt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: workflow, client_id: clientId }),
-  });
+  const queueRes = await comfyProxyPost(endpoint, '/prompt', { prompt: workflow, client_id: clientId });
 
   if (!queueRes.ok) {
     const errText = await queueRes.text();
@@ -267,126 +249,21 @@ export async function generateImage(
   }
 
   const { prompt_id }: QueueResponse = await queueRes.json();
-  return waitForResultViaWebSocket(endpoint, prompt_id, clientId);
+  return pollForImageResult(endpoint, prompt_id);
 }
 
 // ---------------------------------------------------------------------------
-// Result polling — WebSocket with HTTP fallback
+// Result polling via HTTP (works through edge function proxy)
 // ---------------------------------------------------------------------------
 
-function waitForResultViaWebSocket(
-  endpoint: string,
-  promptId: string,
-  clientId: string
-): Promise<ImageResult> {
-  return new Promise((resolve, reject) => {
-    const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
-    let ws: WebSocket;
-    let settled = false;
-    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const cleanup = () => {
-      settled = true;
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      try { ws.close(); } catch { /* ignore */ }
-    };
-
-    const overallTimeout = setTimeout(() => {
-      if (!settled) {
-        cleanup();
-        reject(new Error('Image generation timed out after 5 minutes'));
-      }
-    }, 5 * 60 * 1000);
-
-    const fetchResult = async (): Promise<ImageResult | null> => {
-      try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
-        clearTimeout(tid);
-        if (!res.ok) return null;
-        const history: Record<string, HistoryEntry> = await res.json();
-        const entry = history[promptId];
-        if (!entry) return null;
-        for (const nodeOutput of Object.values(entry.outputs)) {
-          if (nodeOutput.images && nodeOutput.images.length > 0) {
-            const img = nodeOutput.images[0];
-            return {
-              comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`,
-              filename: img.filename,
-              subfolder: img.subfolder,
-              type: img.type,
-            };
-          }
-        }
-      } catch { /* ignore */ }
-      return null;
-    };
-
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch {
-      clearTimeout(overallTimeout);
-      pollFallback(endpoint, promptId).then(resolve).catch(reject);
-      return;
-    }
-
-    ws.onopen = () => {};
-
-    ws.onmessage = async (event) => {
-      if (settled) return;
-      try {
-        const msg = JSON.parse(typeof event.data === 'string' ? event.data : '{}');
-
-        if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
-          await new Promise((r) => setTimeout(r, 300));
-          const result = await fetchResult();
-          if (result && !settled) {
-            cleanup();
-            clearTimeout(overallTimeout);
-            resolve(result);
-          }
-        }
-
-        if (msg.type === 'execution_error' && msg.data?.prompt_id === promptId) {
-          cleanup();
-          clearTimeout(overallTimeout);
-          reject(new Error(msg.data?.exception_message || 'ComfyUI execution error'));
-        }
-      } catch { /* ignore parse errors */ }
-    };
-
-    ws.onerror = () => {
-      if (settled) return;
-      cleanup();
-      clearTimeout(overallTimeout);
-      pollFallback(endpoint, promptId).then(resolve).catch(reject);
-    };
-
-    ws.onclose = () => {
-      if (settled) return;
-      fallbackTimer = setTimeout(() => {
-        if (!settled) {
-          cleanup();
-          clearTimeout(overallTimeout);
-          pollFallback(endpoint, promptId).then(resolve).catch(reject);
-        }
-      }, 2000);
-    };
-  });
-}
-
-async function pollFallback(endpoint: string, promptId: string): Promise<ImageResult> {
+async function pollForImageResult(endpoint: string, promptId: string): Promise<ImageResult> {
   const maxAttempts = 120;
   const pollInterval = 3000;
 
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, pollInterval));
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await comfyProxyGet(endpoint, `/history/${promptId}`);
       if (!res.ok) continue;
       const history: Record<string, HistoryEntry> = await res.json();
       const entry = history[promptId];
@@ -394,8 +271,9 @@ async function pollFallback(endpoint: string, promptId: string): Promise<ImageRe
       for (const nodeOutput of Object.values(entry.outputs)) {
         if (nodeOutput.images && nodeOutput.images.length > 0) {
           const img = nodeOutput.images[0];
+          const viewPath = `/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`;
           return {
-            comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`,
+            comfyUrl: comfyProxyMediaUrl(endpoint, viewPath),
             filename: img.filename,
             subfolder: img.subfolder,
             type: img.type,

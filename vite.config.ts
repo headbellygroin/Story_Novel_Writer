@@ -7,12 +7,5 @@ export default defineConfig({
     port: 4800,
     host: true,
     allowedHosts: ['desktop-fbpj753'],
-    proxy: {
-      '/lmstudio-api': {
-        target: 'http://127.0.0.1:1234',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/lmstudio-api/, ''),
-      },
-    },
   },
 });

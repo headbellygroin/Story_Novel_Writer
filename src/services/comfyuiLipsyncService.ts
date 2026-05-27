@@ -1,4 +1,5 @@
 import { waitUntilQueueFree, generateClientId } from './comfyuiService';
+import { comfyProxyGet, comfyProxyPost, comfyProxyUpload, comfyProxyMediaUrl } from '../lib/proxyFetch';
 import type { VideoResult } from './comfyuiAnimationService';
 export type { VideoResult };
 
@@ -49,10 +50,7 @@ async function uploadFileToComfyUI(
   form.append('type', 'input');
   form.append('overwrite', 'true');
 
-  const res = await fetch(`${endpoint}/upload/image`, {
-    method: 'POST',
-    body: form,
-  });
+  const res = await comfyProxyUpload(endpoint, '/upload/image', form);
 
   if (!res.ok) {
     const err = await res.text();
@@ -63,7 +61,6 @@ async function uploadFileToComfyUI(
   return (data.name as string) || filename;
 }
 
-// Fetches a URL and uploads it to ComfyUI, returning the stored filename.
 async function fetchAndUpload(
   endpoint: string,
   url: string,
@@ -105,8 +102,9 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | n
     if (files && files.length > 0) {
       const file = files[0];
       if (VIDEO_EXTS.some((ext) => file.filename.endsWith(ext))) {
+        const viewPath = `/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
         return {
-          comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+          comfyUrl: comfyProxyMediaUrl(endpoint, viewPath),
           filename: file.filename,
           subfolder: file.subfolder,
           type: file.type,
@@ -114,7 +112,6 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | n
       }
     }
   }
-  // Fallback: return first available file from any output
   for (const nodeOutput of Object.values(entry.outputs)) {
     const allFiles = [
       ...(nodeOutput.gifs || []),
@@ -123,8 +120,9 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | n
     ];
     if (allFiles.length > 0) {
       const file = allFiles[0];
+      const viewPath = `/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
       return {
-        comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+        comfyUrl: comfyProxyMediaUrl(endpoint, viewPath),
         filename: file.filename,
         subfolder: file.subfolder,
         type: file.type,
@@ -265,11 +263,7 @@ export async function generateLipsync(
   );
 
   const clientId = generateClientId();
-  const queueRes = await fetch(`${endpoint}/prompt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: workflow, client_id: clientId }),
-  });
+  const queueRes = await comfyProxyPost(endpoint, '/prompt', { prompt: workflow, client_id: clientId });
 
   if (!queueRes.ok) {
     const errText = await queueRes.text();
@@ -277,112 +271,21 @@ export async function generateLipsync(
   }
 
   const { prompt_id }: QueueResponse = await queueRes.json();
-  return waitForLipsyncResult(endpoint, prompt_id, clientId);
+  return pollForLipsyncResult(endpoint, prompt_id);
 }
 
 // ---------------------------------------------------------------------------
-// Result polling — WebSocket with HTTP fallback
+// Result polling via HTTP proxy
 // ---------------------------------------------------------------------------
 
-function waitForLipsyncResult(
-  endpoint: string,
-  promptId: string,
-  clientId: string
-): Promise<VideoResult> {
-  return new Promise((resolve, reject) => {
-    const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
-    let ws: WebSocket;
-    let settled = false;
-
-    const cleanup = () => {
-      settled = true;
-      try { ws.close(); } catch { /* ignore */ }
-    };
-
-    // LTX 2.3 at 1080x1920 can take a while
-    const overallTimeout = setTimeout(() => {
-      if (!settled) {
-        cleanup();
-        reject(new Error('Lip-sync generation timed out after 20 minutes'));
-      }
-    }, 20 * 60 * 1000);
-
-    const fetchResult = async (): Promise<VideoResult | null> => {
-      try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
-        clearTimeout(tid);
-        if (!res.ok) return null;
-        const history: Record<string, HistoryEntry> = await res.json();
-        const entry = history[promptId];
-        if (!entry) return null;
-        return findVideoOutput(entry, endpoint);
-      } catch {
-        return null;
-      }
-    };
-
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch {
-      clearTimeout(overallTimeout);
-      pollLipsyncFallback(endpoint, promptId).then(resolve).catch(reject);
-      return;
-    }
-
-    ws.onmessage = async (event) => {
-      if (settled) return;
-      try {
-        const msg = JSON.parse(typeof event.data === 'string' ? event.data : '{}');
-        if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
-          await new Promise((r) => setTimeout(r, 500));
-          const result = await fetchResult();
-          if (result && !settled) {
-            cleanup();
-            clearTimeout(overallTimeout);
-            resolve(result);
-          }
-        }
-        if (msg.type === 'execution_error' && msg.data?.prompt_id === promptId) {
-          cleanup();
-          clearTimeout(overallTimeout);
-          reject(new Error(msg.data?.exception_message || 'ComfyUI lip-sync execution error'));
-        }
-      } catch { /* ignore */ }
-    };
-
-    ws.onerror = () => {
-      if (settled) return;
-      cleanup();
-      clearTimeout(overallTimeout);
-      pollLipsyncFallback(endpoint, promptId).then(resolve).catch(reject);
-    };
-
-    ws.onclose = () => {
-      if (settled) return;
-      setTimeout(() => {
-        if (!settled) {
-          cleanup();
-          clearTimeout(overallTimeout);
-          pollLipsyncFallback(endpoint, promptId).then(resolve).catch(reject);
-        }
-      }, 2000);
-    };
-  });
-}
-
-async function pollLipsyncFallback(endpoint: string, promptId: string): Promise<VideoResult> {
+async function pollForLipsyncResult(endpoint: string, promptId: string): Promise<VideoResult> {
   const maxAttempts = 400;
   const pollInterval = 3000;
 
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, pollInterval));
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await comfyProxyGet(endpoint, `/history/${promptId}`);
       if (!res.ok) continue;
       const history: Record<string, HistoryEntry> = await res.json();
       const entry = history[promptId];

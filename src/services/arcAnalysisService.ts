@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { PERSONALITY_SLIDERS } from '../lib/personalitySliders';
 import { Database } from '../lib/database.types';
+import { aiProxyFetch } from '../lib/proxyFetch';
 
 type Character = Database['public']['Tables']['characters']['Row'];
 type Scene = Database['public']['Tables']['scenes']['Row'];
@@ -94,11 +95,10 @@ export async function analyzeSceneForArcShifts(
         ? { ...baseBody, messages: [{ role: 'user', content: prompt }] }
         : { ...baseBody, prompt };
 
-      const response = await fetch(settings.api_endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...requestBody, stream: false }),
-      });
+      const response = await aiProxyFetch(
+        settings.api_endpoint,
+        { ...requestBody, stream: false } as Record<string, unknown>,
+      );
 
       if (!response.ok) continue;
 

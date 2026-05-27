@@ -70,6 +70,7 @@ export interface GenerateSceneRequest {
 }
 
 import { getActiveRulePrompts } from '../lib/styleRules';
+import { aiProxyFetch } from '../lib/proxyFetch';
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3.5);
@@ -131,14 +132,14 @@ Write this scene with vivid detail, engaging dialogue, and strong character voic
     : { ...baseBody, prompt: fullPrompt };
 
   try {
-    const response = await fetch(settings.api_endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...requestBody, stream: false }),
-    });
+    const response = await aiProxyFetch(
+      settings.api_endpoint,
+      { ...requestBody, stream: false } as Record<string, unknown>,
+    );
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      const errBody = await response.text();
+      throw new Error(`API request failed: ${response.status} ${errBody}`);
     }
 
     const data = await response.json();
@@ -209,14 +210,15 @@ Write this scene with vivid detail, engaging dialogue, and strong character voic
     ? { ...baseBody, messages: [{ role: 'user', content: fullPrompt }] }
     : { ...baseBody, prompt: fullPrompt };
 
-  const response = await fetch(settings.api_endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
+  const response = await aiProxyFetch(
+    settings.api_endpoint,
+    requestBody as Record<string, unknown>,
+    true,
+  );
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    const errBody = await response.text();
+    throw new Error(`API request failed: ${response.status} ${errBody}`);
   }
 
   const reader = response.body?.getReader();

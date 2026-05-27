@@ -1,5 +1,5 @@
-const PROXY_BASE = '/lmstudio-api';
-const DEFAULT_CHAT_PATH = '/v1/chat/completions';
+import { aiProxyFetch, aiProxyGet } from '../lib/proxyFetch';
+import { supabase } from '../lib/supabase';
 
 function getEntityLabel(entityType: string): string {
   switch (entityType) {
@@ -20,11 +20,20 @@ function buildPrompt(entityType: string, entityName: string): string {
 Write a rich, detailed description that a writer could use to maintain visual consistency. Be specific and vivid. Write in present tense, 2-3 paragraphs.`;
 }
 
+async function getVisionEndpoint(): Promise<string> {
+  const { data } = await supabase
+    .from('generation_settings')
+    .select('api_endpoint')
+    .limit(1)
+    .maybeSingle();
+  const endpoint = data?.api_endpoint || 'http://localhost:1234/v1/chat/completions';
+  return endpoint.replace(/\/v1\/.*$/, '');
+}
+
 export async function checkVisionConnection(): Promise<boolean> {
   try {
-    const res = await fetch(`${PROXY_BASE}/v1/models`, {
-      signal: AbortSignal.timeout(5000),
-    });
+    const base = await getVisionEndpoint();
+    const res = await aiProxyGet(`${base}/v1/models`);
     return res.ok;
   } catch {
     return false;
@@ -36,8 +45,9 @@ export async function analyzeImageWithVision(params: {
   entityType: string;
   entityName: string;
   model?: string;
+  apiEndpoint?: string;
 }): Promise<string> {
-  const { imageBase64, entityType, entityName, model } = params;
+  const { imageBase64, entityType, entityName, model, apiEndpoint } = params;
   const modelName = model || 'llava-v1.6-mistral-7b';
 
   let dataUri = imageBase64;
@@ -47,26 +57,31 @@ export async function analyzeImageWithVision(params: {
 
   const prompt = buildPrompt(entityType, entityName);
 
-  const res = await fetch(`${PROXY_BASE}${DEFAULT_CHAT_PATH}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: modelName,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            {
-              type: 'image_url',
-              image_url: { url: dataUri },
-            },
-          ],
-        },
-      ],
-      max_tokens: 1000,
-      temperature: 0.3,
-    }),
+  let targetUrl: string;
+  if (apiEndpoint) {
+    const base = apiEndpoint.replace(/\/v1\/.*$/, '');
+    targetUrl = `${base}/v1/chat/completions`;
+  } else {
+    const base = await getVisionEndpoint();
+    targetUrl = `${base}/v1/chat/completions`;
+  }
+
+  const res = await aiProxyFetch(targetUrl, {
+    model: modelName,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          {
+            type: 'image_url',
+            image_url: { url: dataUri },
+          },
+        ],
+      },
+    ],
+    max_tokens: 1000,
+    temperature: 0.3,
   });
 
   if (!res.ok) {

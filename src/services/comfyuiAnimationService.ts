@@ -1,4 +1,5 @@
 import { generateClientId } from './comfyuiService';
+import { comfyProxyGet, comfyProxyPost, comfyProxyMediaUrl } from '../lib/proxyFetch';
 
 export type AnimationOrientation = 'portrait' | 'landscape' | 'square';
 export type AnimationNoiseMode = 'random' | 'fixed';
@@ -53,8 +54,9 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | n
     if (files && files.length > 0) {
       const file = files[0];
       if (VIDEO_EXTS.some((ext) => file.filename.endsWith(ext))) {
+        const viewPath = `/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
         return {
-          comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+          comfyUrl: comfyProxyMediaUrl(endpoint, viewPath),
           filename: file.filename,
           subfolder: file.subfolder,
           type: file.type,
@@ -70,8 +72,9 @@ function findVideoOutput(entry: HistoryEntry, endpoint: string): VideoResult | n
     ];
     if (allFiles.length > 0) {
       const file = allFiles[0];
+      const viewPath = `/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`;
       return {
-        comfyUrl: `${endpoint}/view?filename=${encodeURIComponent(file.filename)}&subfolder=${encodeURIComponent(file.subfolder)}&type=${encodeURIComponent(file.type)}`,
+        comfyUrl: comfyProxyMediaUrl(endpoint, viewPath),
         filename: file.filename,
         subfolder: file.subfolder,
         type: file.type,
@@ -170,11 +173,7 @@ export async function animateImage(
   const workflow = injectAnimationParams(settings.workflow, imageUrl, animationPrompt, settings);
   const clientId = generateClientId();
 
-  const queueRes = await fetch(`${endpoint}/prompt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: workflow, client_id: clientId }),
-  });
+  const queueRes = await comfyProxyPost(endpoint, '/prompt', { prompt: workflow, client_id: clientId });
 
   if (!queueRes.ok) {
     const errText = await queueRes.text();
@@ -182,108 +181,17 @@ export async function animateImage(
   }
 
   const { prompt_id }: QueueResponse = await queueRes.json();
-  return waitForAnimationResult(endpoint, prompt_id, clientId);
+  return pollForAnimationResult(endpoint, prompt_id);
 }
 
-function waitForAnimationResult(
-  endpoint: string,
-  promptId: string,
-  clientId: string
-): Promise<VideoResult> {
-  return new Promise((resolve, reject) => {
-    const wsUrl = endpoint.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
-    let ws: WebSocket;
-    let settled = false;
-
-    const cleanup = () => {
-      settled = true;
-      try { ws.close(); } catch { /* ignore */ }
-    };
-
-    const timeoutMs = 10 * 60 * 1000;
-    const overallTimeout = setTimeout(() => {
-      if (!settled) {
-        cleanup();
-        reject(new Error('Animation generation timed out after 10 minutes'));
-      }
-    }, timeoutMs);
-
-    const fetchResult = async (): Promise<VideoResult | null> => {
-      try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
-        clearTimeout(tid);
-        if (!res.ok) return null;
-        const history: Record<string, HistoryEntry> = await res.json();
-        const entry = history[promptId];
-        if (!entry) return null;
-        return findVideoOutput(entry, endpoint);
-      } catch {
-        return null;
-      }
-    };
-
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch {
-      clearTimeout(overallTimeout);
-      pollAnimationFallback(endpoint, promptId).then(resolve).catch(reject);
-      return;
-    }
-
-    ws.onmessage = async (event) => {
-      if (settled) return;
-      try {
-        const msg = JSON.parse(typeof event.data === 'string' ? event.data : '{}');
-        if (msg.type === 'executing' && msg.data?.prompt_id === promptId && msg.data?.node === null) {
-          await new Promise((r) => setTimeout(r, 500));
-          const result = await fetchResult();
-          if (result && !settled) {
-            cleanup();
-            clearTimeout(overallTimeout);
-            resolve(result);
-          }
-        }
-        if (msg.type === 'execution_error' && msg.data?.prompt_id === promptId) {
-          cleanup();
-          clearTimeout(overallTimeout);
-          reject(new Error(msg.data?.exception_message || 'ComfyUI animation execution error'));
-        }
-      } catch { /* ignore */ }
-    };
-
-    ws.onerror = () => {
-      if (settled) return;
-      cleanup();
-      clearTimeout(overallTimeout);
-      pollAnimationFallback(endpoint, promptId).then(resolve).catch(reject);
-    };
-
-    ws.onclose = () => {
-      if (settled) return;
-      setTimeout(() => {
-        if (!settled) {
-          cleanup();
-          clearTimeout(overallTimeout);
-          pollAnimationFallback(endpoint, promptId).then(resolve).catch(reject);
-        }
-      }, 2000);
-    };
-  });
-}
-
-async function pollAnimationFallback(endpoint: string, promptId: string): Promise<VideoResult> {
+async function pollForAnimationResult(endpoint: string, promptId: string): Promise<VideoResult> {
   const maxAttempts = 200;
   const pollInterval = 3000;
 
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, pollInterval));
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(`${endpoint}/history/${promptId}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await comfyProxyGet(endpoint, `/history/${promptId}`);
       if (!res.ok) continue;
       const history: Record<string, HistoryEntry> = await res.json();
       const entry = history[promptId];
