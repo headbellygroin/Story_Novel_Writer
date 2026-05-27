@@ -121,51 +121,48 @@ export async function sendChatMessage(
     ? [{ role: 'user', content: firstUserContent }]
     : [...historyMessages, { role: 'user', content: message }];
 
-  const chatEndpoint = apiEndpoint.replace('/v1/completions', '/v1/chat/completions');
+  // Use text completions endpoint to avoid Jinja template issues with chat models
+  const baseUrl = apiEndpoint.replace(/\/v1\/(chat\/)?completions.*/, '');
+  const completionsUrl = `${baseUrl}/v1/completions`;
+  const chatUrl = `${baseUrl}/v1/chat/completions`;
 
-  const body: Record<string, unknown> = {
-    messages,
+  // Try text completions first (avoids template issues entirely)
+  const prompt = buildTextPrompt(messages, systemPrompt);
+  const textBody: Record<string, unknown> = {
+    prompt,
     temperature: 0.7,
     max_tokens: 1000,
     stream: false,
+    stop: ['\nUser:', '\nuser:', '\n\nUser:'],
   };
-  if (modelName) body.model = modelName;
+  if (modelName) textBody.model = modelName;
 
-  let res = await fetch(chatEndpoint, {
+  let res = await fetch(completionsUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(textBody),
   });
+
+  // If text completions not supported, fall back to chat completions
+  if (!res.ok && (res.status === 404 || res.status === 501)) {
+    const chatBody: Record<string, unknown> = {
+      messages,
+      temperature: 0.7,
+      max_tokens: 1000,
+      stream: false,
+    };
+    if (modelName) chatBody.model = modelName;
+
+    res = await fetch(chatUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(chatBody),
+    });
+  }
 
   if (!res.ok) {
     const errText = await res.text();
-    const isTemplateError = errText.includes('jinja template') || errText.includes('roles are supported');
-
-    if (isTemplateError) {
-      const completionsEndpoint = chatEndpoint.replace('/v1/chat/completions', '/v1/completions');
-      const prompt = buildTextPrompt(messages, systemPrompt);
-      const fallbackBody: Record<string, unknown> = {
-        prompt,
-        temperature: 0.7,
-        max_tokens: 1000,
-        stream: false,
-        stop: ['\nUser:', '\nuser:'],
-      };
-      if (modelName) fallbackBody.model = modelName;
-
-      res = await fetch(completionsEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fallbackBody),
-      });
-
-      if (!res.ok) {
-        const fallbackErr = await res.text();
-        throw new Error(`Chat API error: ${fallbackErr}`);
-      }
-    } else {
-      throw new Error(`Chat API error: ${errText}`);
-    }
+    throw new Error(`Chat API error: ${errText}`);
   }
 
   const data = await res.json();
