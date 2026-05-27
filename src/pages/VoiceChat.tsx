@@ -169,7 +169,7 @@ Story Forge covers the full authoring lifecycle: brainstorming, world-building, 
 7. **Prohibited Words** — Blocklist of AI-isms and clichés to avoid.
 8. **Reveals** — Timeline tracking of information reveals across the story.
 9. **Write** — Scene editor. AI generates prose using deep context (dossier, outline, world, bible, states, events, style, prohibited words, referenced scenes, scene brief, context tags). Right sidebar has Scene Brief, Context Tags, Summary, Scene Image, Editing Passes.
-10. **Voice Chat (You Are Here)** — Discuss, plan, then commit edits through the pending queue.
+10. **Voice Chat (You Are Here)** — Discuss and plan with the user. When ready to commit changes, propose edits that appear in the **Edit Plan panel** on the right side of the chat. The user reviews and accepts/rejects each proposed edit from there.
 11. **Consistency** — Story Events log, Character States per scene, Scene References for continuity.
 12. **Logic Checks** — AI audit tool that finds contradictions, plot holes, timeline issues.
 13. **Audio** — Standalone audiobook TTS using ComfyUI Kokoro workflow.
@@ -516,7 +516,7 @@ export default function VoiceChat() {
 
   if (!currentProjectId) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+      <div className="flex items-center justify-center h-full">
         <div className="text-center text-slate-600">Please select or create a project first.</div>
       </div>
     );
@@ -524,7 +524,7 @@ export default function VoiceChat() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+      <div className="flex items-center justify-center h-full">
         <div className="text-center text-slate-600">Loading...</div>
       </div>
     );
@@ -539,7 +539,7 @@ export default function VoiceChat() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Sticky header area */}
       <div className="flex-shrink-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex justify-between items-center">
