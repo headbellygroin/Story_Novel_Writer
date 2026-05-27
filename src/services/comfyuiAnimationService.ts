@@ -1,3 +1,5 @@
+import { generateClientId } from './comfyuiService';
+
 export type AnimationOrientation = 'portrait' | 'landscape' | 'square';
 export type AnimationNoiseMode = 'random' | 'fixed';
 
@@ -166,7 +168,7 @@ export async function animateImage(
   }
 
   const workflow = injectAnimationParams(settings.workflow, imageUrl, animationPrompt, settings);
-  const clientId = crypto.randomUUID();
+  const clientId = generateClientId();
 
   const queueRes = await fetch(`${endpoint}/prompt`, {
     method: 'POST',

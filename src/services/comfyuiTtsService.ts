@@ -1,3 +1,5 @@
+import { generateClientId } from './comfyuiService';
+
 export interface ComfyUITtsSettings {
   endpoint: string;
   workflow: Record<string, unknown> | null;
@@ -130,7 +132,7 @@ export async function generateTtsAudio(
     settings.speed ?? 1.0
   );
 
-  const clientId = crypto.randomUUID();
+  const clientId = generateClientId();
 
   const queueRes = await fetch(`${endpoint}/prompt`, {
     method: 'POST',

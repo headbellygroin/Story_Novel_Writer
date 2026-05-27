@@ -1,4 +1,4 @@
-import { waitUntilQueueFree } from './comfyuiService';
+import { waitUntilQueueFree, generateClientId } from './comfyuiService';
 import type { VideoResult } from './comfyuiAnimationService';
 export type { VideoResult };
 
@@ -264,7 +264,7 @@ export async function generateLipsync(
     settings.noiseSeed ?? 42
   );
 
-  const clientId = crypto.randomUUID();
+  const clientId = generateClientId();
   const queueRes = await fetch(`${endpoint}/prompt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
