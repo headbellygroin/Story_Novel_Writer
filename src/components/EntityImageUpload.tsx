@@ -142,7 +142,7 @@ export default function EntityImageUpload({
     try {
       const settingsRes = await supabase
         .from('generation_settings')
-        .select('comfyui_endpoint, comfyui_workflow, text2image_orientation, text2image_noise_mode, text2image_noise_seed')
+        .select('comfyui_endpoint, comfyui_workflow, image_orientation, image_noise_mode, image_noise_seed')
         .eq('project_id', projectId)
         .maybeSingle();
 
@@ -157,9 +157,9 @@ export default function EntityImageUpload({
       const comfySettings: ComfyUISettings = {
         endpoint: settings.comfyui_endpoint,
         workflow: settings.comfyui_workflow as Record<string, unknown>,
-        orientation: orientation || (settings.text2image_orientation as ImageOrientation) || 'portrait',
-        noiseMode: (settings.text2image_noise_mode as 'random' | 'fixed') || 'random',
-        noiseSeed: settings.text2image_noise_seed ?? undefined,
+        orientation: orientation || (settings.image_orientation as ImageOrientation) || 'portrait',
+        noiseMode: (settings.image_noise_mode as 'random' | 'fixed') || 'random',
+        noiseSeed: settings.image_noise_seed ?? undefined,
         batchSize: 1,
       };
 
