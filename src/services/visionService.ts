@@ -23,11 +23,34 @@ Write a rich, detailed description that a writer could use to maintain visual co
 async function getVisionEndpoint(): Promise<string> {
   const { data } = await supabase
     .from('generation_settings')
-    .select('vision_api_endpoint, api_endpoint')
+    .select('vision_api_endpoint, api_endpoint, remote_api_endpoint')
     .limit(1)
     .maybeSingle();
-  const endpoint = data?.vision_api_endpoint || data?.api_endpoint || 'http://localhost:1234/v1/chat/completions';
-  return endpoint.replace(/\/v1\/.*$/, '');
+
+  const candidates = [
+    data?.vision_api_endpoint,
+    data?.api_endpoint,
+    data?.remote_api_endpoint,
+  ].filter(Boolean) as string[];
+
+  if (candidates.length === 0) return 'http://localhost:1234';
+
+  // Try each candidate to find one that's reachable
+  for (const ep of candidates) {
+    const base = ep.replace(/\/v1\/.*$/, '');
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(`${base}/v1/models`, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) return base;
+    } catch {
+      // try next
+    }
+  }
+
+  // None reachable, return first one (will show error to user)
+  return candidates[0].replace(/\/v1\/.*$/, '');
 }
 
 export async function checkVisionConnection(endpoint?: string): Promise<boolean> {

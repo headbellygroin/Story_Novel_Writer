@@ -7,6 +7,7 @@ import { BUILT_IN_STYLE_RULES } from '../lib/styleRules';
 import { checkVisionConnection } from '../services/visionService';
 import { checkComfyUIConnection, getQueueStatus, QueueStatus, IMAGE_DIMENSIONS, ImageOrientation, ImageNoiseMode } from '../services/comfyuiService';
 import { aiProxyGet } from '../lib/proxyFetch';
+import { clearEndpointCache } from '../lib/endpointResolver';
 import { getAvailableVoices, isSpeechSynthesisSupported } from '../services/voiceChatService';
 import { LIPSYNC_DIMENSIONS, LipsyncOrientation, LipsyncNoiseMode } from '../services/comfyuiLipsyncService';
 
@@ -66,6 +67,8 @@ export default function Settings() {
   const [settings, setSettings] = useState<Partial<GenerationSettings>>({
     model_name: 'midnight-miqu-70b-v1.5',
     api_endpoint: 'http://localhost:1234/v1/chat/completions',
+    remote_api_endpoint: '',
+    remote_comfyui_endpoint: '',
     temperature: 0.85,
     max_tokens: 4000,
     top_p: 0.92,
@@ -158,6 +161,7 @@ export default function Settings() {
         setExistingId(data.id);
       }
       setSaveStatus('saved');
+      clearEndpointCache();
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       console.error('Error saving settings:', err);
@@ -173,43 +177,100 @@ export default function Settings() {
   async function handleCheckAI() {
     setAiStatus('checking');
     setAiError('');
-    const endpoint = settings.api_endpoint || 'http://localhost:1234/v1/chat/completions';
+    const localEndpoint = (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
+    const remoteEndpoint = (settings.remote_api_endpoint as string) || '';
+
+    // Try local first
     try {
-      const base = endpoint.replace(/\/v1\/.*$/, '');
+      const base = localEndpoint.replace(/\/v1\/.*$/, '');
       const res = await aiProxyGet(`${base}/v1/models`);
       if (res.ok) {
         setAiStatus('connected');
-      } else {
-        setAiStatus('disconnected');
-        setAiError(`Server responded with ${res.status}`);
+        setAiError('');
+        return;
       }
     } catch {
-      setAiStatus('disconnected');
-      setAiError('Could not reach the AI server. Make sure LM Studio (or your backend) is running.');
+      // local failed, try remote
     }
+
+    // Try remote endpoint
+    if (remoteEndpoint) {
+      try {
+        const base = remoteEndpoint.replace(/\/v1\/.*$/, '');
+        const res = await aiProxyGet(`${base}/v1/models`);
+        if (res.ok) {
+          setAiStatus('connected');
+          setAiError('Connected via Tailscale (remote)');
+          return;
+        } else {
+          setAiStatus('disconnected');
+          setAiError(`Remote server responded with ${res.status}`);
+          return;
+        }
+      } catch {
+        setAiStatus('disconnected');
+        setAiError('Could not reach AI server on local or remote endpoint. Check LM Studio is running and Tailscale is connected.');
+        return;
+      }
+    }
+
+    setAiStatus('disconnected');
+    setAiError('Could not reach the AI server. Make sure LM Studio is running. If accessing remotely, set the Remote/Tailscale endpoint.');
   }
 
   async function handleCheckVision() {
     setVisionStatus('checking');
-    const visionEndpoint = (settings.vision_api_endpoint as string) || (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
-    const connected = await checkVisionConnection(visionEndpoint);
-    setVisionStatus(connected ? 'connected' : 'disconnected');
+    // Try vision-specific endpoint first, then main endpoints (local then remote)
+    const visionEndpoint = (settings.vision_api_endpoint as string) || '';
+    const localEndpoint = (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
+    const remoteEndpoint = (settings.remote_api_endpoint as string) || '';
+
+    const endpointsToTry = [
+      visionEndpoint,
+      localEndpoint,
+      remoteEndpoint,
+    ].filter(Boolean);
+
+    for (const ep of endpointsToTry) {
+      const connected = await checkVisionConnection(ep);
+      if (connected) {
+        setVisionStatus('connected');
+        return;
+      }
+    }
+    setVisionStatus('disconnected');
   }
 
   async function handleCheckComfyUI() {
     setComfyStatus('checking');
     setComfyError('');
     setComfyQueue(null);
-    const endpoint = (settings.comfyui_endpoint as string) || 'http://desktop-fbpj753:8188';
-    const result = await checkComfyUIConnection(endpoint);
-    if (result.ok) {
+    const localEndpoint = (settings.comfyui_endpoint as string) || 'http://127.0.0.1:8188';
+    const remoteEndpoint = (settings.remote_comfyui_endpoint as string) || '';
+
+    // Try local first
+    const localResult = await checkComfyUIConnection(localEndpoint);
+    if (localResult.ok) {
       setComfyStatus('connected');
-      const queue = await getQueueStatus(endpoint);
+      const queue = await getQueueStatus(localEndpoint);
       setComfyQueue(queue);
-    } else {
-      setComfyStatus('disconnected');
-      setComfyError(result.error || 'Unknown error');
+      return;
     }
+
+    // Try remote
+    if (remoteEndpoint) {
+      const remoteResult = await checkComfyUIConnection(remoteEndpoint);
+      if (remoteResult.ok) {
+        setComfyStatus('connected');
+        setComfyError('Connected via Tailscale (remote)');
+        const queue = await getQueueStatus(remoteEndpoint);
+        setComfyQueue(queue);
+        return;
+      }
+    }
+
+    setComfyStatus('disconnected');
+    setComfyError(localResult.error || 'Cannot reach ComfyUI on local or remote endpoint');
   }
 
   // ---------------------------------------------------------------------------
@@ -297,7 +358,7 @@ export default function Settings() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">API Endpoint</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">API Endpoint (Local)</label>
               <input
                 type="text"
                 value={aiEndpoint}
@@ -306,8 +367,21 @@ export default function Settings() {
                 placeholder="http://localhost:1234/v1/chat/completions"
               />
               <p className="text-xs text-slate-400 mt-1">
-                LM Studio default: <code className="bg-slate-100 px-1 rounded">http://localhost:1234/v1/chat/completions</code> —
-                use <code className="bg-slate-100 px-1 rounded">/v1/completions</code> for text-generation-webui or KoboldAI.
+                Used when on the AI machine. LM Studio default: <code className="bg-slate-100 px-1 rounded">http://localhost:1234/v1/chat/completions</code>
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">API Endpoint (Remote / Tailscale)</label>
+              <input
+                type="text"
+                value={(settings.remote_api_endpoint as string) || ''}
+                onChange={(e) => setSettings({ ...settings, remote_api_endpoint: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
+                placeholder="http://100.81.168.74:1234/v1/chat/completions"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Used when accessing from another machine via Tailscale. Enter your AI machine's Tailscale IP (e.g. <code className="bg-slate-100 px-1 rounded">http://100.81.168.74:1234/v1/chat/completions</code>).
               </p>
             </div>
 
@@ -527,42 +601,53 @@ export default function Settings() {
           title="ComfyUI Connection"
           description="ComfyUI is assumed to be running on your AI machine. This single endpoint is used for all generation — scene images, animation, TTS audio, and lip-sync. Story Forge sends each workflow, waits for completion, and retrieves the output file automatically."
         >
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">ComfyUI Endpoint</label>
-              <input
-                type="text"
-                value={comfyEndpoint}
-                onChange={(e) => setSettings({ ...settings, comfyui_endpoint: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
-                placeholder="http://your-ai-machine:8188"
-              />
-              <p className="text-xs text-slate-400 mt-1">Replace <code className="bg-slate-100 px-1 rounded">your-ai-machine</code> with the hostname or IP of the machine running ComfyUI.</p>
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">ComfyUI Endpoint (Local)</label>
+                <input
+                  type="text"
+                  value={comfyEndpoint}
+                  onChange={(e) => setSettings({ ...settings, comfyui_endpoint: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
+                  placeholder="http://127.0.0.1:8188"
+                />
+                <p className="text-xs text-slate-400 mt-1">Used when on the AI machine directly.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">ComfyUI Endpoint (Remote / Tailscale)</label>
+                <input
+                  type="text"
+                  value={(settings.remote_comfyui_endpoint as string) || ''}
+                  onChange={(e) => setSettings({ ...settings, remote_comfyui_endpoint: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
+                  placeholder="http://100.81.168.74:8188"
+                />
+                <p className="text-xs text-slate-400 mt-1">Used when accessing from another machine via Tailscale.</p>
+              </div>
             </div>
-            <div className="flex flex-col justify-end">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCheckComfyUI}
-                  disabled={comfyStatus === 'checking'}
-                  className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors"
-                >
-                  {comfyStatus === 'checking' ? 'Checking...' : 'Test ComfyUI'}
-                </button>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <ConnDot status={comfyStatus} />
-                  {comfyStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
-                  {comfyStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
-                  {comfyStatus === 'connected' && (
-                    <span className="text-emerald-600">
-                      Connected
-                      {comfyQueue && ` — ${comfyQueue.isBusy ? `${comfyQueue.queueRunning} running` : 'idle'}`}
-                    </span>
-                  )}
-                  {comfyStatus === 'disconnected' && (
-                    <span className="text-red-600">{comfyError || 'Cannot reach ComfyUI — check the endpoint and that ComfyUI is running'}</span>
-                  )}
-                </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={handleCheckComfyUI}
+                disabled={comfyStatus === 'checking'}
+                className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50 transition-colors"
+              >
+                {comfyStatus === 'checking' ? 'Checking...' : 'Test ComfyUI'}
+              </button>
+              <div className="flex items-center gap-1.5 text-xs">
+                <ConnDot status={comfyStatus} />
+                {comfyStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
+                {comfyStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
+                {comfyStatus === 'connected' && (
+                  <span className="text-emerald-600">
+                    Connected
+                    {comfyQueue && ` — ${comfyQueue.isBusy ? `${comfyQueue.queueRunning} running` : 'idle'}`}
+                  </span>
+                )}
+                {comfyStatus === 'disconnected' && (
+                  <span className="text-red-600">{comfyError || 'Cannot reach ComfyUI — check the endpoint and that ComfyUI is running'}</span>
+                )}
               </div>
             </div>
           </div>

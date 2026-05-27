@@ -477,6 +477,8 @@ export interface Database {
           art_style_presets: Json
           comfyui_animation_workflow: Json
           comfyui_lipsync_workflow: Json
+          remote_api_endpoint: string
+          remote_comfyui_endpoint: string
           created_at: string
           updated_at: string
         }
@@ -485,6 +487,8 @@ export interface Database {
           project_id: string
           model_name?: string
           api_endpoint?: string
+          remote_api_endpoint?: string
+          remote_comfyui_endpoint?: string
           temperature?: number
           max_tokens?: number
           system_prompt?: string
@@ -530,6 +534,8 @@ export interface Database {
           project_id?: string
           model_name?: string
           api_endpoint?: string
+          remote_api_endpoint?: string
+          remote_comfyui_endpoint?: string
           temperature?: number
           max_tokens?: number
           system_prompt?: string

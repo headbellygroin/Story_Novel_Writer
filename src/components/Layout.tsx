@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { getEndpointConfig } from '../lib/endpointResolver';
 
 const NAV_ITEMS = [
   { path: '/projects', label: 'Projects' },
@@ -25,6 +27,9 @@ const NAV_ITEMS = [
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { backgroundTasks, removeBackgroundTask } = useStore();
+
+  // Pre-resolve endpoints on mount so image URLs resolve correctly
+  useEffect(() => { getEndpointConfig(); }, []);
 
   const isActive = (path: string) => location.pathname === path;
   const activeTasks = backgroundTasks.filter((t) => t.status === 'running');
