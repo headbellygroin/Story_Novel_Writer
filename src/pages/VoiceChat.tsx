@@ -141,20 +141,25 @@ async function buildProjectContext(projectId: string): Promise<string> {
   return parts.join('\n');
 }
 
+// --- Pending Edit Types & Logic ---
+
 interface EditCommand {
+  id: string;
   table: string;
   action: 'update' | 'create';
   name: string;
   fields: Record<string, string>;
+  summary: string;
 }
 
 const EDIT_INSTRUCTIONS = `
-# Edit Capability
-You can make edits to the project data. When the user asks you to change something, include an edit command in your response using this exact format:
+# Edit Proposals
+When the user discusses changes, plans, or asks you to modify something about the project, propose edits using this format. These will NOT be applied immediately -- they go into a pending queue for the user to review and approve.
 
-[EDIT:table=characters|action=update|name=Captain Dax|field_description=She grew up on a mining colony|field_goals=Find her lost sister]
-[EDIT:table=places|action=create|name=The Rusty Nail|field_type=Bar|field_description=A seedy dive bar on deck 7]
-[EDIT:table=story_bible_entries|action=create|name=New Fact|field_category=world_rule|field_subject=Faster-than-light|field_fact=FTL travel requires quantum crystals]
+Format:
+[PROPOSE:table=characters|action=update|name=Captain Dax|summary=Update background to mention mining colony|field_description=She grew up on a mining colony|field_goals=Find her lost sister]
+[PROPOSE:table=places|action=create|name=The Rusty Nail|summary=Add new bar location|field_type=Bar|field_description=A seedy dive bar on deck 7]
+[PROPOSE:table=story_bible_entries|action=create|name=FTL Rule|summary=Add world rule about FTL travel|field_category=world_rule|field_subject=Faster-than-light|field_fact=FTL travel requires quantum crystals]
 
 Supported tables: characters, places, things, technologies, story_bible_entries
 Supported actions: update (modifies existing by name), create (adds new)
@@ -166,17 +171,22 @@ For things: type, description, properties, history, notes
 For technologies: type, description, rules, applications, notes
 For story_bible_entries: category, subject, fact, importance (critical/high/medium/low)
 
-Place the [EDIT:...] command at the END of your response after your conversational reply. You can include multiple edit commands.
-Always confirm what you changed in your spoken response.`;
+IMPORTANT RULES:
+- Only propose edits when the user is clearly asking for changes or when you've discussed and agreed on modifications
+- During open discussion/brainstorming, just talk naturally without proposing edits
+- When the user says something like "let's do it", "make those changes", "go ahead", or "add that" -- THEN propose the edits
+- Place [PROPOSE:...] commands at the END of your response
+- Always explain what you're proposing in your spoken reply
+- You can include multiple proposals in one response`;
 
-function parseEditCommands(text: string): { cleanText: string; commands: EditCommand[] } {
-  const commands: EditCommand[] = [];
-  const editRegex = /\[EDIT:([^\]]+)\]/g;
+function parseProposals(text: string): { cleanText: string; proposals: EditCommand[] } {
+  const proposals: EditCommand[] = [];
+  const propRegex = /\[PROPOSE:([^\]]+)\]/g;
   let match: RegExpExecArray | null;
 
-  while ((match = editRegex.exec(text)) !== null) {
+  while ((match = propRegex.exec(text)) !== null) {
     const parts = match[1].split('|');
-    const cmd: Partial<EditCommand> & { fields: Record<string, string> } = { fields: {} };
+    const cmd: Partial<EditCommand> & { fields: Record<string, string> } = { fields: {}, id: crypto.randomUUID() };
 
     for (const part of parts) {
       const eqIdx = part.indexOf('=');
@@ -187,70 +197,63 @@ function parseEditCommands(text: string): { cleanText: string; commands: EditCom
       if (key === 'table') cmd.table = val;
       else if (key === 'action') cmd.action = val as 'update' | 'create';
       else if (key === 'name') cmd.name = val;
+      else if (key === 'summary') cmd.summary = val;
       else if (key.startsWith('field_')) cmd.fields[key.slice(6)] = val;
     }
 
     if (cmd.table && cmd.action && cmd.name) {
-      commands.push(cmd as EditCommand);
+      if (!cmd.summary) cmd.summary = `${cmd.action} ${cmd.name} in ${cmd.table}`;
+      proposals.push(cmd as EditCommand);
     }
   }
 
-  const cleanText = text.replace(/\[EDIT:[^\]]+\]\s*/g, '').trim();
-  return { cleanText, commands };
+  const cleanText = text.replace(/\[PROPOSE:[^\]]+\]\s*/g, '').trim();
+  return { cleanText, proposals };
 }
 
-async function executeEditCommands(commands: EditCommand[], projectId: string): Promise<string[]> {
-  const results: string[] = [];
+async function executeEdit(cmd: EditCommand, projectId: string): Promise<string> {
+  try {
+    if (cmd.action === 'update') {
+      const { data: existing } = await supabase
+        .from(cmd.table as 'characters')
+        .select('id')
+        .eq('project_id', projectId)
+        .ilike('name', cmd.name)
+        .maybeSingle();
 
-  for (const cmd of commands) {
-    try {
-      if (cmd.action === 'update') {
-        const { data: existing } = await supabase
-          .from(cmd.table as 'characters')
-          .select('id')
-          .eq('project_id', projectId)
-          .ilike('name', cmd.name)
-          .maybeSingle();
+      if (!existing) return `Could not find "${cmd.name}" in ${cmd.table}`;
 
-        if (!existing) {
-          results.push(`Could not find "${cmd.name}" in ${cmd.table} to update`);
-          continue;
-        }
+      const updatePayload: Record<string, string> = { ...cmd.fields, updated_at: new Date().toISOString() };
+      const { error } = await supabase
+        .from(cmd.table as 'characters')
+        .update(updatePayload)
+        .eq('id', existing.id);
 
-        const updatePayload: Record<string, string> = { ...cmd.fields, updated_at: new Date().toISOString() };
-        const { error } = await supabase
-          .from(cmd.table as 'characters')
-          .update(updatePayload)
-          .eq('id', existing.id);
+      return error ? `Error: ${error.message}` : `Updated ${cmd.name}`;
+    } else {
+      const insertPayload: Record<string, string> = {
+        project_id: projectId,
+        name: cmd.name,
+        ...cmd.fields,
+      };
 
-        if (error) results.push(`Error updating ${cmd.name}: ${error.message}`);
-        else results.push(`Updated ${cmd.name} in ${cmd.table}`);
-      } else if (cmd.action === 'create') {
-        const insertPayload: Record<string, string> = {
-          project_id: projectId,
-          name: cmd.name,
-          ...cmd.fields,
-        };
-
-        if (cmd.table === 'story_bible_entries') {
-          if (!insertPayload.subject) insertPayload.subject = cmd.name;
-          delete insertPayload.name;
-        }
-
-        const { error } = await supabase
-          .from(cmd.table as 'characters')
-          .insert(insertPayload);
-
-        if (error) results.push(`Error creating ${cmd.name}: ${error.message}`);
-        else results.push(`Created ${cmd.name} in ${cmd.table}`);
+      if (cmd.table === 'story_bible_entries') {
+        if (!insertPayload.subject) insertPayload.subject = cmd.name;
+        delete insertPayload.name;
       }
-    } catch (err) {
-      results.push(`Failed to execute edit for ${cmd.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  }
 
-  return results;
+      const { error } = await supabase
+        .from(cmd.table as 'characters')
+        .insert(insertPayload);
+
+      return error ? `Error: ${error.message}` : `Created ${cmd.name}`;
+    }
+  } catch (err) {
+    return `Failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+  }
 }
+
+// --- Component ---
 
 export default function VoiceChat() {
   const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages } = useStore();
@@ -268,13 +271,25 @@ export default function VoiceChat() {
   const [error, setError] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [projectContext, setProjectContext] = useState('');
+  const [pendingEdits, setPendingEdits] = useState<EditCommand[]>(() => {
+    try {
+      const stored = localStorage.getItem('pendingEdits');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+  const [planPanelOpen, setPlanPanelOpen] = useState(true);
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [executingAll, setExecutingAll] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null);
 
   const messages = voiceChatMessages as ChatMessage[];
-
   const speechSupported = isSpeechRecognitionSupported();
   const synthSupported = isSpeechSynthesisSupported();
+
+  useEffect(() => {
+    localStorage.setItem('pendingEdits', JSON.stringify(pendingEdits));
+  }, [pendingEdits]);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -303,14 +318,9 @@ export default function VoiceChat() {
   }
 
   useEffect(() => {
-    const loadVoices = () => {
-      const v = getAvailableVoices();
-      setVoices(v);
-    };
+    const loadVoices = () => setVoices(getAvailableVoices());
     loadVoices();
-    if (synthSupported) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
+    if (synthSupported) window.speechSynthesis.onvoiceschanged = loadVoices;
   }, [synthSupported]);
 
   useEffect(() => {
@@ -322,7 +332,6 @@ export default function VoiceChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
 
   async function loadSettings() {
     setLoading(true);
@@ -370,28 +379,27 @@ export default function VoiceChat() {
         (settings.model_name as string) || undefined
       );
 
-      const { cleanText, commands } = parseEditCommands(response);
+      const { cleanText, proposals } = parseProposals(response);
 
-      let editFeedback = '';
-      if (commands.length > 0 && currentProjectId) {
-        const results = await executeEditCommands(commands, currentProjectId);
-        editFeedback = '\n[' + results.join('; ') + ']';
-        buildProjectContext(currentProjectId).then(setProjectContext);
+      if (proposals.length > 0) {
+        setPendingEdits(prev => [...prev, ...proposals]);
+        setPlanPanelOpen(true);
       }
 
-      const displayText = cleanText;
-      const storedText = editFeedback ? `${cleanText}${editFeedback}` : cleanText;
-
-      const assistantMessage: ChatMessage = { role: 'assistant', content: storedText, timestamp: Date.now() };
+      const assistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: proposals.length > 0
+          ? `${cleanText}\n[Proposed ${proposals.length} edit${proposals.length > 1 ? 's' : ''} - see Plan panel]`
+          : cleanText,
+        timestamp: Date.now(),
+      };
       addVoiceChatMessage(assistantMessage);
 
       if (synthSupported) {
         setIsSpeaking(true);
-        speak(displayText, getVoiceConfig(), () => {
+        speak(cleanText, getVoiceConfig(), () => {
           setIsSpeaking(false);
-          if (autoListen && speechSupported) {
-            startListening();
-          }
+          if (autoListen && speechSupported) startListening();
         });
       }
     } catch (err) {
@@ -404,40 +412,44 @@ export default function VoiceChat() {
   const startListening = useCallback(() => {
     if (!speechSupported) return;
     setError('');
-
     recognitionRef.current = createRecognition(
-      (transcript) => {
-        handleSendMessage(transcript);
-      },
-      () => {
-        setIsListening(false);
-      },
-      (errMsg) => {
-        setError(`Speech recognition error: ${errMsg}`);
-        setIsListening(false);
-      }
+      (transcript) => handleSendMessage(transcript),
+      () => setIsListening(false),
+      (errMsg) => { setError(`Speech recognition error: ${errMsg}`); setIsListening(false); }
     );
-
-    if (recognitionRef.current) {
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
+    if (recognitionRef.current) { recognitionRef.current.start(); setIsListening(true); }
   }, [speechSupported, handleSendMessage]);
 
-  function stopListening() {
-    recognitionRef.current?.stop();
-    setIsListening(false);
+  function stopListening() { recognitionRef.current?.stop(); setIsListening(false); }
+  function handleStopSpeaking() { stopSpeaking(); setIsSpeaking(false); }
+  function clearChat() { clearVoiceChatMessages(); stopSpeaking(); setIsSpeaking(false); }
+
+  async function acceptEdit(edit: EditCommand) {
+    if (!currentProjectId) return;
+    setExecutingId(edit.id);
+    await executeEdit(edit, currentProjectId);
+    setPendingEdits(prev => prev.filter(e => e.id !== edit.id));
+    setExecutingId(null);
+    buildProjectContext(currentProjectId).then(setProjectContext);
   }
 
-  function handleStopSpeaking() {
-    stopSpeaking();
-    setIsSpeaking(false);
+  function rejectEdit(editId: string) {
+    setPendingEdits(prev => prev.filter(e => e.id !== editId));
   }
 
-  function clearChat() {
-    clearVoiceChatMessages();
-    stopSpeaking();
-    setIsSpeaking(false);
+  async function acceptAllEdits() {
+    if (!currentProjectId) return;
+    setExecutingAll(true);
+    for (const edit of pendingEdits) {
+      await executeEdit(edit, currentProjectId);
+    }
+    setPendingEdits([]);
+    setExecutingAll(false);
+    buildProjectContext(currentProjectId).then(setProjectContext);
+  }
+
+  function clearAllEdits() {
+    setPendingEdits([]);
   }
 
   if (!currentProjectId) {
@@ -456,8 +468,16 @@ export default function VoiceChat() {
     );
   }
 
+  const TABLE_COLORS: Record<string, string> = {
+    characters: 'bg-sky-100 text-sky-800',
+    places: 'bg-emerald-100 text-emerald-800',
+    things: 'bg-amber-100 text-amber-800',
+    technologies: 'bg-rose-100 text-rose-800',
+    story_bible_entries: 'bg-slate-200 text-slate-800',
+  };
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-bold text-slate-900">Voice Chat</h1>
@@ -494,9 +514,10 @@ export default function VoiceChat() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 space-y-4">
+      <div className="flex gap-6">
+        {/* Voice Settings - Left */}
+        <div className="w-48 flex-shrink-0 hidden lg:block">
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 space-y-4 sticky top-4">
             <h3 className="font-semibold text-slate-900 text-sm">Voice Settings</h3>
 
             <div>
@@ -508,97 +529,67 @@ export default function VoiceChat() {
               >
                 <option value="">System Default</option>
                 {voices.map((v) => (
-                  <option key={v.name} value={v.name}>
-                    {v.name} ({v.lang})
-                  </option>
+                  <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Speed: {speechRate.toFixed(1)}x
-              </label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={speechRate}
-                onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                className="w-full accent-sky-600"
-              />
+              <label className="block text-xs font-medium text-slate-600 mb-1">Speed: {speechRate.toFixed(1)}x</label>
+              <input type="range" min="0.5" max="2" step="0.1" value={speechRate}
+                onChange={(e) => setSpeechRate(parseFloat(e.target.value))} className="w-full accent-sky-600" />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Pitch: {speechPitch.toFixed(1)}
-              </label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={speechPitch}
-                onChange={(e) => setSpeechPitch(parseFloat(e.target.value))}
-                className="w-full accent-sky-600"
-              />
+              <label className="block text-xs font-medium text-slate-600 mb-1">Pitch: {speechPitch.toFixed(1)}</label>
+              <input type="range" min="0.5" max="2" step="0.1" value={speechPitch}
+                onChange={(e) => setSpeechPitch(parseFloat(e.target.value))} className="w-full accent-sky-600" />
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoListen}
-                onChange={(e) => setAutoListen(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-              />
+              <input type="checkbox" checked={autoListen} onChange={(e) => setAutoListen(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
               <span className="text-xs text-slate-700">Auto-listen after response</span>
             </label>
 
-            <button
-              onClick={clearChat}
-              className="w-full px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-            >
+            <button onClick={clearChat}
+              className="w-full px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
               Clear Conversation
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-3 flex flex-col">
+        {/* Chat - Center */}
+        <div className="flex-1 min-w-0 flex flex-col">
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex-1 flex flex-col" style={{ minHeight: '500px' }}>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 && (
                 <div className="text-center text-slate-400 mt-20">
-                  <div className="text-4xl mb-4">
-                    <svg className="w-16 h-16 mx-auto text-slate-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm">Press the microphone button or type a message to start chatting with your AI writing assistant.</p>
+                  <svg className="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                  </svg>
+                  <p className="text-sm">Discuss your project, brainstorm ideas, then commit changes when ready.</p>
                 </div>
               )}
 
               {messages.map((msg, i) => {
-                const hasEditResult = msg.role === 'assistant' && msg.content.includes('\n[');
-                const contentParts = hasEditResult ? msg.content.split(/\n(\[.+\])$/) : [msg.content];
+                const hasProposal = msg.role === 'assistant' && msg.content.includes('[Proposed');
+                const mainContent = hasProposal ? msg.content.replace(/\n\[Proposed .+\]$/, '') : msg.content;
+                const proposalNote = hasProposal ? msg.content.match(/\[Proposed .+\]$/)?.[0] : null;
                 return (
-                  <div
-                    key={i}
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className="max-w-[80%] space-y-1">
-                      <div
-                        className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                          msg.role === 'user'
-                            ? 'bg-sky-600 text-white'
-                            : 'bg-slate-100 text-slate-900'
-                        }`}
-                      >
-                        {contentParts[0]}
+                      <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                        msg.role === 'user' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-900'
+                      }`}>
+                        {mainContent}
                       </div>
-                      {contentParts[1] && (
-                        <div className="rounded-lg px-3 py-1.5 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {contentParts[1]}
+                      {proposalNote && (
+                        <div className="rounded-lg px-3 py-1.5 text-xs bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {proposalNote.replace(/[\[\]]/g, '')}
                         </div>
                       )}
                     </div>
@@ -647,11 +638,9 @@ export default function VoiceChat() {
                 )}
 
                 {isSpeaking && (
-                  <button
-                    onClick={handleStopSpeaking}
+                  <button onClick={handleStopSpeaking}
                     className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center hover:bg-amber-600 transition-colors"
-                    title="Stop speaking"
-                  >
+                    title="Stop speaking">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.531V19.94a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.506-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
                     </svg>
@@ -662,12 +651,7 @@ export default function VoiceChat() {
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage(inputText);
-                    }
-                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(inputText); } }}
                   placeholder={isListening ? 'Listening...' : 'Type a message...'}
                   disabled={isListening || isProcessing}
                   className="flex-1 px-4 py-2.5 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm disabled:opacity-50"
@@ -677,8 +661,7 @@ export default function VoiceChat() {
                   onClick={() => handleSendMessage(inputText)}
                   disabled={!inputText.trim() || isProcessing || isListening}
                   className="flex-shrink-0 w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Send message"
-                >
+                  title="Send message">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                   </svg>
@@ -693,6 +676,121 @@ export default function VoiceChat() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Pending Edits Plan Panel - Right */}
+        <div className={`flex-shrink-0 transition-all duration-300 ${planPanelOpen ? 'w-80' : 'w-10'}`}>
+          {!planPanelOpen ? (
+            <button
+              onClick={() => setPlanPanelOpen(true)}
+              className="sticky top-4 w-10 h-10 bg-white rounded-lg shadow-sm border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors relative"
+              title="Open plan panel"
+            >
+              <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+              </svg>
+              {pendingEdits.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+                  {pendingEdits.length}
+                </span>
+              )}
+            </button>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 sticky top-4 flex flex-col" style={{ maxHeight: 'calc(100vh - 8rem)' }}>
+              <div className="flex items-center justify-between p-3 border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-slate-900 text-sm">Edit Plan</h3>
+                  {pendingEdits.length > 0 && (
+                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                      {pendingEdits.length}
+                    </span>
+                  )}
+                </div>
+                <button onClick={() => setPlanPanelOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {pendingEdits.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <svg className="w-10 h-10 mx-auto mb-2 text-slate-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <p className="text-xs">Discuss changes with the AI.<br/>Proposed edits appear here.</p>
+                  </div>
+                ) : (
+                  pendingEdits.map((edit) => (
+                    <div key={edit.id} className="border border-slate-200 rounded-lg p-2.5 space-y-2 hover:border-slate-300 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${TABLE_COLORS[edit.table] || 'bg-slate-100 text-slate-600'}`}>
+                              {edit.table.replace('_', ' ')}
+                            </span>
+                            <span className="text-[10px] text-slate-500 uppercase">{edit.action}</span>
+                          </div>
+                          <p className="text-xs font-medium text-slate-900 truncate">{edit.name}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{edit.summary}</p>
+                        </div>
+                      </div>
+
+                      {Object.keys(edit.fields).length > 0 && (
+                        <div className="bg-slate-50 rounded p-1.5 space-y-0.5">
+                          {Object.entries(edit.fields).slice(0, 3).map(([key, val]) => (
+                            <div key={key} className="text-[10px] text-slate-600 truncate">
+                              <span className="font-medium">{key}:</span> {val}
+                            </div>
+                          ))}
+                          {Object.keys(edit.fields).length > 3 && (
+                            <div className="text-[10px] text-slate-400">+{Object.keys(edit.fields).length - 3} more fields</div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => acceptEdit(edit)}
+                          disabled={executingId === edit.id || executingAll}
+                          className="flex-1 px-2 py-1 text-[11px] font-medium bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                        >
+                          {executingId === edit.id ? 'Applying...' : 'Accept'}
+                        </button>
+                        <button
+                          onClick={() => rejectEdit(edit.id)}
+                          disabled={executingAll}
+                          className="flex-1 px-2 py-1 text-[11px] font-medium bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {pendingEdits.length > 0 && (
+                <div className="border-t border-slate-200 p-3 space-y-2">
+                  <button
+                    onClick={acceptAllEdits}
+                    disabled={executingAll}
+                    className="w-full px-3 py-2 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    {executingAll ? 'Applying All...' : `Accept All (${pendingEdits.length})`}
+                  </button>
+                  <button
+                    onClick={clearAllEdits}
+                    disabled={executingAll}
+                    className="w-full px-3 py-1.5 text-xs text-slate-500 hover:text-red-600 transition-colors"
+                  >
+                    Discard All
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
