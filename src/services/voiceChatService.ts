@@ -131,6 +131,8 @@ export async function sendChatMessage(
   };
   if (modelName) body.model = modelName;
 
+  console.log('[VoiceChat] Sending to:', chatEndpoint, JSON.stringify(body, null, 2));
+
   const res = await fetch(chatEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
