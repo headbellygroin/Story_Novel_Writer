@@ -9,11 +9,36 @@ const proxyHeaders = {
   'Content-Type': 'application/json',
 };
 
+// Private/local network targets must be called directly from the browser
+// because Supabase edge functions cannot reach Tailscale IPs or localhost.
+function isLocalTarget(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    // Tailscale CGNAT range: 100.64.0.0/10 (100.64.x.x – 100.127.x.x)
+    if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(hostname)) return true;
+    // Standard private ranges
+    if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)) return true;
+    // Windows hostname (not a domain with dots) likely on LAN
+    if (!hostname.includes('.')) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export async function aiProxyFetch(
   targetUrl: string,
   body: Record<string, unknown>,
   stream = false
 ): Promise<Response> {
+  if (isLocalTarget(targetUrl)) {
+    return fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
   return fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: proxyHeaders,
@@ -22,6 +47,9 @@ export async function aiProxyFetch(
 }
 
 export async function aiProxyGet(targetUrl: string): Promise<Response> {
+  if (isLocalTarget(targetUrl)) {
+    return fetch(targetUrl, { method: 'GET' });
+  }
   return fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: proxyHeaders,
@@ -30,6 +58,10 @@ export async function aiProxyGet(targetUrl: string): Promise<Response> {
 }
 
 export function comfyProxyGet(endpoint: string, path: string): Promise<Response> {
+  if (isLocalTarget(endpoint)) {
+    const normalizedBase = endpoint.replace(/\/$/, '');
+    return fetch(`${normalizedBase}${path}`, { method: 'GET' });
+  }
   const url = `${COMFYUI_PROXY_URL}?endpoint=${encodeURIComponent(endpoint)}&path=${encodeURIComponent(path)}`;
   return fetch(url, {
     method: 'GET',
@@ -38,6 +70,14 @@ export function comfyProxyGet(endpoint: string, path: string): Promise<Response>
 }
 
 export function comfyProxyPost(endpoint: string, path: string, body: unknown): Promise<Response> {
+  if (isLocalTarget(endpoint)) {
+    const normalizedBase = endpoint.replace(/\/$/, '');
+    return fetch(`${normalizedBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
   const url = `${COMFYUI_PROXY_URL}?endpoint=${encodeURIComponent(endpoint)}&path=${encodeURIComponent(path)}`;
   return fetch(url, {
     method: 'POST',
@@ -47,6 +87,13 @@ export function comfyProxyPost(endpoint: string, path: string, body: unknown): P
 }
 
 export function comfyProxyUpload(endpoint: string, path: string, formData: FormData): Promise<Response> {
+  if (isLocalTarget(endpoint)) {
+    const normalizedBase = endpoint.replace(/\/$/, '');
+    return fetch(`${normalizedBase}${path}`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
   const url = `${COMFYUI_PROXY_URL}?endpoint=${encodeURIComponent(endpoint)}&path=${encodeURIComponent(path)}`;
   return fetch(url, {
     method: 'POST',
@@ -56,28 +103,32 @@ export function comfyProxyUpload(endpoint: string, path: string, formData: FormD
 }
 
 export function comfyProxyMediaUrl(endpoint: string, path: string): string {
+  if (isLocalTarget(endpoint)) {
+    const normalizedBase = endpoint.replace(/\/$/, '');
+    return `${normalizedBase}${path}`;
+  }
   return `${COMFYUI_PROXY_URL}?endpoint=${encodeURIComponent(endpoint)}&path=${encodeURIComponent(path)}`;
 }
 
 /**
- * Rewrites a stored ComfyUI image URL to route through the edge function proxy.
- * Old URLs may reference 127.0.0.1:8188, desktop-fbpj753:8188, etc.
- * This extracts the path (/view?...) and routes it through the current configured endpoint.
+ * Rewrites a stored ComfyUI image URL to be accessible from the current network context.
+ * For local/Tailscale targets, builds a direct URL; for public targets, routes through the proxy.
  */
 export function proxyImageUrl(storedUrl: string, comfyEndpoint: string): string {
   if (!storedUrl) return storedUrl;
 
-  // If it's already a Supabase storage URL or other non-ComfyUI URL, return as-is
   if (storedUrl.includes('supabase.co')) return storedUrl;
 
-  // Detect ComfyUI URLs by the /view? pattern
   const viewMatch = storedUrl.match(/\/view\?.+$/);
   if (viewMatch) {
     const path = viewMatch[0];
+    if (isLocalTarget(comfyEndpoint)) {
+      const normalizedBase = comfyEndpoint.replace(/\/$/, '');
+      return `${normalizedBase}/${path}`;
+    }
     return `${COMFYUI_PROXY_URL}?endpoint=${encodeURIComponent(comfyEndpoint)}&path=${encodeURIComponent(path)}`;
   }
 
-  // If already a proxy URL, return as-is
   if (storedUrl.includes('/functions/v1/comfyui-proxy')) return storedUrl;
 
   return storedUrl;
