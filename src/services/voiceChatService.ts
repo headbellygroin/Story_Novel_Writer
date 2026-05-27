@@ -113,14 +113,13 @@ export async function sendChatMessage(
   modelName?: string
 ): Promise<string> {
   const historyMessages = history.map((m) => ({ role: m.role, content: m.content }));
-  const userContent = historyMessages.length === 0 && systemPrompt
+  const firstUserContent = systemPrompt
     ? `[Context: ${systemPrompt}]\n\n${message}`
     : message;
 
-  const messages = [
-    ...historyMessages,
-    { role: 'user', content: userContent },
-  ];
+  const messages = historyMessages.length === 0
+    ? [{ role: 'user', content: firstUserContent }]
+    : [...historyMessages, { role: 'user', content: message }];
 
   const chatEndpoint = apiEndpoint.replace('/v1/completions', '/v1/chat/completions');
 
