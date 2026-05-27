@@ -182,7 +182,10 @@ export async function sendChatMessage(
   maxTokens?: number
 ): Promise<string> {
 
-  const historyMessages = history.map((m) => ({ role: m.role, content: m.content }));
+  const historyMessages = history.map((m) => ({
+    role: m.role,
+    content: m.content.replace(/\n?\[Proposed \d+ edits? - see Plan panel\]$/g, '').trim(),
+  }));
 
   // Always include system prompt as the first message so the AI has full context
   const messages: { role: string; content: string }[] = [];
