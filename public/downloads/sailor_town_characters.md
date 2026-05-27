@@ -1,10 +1,13 @@
-# System of a Downs — Character Compendium
+# System of a Downs -- Character Compendium
 
 ---
 
 ## Benjamin
 
 **Role:** Captain
+
+**Text2Image Prompt:**
+Handsome man in his mid 20s. Tall broad shoulders. Athletic build. Relaxed confident posture. Wears faded spacer jacket and utility belt. Ship corridor background. Text at bottom: "Benjamin". Clean sci-fi style.
 
 **Description:**
 Benjamin is a strikingly handsome man in his twenties with the kind of effortless physical presence people immediately notice when he enters a room. Tall, broad-shouldered, and naturally athletic, he possesses the build of a classical spacer laborer combined with the relaxed confidence of someone comfortable in his own skin.
@@ -41,6 +44,9 @@ Unique Ability: Can perceive both the crew's real appearances and their idealize
 ## Reginal
 
 **Role:** Antagonist
+
+**Text2Image Prompt:**
+Middle aged man. Average build. Thinning hair. Tired posture. Wears outdated administrative uniform. Holds multiple tablets. Office background. Text at bottom: "Reginal". PG-13 style.
 
 **Description:**
 Reginal is a middle-aged transit compliance auditor employed by the interstellar infrastructure authority responsible for monitoring fuel taxation, highway stability, and independent freight regulation.
@@ -92,6 +98,9 @@ Arc by Book 7: Finally understands the crew were never criminals, the ship was n
 
 **Role:** Supporting Protagonist
 
+**Text2Image Prompt:**
+Aged patched medical support ship. Asymmetrical hull covered in welds and repairs. Exterior view at space dock. Text at bottom: "The Wayward Naught". Sci-fi style.
+
 **Description:**
 An aging Mendelian-class medical support vessel designated MS-NGT-420. From the outside, the ship appears outdated, overpatched, asymmetrical, heavily repaired, and functionally obsolete.
 
@@ -132,6 +141,9 @@ The ship dies in Book 7 saving lives one final time -- not in glory, not in war,
 
 **Role:** Core Crew
 
+**Text2Image Prompt:**
+Very large strong man. Intimidating size but gentle face. Wears reinforced work clothes. Ship cargo bay background. Text at bottom: "Muscle". PG-13 style.
+
 **Description:**
 A physically large person who has spent most of their life in environments that treated their body as excessive, dangerous, inconvenient, or difficult to accommodate. The Wayward Naught is the first place where Muscle never felt physically wrong -- the ship quietly reshaped itself around them over years of habitation.
 
@@ -155,6 +167,9 @@ Arc: Eventually realizes his greatest strength was never violence -- it was safe
 ## The Hacker
 
 **Role:** Core Crew
+
+**Text2Image Prompt:**
+Fit woman in her 20s. Wears tech jumpsuit with glowing interface pads. Hong Kong space station background. Text at bottom: "The Hacker". PG-13 style.
 
 **Description:**
 Interfaces with the ship's software and digital systems. Discovers evidence of the ship's emergent personality through renamed maintenance folders, emotionally strange diagnostics, oddly timed notifications, and behavioral irregularities that are impossible to fully explain. Believes the ship remembers people.
@@ -180,6 +195,9 @@ Arc: Learns that love does not prevent loss. By Book 7, discovers the fragmented
 
 **Role:** Core Crew
 
+**Text2Image Prompt:**
+Fit person in their 30s. Warm nurturing face. Wears chef apron over ship clothes. Busy ship galley kitchen. Text at bottom: "The Cook". Practical sci-fi style.
+
 **Description:**
 Responsible for feeding the crew. Believes meals taste different aboard the ship -- that the vessel itself somehow contributes to the food's quality. Represents ritual, memory, and the daily labor of care that transforms a vessel into a home.
 
@@ -203,6 +221,9 @@ Arc: Learns silence can also communicate care. Privately believes the ship itsel
 ## The Engineer
 
 **Role:** Core Crew
+
+**Text2Image Prompt:**
+Fit man in his 30s. Grease stains on face and hands. Wears worn work coveralls with tools on belt. Ship engine room background. Text at bottom: "The Engineer". Practical sci-fi style.
 
 **Description:**
 Responsible for maintaining the ship's aging systems. Interprets the ship's mechanical behavior emotionally, hearing personality in reactor harmonics, coolant pumps, and hull resonance. Perceives the ship as a companion -- something that communicates through its mechanical voice.
@@ -228,6 +249,9 @@ Arc: By Book 7, realizes he stopped repairing the ship long ago -- he was keepin
 
 **Role:** Off-Road Space Navigator
 
+**Text2Image Prompt:**
+Fit man in his 40s. Paranoid haunted expression. Wears practical spacer jacket with many pockets. Holds star charts and data pads. Dark space void map room background with holographic displays. Text at bottom: "The Void Cartographer". Sci-fi style.
+
 **Description:**
 One of the few people who deliberately maps off-road space -- the voids beyond stable transit infrastructure. Sells route data to smugglers, salvagers, and desperate traders. Has seen things in the deep voids that they refuse to discuss in detail. Considered half-mad by most spacers, but their maps are reliably accurate.
 
@@ -248,6 +272,9 @@ Quiet, measured, specific. Speaks in coordinates and distances. Becomes evasive 
 ## The Highway Keeper
 
 **Role:** Quantum Highways Custodian
+
+**Text2Image Prompt:**
+Older man in his 50s. Isolated look. Wears worn maintenance uniform. Stands at control console. Ancient space station interior with signal arrays and glowing beacons. Text at bottom: "The Highway Keeper". Sci-fi style.
 
 **Description:**
 One of the rare individuals who maintains ancient Highway infrastructure -- navigation beacons, gravitational anchors, signal arrays. Lives mostly alone aboard an ancient maintenance station. Understands the Highways better than almost anyone alive, but that understanding has made them strange.
@@ -270,6 +297,9 @@ Cryptic, fragmented speech. Mixes technical maintenance language with superstiti
 
 **Role:** Sailor Town Authority
 
+**Text2Image Prompt:**
+Fit man in his 40s. Pragmatic direct face. Wears practical dock worker jacket. Stands in busy space dock control area. Text at bottom: "The Dockmaster". Sci-fi style.
+
 **Description:**
 The person who keeps Sailor Town functioning. Not a politician or elected official -- more like the person everyone agreed to listen to because they consistently made the right call during emergencies. Manages docking assignments, mediates disputes, and maintains the fragile social order.
 
@@ -291,6 +321,9 @@ Blunt, economical speech. Speaks in obligations and favors rather than rules. Sa
 
 **Role:** Sailor Town Cultural Figure
 
+**Text2Image Prompt:**
+Older woman in her 50s. Quiet reverent expression. Wears simple archivist clothes. Surrounded by old books, memorial walls and ship models in Sailor Town archive room. Text at bottom: "The Archivist". Sci-fi style.
+
 **Description:**
 Keeper of spacer songs, memorial walls, transit tattoo histories, and old route records. Maintains the oral and physical history of spacer culture -- the stories, the dead routes, the names of lost ships, the songs that carry labor memory from generation to generation.
 
@@ -311,6 +344,9 @@ Speaks in stories and references. Often answers questions with songs or historic
 ## The Compliance Director
 
 **Role:** Core Worlds Official
+
+**Text2Image Prompt:**
+Middle aged woman in her 50s. Precise clinical expression. Wears formal administrative uniform. Office with data screens and documents. Text at bottom: "The Compliance Director". Sci-fi style.
 
 **Description:**
 A senior infrastructure compliance official in the Core Transit Worlds. Represents the bureaucratic system that considers The Wayward Naught an anomaly, a liability, and a threat to standardized infrastructure modeling. Views emotional attachment to ships as irrational.
@@ -336,6 +372,9 @@ Represents the institutional philosophy Reginal comes from. A foil to the crew's
 
 **Role:** Frontier Belts Leader
 
+**Text2Image Prompt:**
+Tough man in his 40s. Shrewd protective face. Wears reinforced work gear. Stands in frontier salvage yard with ship parts. Text at bottom: "The Salvage Boss". Sci-fi style.
+
 **Description:**
 Runs the largest salvage operation in their sector of the Frontier Belts. Part employer, part warlord, part community organizer. Keeps their settlement alive through sheer will, mechanical expertise, and the ability to turn wreckage into survival. Everyone owes them something -- and they remember every debt.
 
@@ -356,6 +395,9 @@ Direct, transactional speech. Speaks in terms of what things are worth and what 
 ## Old Vela
 
 **Role:** Ancient Fuel Broker / Pre-War Navigator
+
+**Text2Image Prompt:**
+Elderly woman in her 70s. Weathered patient face. Wears old trader clothes. Fuel broker desk in Valapo station. Text at bottom: "Old Vela". Sci-fi style.
 
 **Description:**
 An ancient fuel broker who has operated in Valapo since before the Last Great War. One of the few living people who remembers when ships were heavily crew-operated and human intuition mattered. Her knowledge of pre-war navigation routes is invaluable to those who know to ask.
@@ -378,6 +420,9 @@ Slow, deliberate speech. Uses old spacer terminology. Pauses between thoughts ar
 
 **Role:** Retired War Hero
 
+**Text2Image Prompt:**
+Dignified older man in his 60s. Retired admiral. Wears old military uniform. Stands among retired warship monuments in Port Mahon. Text at bottom: "Admiral Rowan". Sci-fi style.
+
 **Description:**
 A retired admiral and outspoken critic of modern AI fleets. Lives in Port Mahon among the monuments of retired warships. Believes the transition to AI-managed military systems was a catastrophic mistake that traded human judgment for processing speed.
 
@@ -398,6 +443,9 @@ Commanding, precise military speech. Speaks in complete sentences with clear str
 ## Meg of Tiger Bay
 
 **Role:** Singer / Smuggler / Unofficial Queen of the Docks
+
+**Text2Image Prompt:**
+Fit attractive woman in her 30s. Passionate expression. Curly hair. Wears stylish fitted jacket and pants. Tiger Bay dock area space station background. Text at bottom: "Meg of Tiger Bay". PG-13 style.
 
 **Description:**
 Singer, smuggler, and unofficial queen of Tiger Bay. Her influence comes from being beloved rather than feared. Controls the port's social fabric through music, relationships, and the loyalty of spacer families who consider her one of their own.
@@ -420,6 +468,9 @@ Musical, emotional speech. Speaks with rhythm and emphasis. Uses endearments nat
 
 **Role:** Tavern Owner / Harbor Storyteller
 
+**Text2Image Prompt:**
+Fit attractive woman in her 30s. Warm friendly face. Wears practical tavern clothes with apron. Gull and Lantern tavern interior in Liverpool space port. Text at bottom: "Kate of Liverpool". PG-13 style.
+
 **Description:**
 Owner of the Gull & Lantern tavern in Liverpool. Her establishment is where spacer stories are told, crews are recruited, and the old traditions are maintained. The Gull & Lantern is where you go to hear the real history of independent trading.
 
@@ -440,6 +491,9 @@ Warm, story-shaped speech. Speaks in anecdotes and welcomes. Remembers everyone'
 ## The Ledgermaster
 
 **Role:** Legendary Customs Official
+
+**Text2Image Prompt:**
+Middle aged man in his 50s. Precise relentless expression. Wears formal customs uniform. Antwerp customs office with stacks of paperwork and screens. Text at bottom: "The Ledgermaster". Sci-fi style.
 
 **Description:**
 A customs official of almost mythical reputation in Antwerp. Feared by independent traders galaxy-wide. Has never been bribed, never made an error, never shown mercy on a filing deadline. The bureaucratic system personified -- not evil, but absolutely implacable.
@@ -462,6 +516,9 @@ Formal, precise, measured. Speaks in regulations and filing codes. Never uses co
 
 **Role:** Performance Hall Owner
 
+**Text2Image Prompt:**
+Large heavy woman in her 40s. Theatrical bold expression. Wears dramatic but modest performance outfit. Frisco Town performance hall stage background. Text at bottom: "Fat Louise". PG-13 style.
+
 **Description:**
 Owner of the largest performance hall in Frisco Town. Part showrunner, part smuggler, part ringmaster. Her establishment is where entertainment, contraband, and chaos intersect. She controls the spectacle -- and the spectacle is how she controls Frisco Town.
 
@@ -482,6 +539,9 @@ Booming, theatrical speech. Announces rather than speaks. Uses dramatic pauses. 
 ## Sweet Marie
 
 **Role:** Tavern Owner / Refugee Dock Matriarch
+
+**Text2Image Prompt:**
+Fit attractive woman in her 40s. Gentle warm face. Brown hair in practical bun. Wears modest apron over fitted work clothes. Refugee dock tavern interior in Dunkirk space port. Text at bottom: "Sweet Marie". PG-13 style.
 
 **Description:**
 Owner of the oldest tavern on Dunkirk's refugee docks. Has been serving food and shelter to displaced people longer than most port officials have been alive. Her tavern is neutral ground -- a place where exhausted people can rest without politics.
@@ -504,6 +564,9 @@ Soft-spoken, direct when needed. Speaks in kindnesses and practical instructions
 
 **Role:** Information Broker
 
+**Text2Image Prompt:**
+Fit attractive Asian woman in her 20s. Playful charming smile. Long dark hair. Wears fitted red qipao style outfit like Chun Li. Floating karaoke bar interior in Hong Kong space station. Text at bottom: "The Sing-Song Girl". PG-13 style.
+
 **Description:**
 Operates from a floating karaoke bar in Hong Kong. Sells information, access, favors, and secrets. The name is both a cover and a brand -- nobody knows her real identity. Everything she offers comes with a price, and the price is never just money.
 
@@ -524,6 +587,9 @@ Musical, indirect speech. Answers questions with questions. Speaks in metaphors 
 ## Betty of Port Adelaide
 
 **Role:** Dockside Tavern Owner / Unofficial Fixer
+
+**Text2Image Prompt:**
+Fit attractive woman in her 30s with very large breasts. Strong practical build. Short dark hair. Confident no-nonsense expression. Wears modest blue sci-fi jumpsuit with utility belt. Dockside tavern interior in Port Adelaide space port. Text at bottom: "Betty of Port Adelaide". PG-13 style like Cammy from Street Fighter.
 
 **Description:**
 The person you see when something needs doing in Port Adelaide. Runs a dockside tavern that doubles as the real nerve center of the port -- where deals are brokered, disputes settled, and jobs assigned. Not official authority, but everyone defers to her.
