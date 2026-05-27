@@ -182,13 +182,14 @@ export async function sendChatMessage(
 ): Promise<string> {
 
   const historyMessages = history.map((m) => ({ role: m.role, content: m.content }));
-  const firstUserContent = systemPrompt
-    ? `[Context: ${systemPrompt}]\n\n${message}`
-    : message;
 
-  const messages = historyMessages.length === 0
-    ? [{ role: 'user', content: firstUserContent }]
-    : [...historyMessages, { role: 'user', content: message }];
+  // Always include system prompt as the first message so the AI has full context
+  const messages: { role: string; content: string }[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push(...historyMessages);
+  messages.push({ role: 'user', content: message });
 
   const baseUrl = apiEndpoint.replace(/\/v1\/(chat\/)?completions.*/, '');
   const chatUrl = `${baseUrl}/v1/chat/completions`;
@@ -196,7 +197,7 @@ export async function sendChatMessage(
   const body: Record<string, unknown> = {
     messages,
     temperature: 0.7,
-    max_tokens: 1000,
+    max_tokens: 4000,
     stream: false,
   };
   if (modelName) body.model = modelName;
@@ -211,7 +212,7 @@ export async function sendChatMessage(
       const textBody: Record<string, unknown> = {
         prompt,
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 4000,
         stream: false,
         stop: ['\nUser:', '\nuser:', '\n\nUser:'],
       };
