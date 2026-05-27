@@ -78,6 +78,7 @@ export default function Settings() {
     style_guide: '',
     style_rules: {},
     vision_model_name: 'llava-v1.6-mistral-7b',
+    vision_api_endpoint: '',
     comfyui_endpoint: 'http://desktop-fbpj753:8188',
     comfyui_checkpoint: '',
     comfyui_workflow: null,
@@ -190,8 +191,8 @@ export default function Settings() {
 
   async function handleCheckVision() {
     setVisionStatus('checking');
-    const endpoint = settings.api_endpoint || 'http://localhost:1234/v1/chat/completions';
-    const connected = await checkVisionConnection(endpoint);
+    const visionEndpoint = (settings.vision_api_endpoint as string) || (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
+    const connected = await checkVisionConnection(visionEndpoint);
     setVisionStatus(connected ? 'connected' : 'disconnected');
   }
 
@@ -468,42 +469,54 @@ export default function Settings() {
           title="Vision / Image Analysis (LM Studio)"
           description="Analyzes reference images using a vision-capable model loaded in LM Studio on your AI machine. Load a vision model (LLaVA, BakLLaVA, etc.) alongside or instead of your writing model."
         >
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Model Name</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision API Endpoint</label>
               <input
                 type="text"
-                value={settings.vision_model_name || 'llava-v1.6-mistral-7b'}
-                onChange={(e) => setSettings({ ...settings, vision_model_name: e.target.value })}
+                value={(settings.vision_api_endpoint as string) || ''}
+                onChange={(e) => setSettings({ ...settings, vision_api_endpoint: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm"
-                placeholder="llava-v1.6-mistral-7b"
+                placeholder="http://100.81.168.74:1234/v1/chat/completions"
               />
               <p className="text-xs text-slate-400 mt-1">
-                The Model ID shown in LM Studio's Local Server tab when a vision model is loaded (e.g. <code>llava-v1.6-mistral-7b</code>).
+                Full endpoint URL for the vision model. Leave blank to use the same server as your Writing AI above. If running a separate LM Studio instance for vision, enter its URL here (e.g. <code>http://100.81.168.74:1234/v1/chat/completions</code>).
               </p>
             </div>
-            <div className="flex flex-col justify-end">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCheckVision}
-                  disabled={visionStatus === 'checking'}
-                  className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
-                >
-                  {visionStatus === 'checking' ? 'Checking...' : 'Test Vision Connection'}
-                </button>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <ConnDot status={visionStatus} />
-                  {visionStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
-                  {visionStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
-                  {visionStatus === 'connected' && <span className="text-emerald-600">Connected</span>}
-                  {visionStatus === 'disconnected' && <span className="text-red-600">Cannot reach LM Studio vision model — check model is loaded</span>}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Vision Model Name</label>
+                <input
+                  type="text"
+                  value={settings.vision_model_name || 'llava-v1.6-mistral-7b'}
+                  onChange={(e) => setSettings({ ...settings, vision_model_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm"
+                  placeholder="llava-v1.6-mistral-7b"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  The Model ID shown in LM Studio's Local Server tab (e.g. <code>llava-v1.6-mistral-7b</code>). This is just the model name, not a URL.
+                </p>
+              </div>
+              <div className="flex flex-col justify-end">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCheckVision}
+                    disabled={visionStatus === 'checking'}
+                    className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors"
+                  >
+                    {visionStatus === 'checking' ? 'Checking...' : 'Test Vision Connection'}
+                  </button>
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <ConnDot status={visionStatus} />
+                    {visionStatus === 'unchecked' && <span className="text-slate-400">Not tested</span>}
+                    {visionStatus === 'checking' && <span className="text-amber-600">Connecting…</span>}
+                    {visionStatus === 'connected' && <span className="text-emerald-600">Connected</span>}
+                    {visionStatus === 'disconnected' && <span className="text-red-600">Cannot reach LM Studio vision model — check model is loaded</span>}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
-            Vision requests are routed through the same LM Studio server as text generation. Load a vision-capable model in LM Studio and enter its Model ID above.
           </div>
         </Section>
 

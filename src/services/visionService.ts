@@ -23,10 +23,10 @@ Write a rich, detailed description that a writer could use to maintain visual co
 async function getVisionEndpoint(): Promise<string> {
   const { data } = await supabase
     .from('generation_settings')
-    .select('api_endpoint')
+    .select('vision_api_endpoint, api_endpoint')
     .limit(1)
     .maybeSingle();
-  const endpoint = data?.api_endpoint || 'http://localhost:1234/v1/chat/completions';
+  const endpoint = data?.vision_api_endpoint || data?.api_endpoint || 'http://localhost:1234/v1/chat/completions';
   return endpoint.replace(/\/v1\/.*$/, '');
 }
 

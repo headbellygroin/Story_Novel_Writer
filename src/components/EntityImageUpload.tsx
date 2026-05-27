@@ -129,7 +129,7 @@ export default function EntityImageUpload({
 
       const settingsRes = await supabase
         .from('generation_settings')
-        .select('vision_model_name, api_endpoint')
+        .select('vision_model_name, vision_api_endpoint, api_endpoint')
         .eq('project_id', projectId)
         .maybeSingle();
 
@@ -138,7 +138,7 @@ export default function EntityImageUpload({
         entityType,
         entityName,
         model: settingsRes.data?.vision_model_name || 'llava-1.6-mistral-7b',
-        apiEndpoint: settingsRes.data?.api_endpoint || undefined,
+        apiEndpoint: settingsRes.data?.vision_api_endpoint || settingsRes.data?.api_endpoint || undefined,
       });
 
       onImageChange(imageUrl, description);
