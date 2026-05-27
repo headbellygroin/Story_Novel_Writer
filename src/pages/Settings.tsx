@@ -562,6 +562,54 @@ export default function Settings() {
             <p className="text-xs text-slate-400 mb-4">Configure the Flux workflow for scene image generation.</p>
           </div>
 
+          {/* --- Workflow JSON --- */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-1">Workflow JSON</p>
+            <p className="text-xs text-slate-400 mb-3">
+              Upload the ComfyUI workflow JSON (API format) for text-to-image generation.
+              Export from ComfyUI using "Save (API Format)" or use the JSON from the API queue.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="px-4 py-2 bg-sky-600 text-white text-sm font-medium rounded-lg hover:bg-sky-700 transition-colors cursor-pointer">
+                {settings.comfyui_workflow ? 'Replace Workflow' : 'Upload Workflow JSON'}
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const text = await file.text();
+                      const json = JSON.parse(text);
+                      // Detect graph format (has nodes/links) vs API format (flat node IDs)
+                      if (json.nodes && json.links && !json.class_type) {
+                        alert('This appears to be a ComfyUI graph-format file (exported via Save). Please export using "Save (API Format)" instead, or use the workflow JSON from the /prompt API endpoint.');
+                        return;
+                      }
+                      setSettings({ ...settings, comfyui_workflow: json } as any);
+                    } catch {
+                      alert('Invalid JSON file');
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {settings.comfyui_workflow && (
+                <span className="text-sm text-emerald-600 font-medium flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                  Workflow loaded
+                </span>
+              )}
+              {!settings.comfyui_workflow && (
+                <span className="text-sm text-amber-600 font-medium flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                  No workflow — image generation disabled
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* --- Orientation --- */}
           <div>
             <p className="text-sm font-medium text-slate-700 mb-2">Output Orientation</p>
