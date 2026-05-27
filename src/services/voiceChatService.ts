@@ -178,7 +178,8 @@ export async function sendChatMessage(
   history: ChatMessage[],
   apiEndpoint: string,
   systemPrompt: string,
-  modelName?: string
+  modelName?: string,
+  maxTokens?: number
 ): Promise<string> {
 
   const historyMessages = history.map((m) => ({ role: m.role, content: m.content }));
@@ -197,7 +198,7 @@ export async function sendChatMessage(
   const body: Record<string, unknown> = {
     messages,
     temperature: 0.7,
-    max_tokens: 4000,
+    max_tokens: maxTokens || 4000,
     stream: false,
   };
   if (modelName) body.model = modelName;
@@ -212,7 +213,7 @@ export async function sendChatMessage(
       const textBody: Record<string, unknown> = {
         prompt,
         temperature: 0.7,
-        max_tokens: 4000,
+        max_tokens: maxTokens || 4000,
         stream: false,
         stop: ['\nUser:', '\nuser:', '\n\nUser:'],
       };

@@ -417,7 +417,8 @@ export default function VoiceChat() {
         messages,
         settings.api_endpoint as string,
         systemPrompt,
-        (settings.model_name as string) || undefined
+        (settings.model_name as string) || undefined,
+        (settings.max_tokens as number) || undefined
       );
 
       const { cleanText, proposals } = parseProposals(response);
