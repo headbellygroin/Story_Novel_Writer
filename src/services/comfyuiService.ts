@@ -14,9 +14,9 @@ export type ImageOrientation = 'portrait' | 'landscape' | 'square';
 export type ImageNoiseMode = 'random' | 'fixed';
 
 export const IMAGE_DIMENSIONS: Record<ImageOrientation, { width: number; height: number }> = {
-  portrait:  { width: 768, height: 1024 },
-  landscape: { width: 1024, height: 768 },
-  square:    { width: 1024, height: 1024 },
+  portrait:  { width: 1080, height: 1920 },
+  landscape: { width: 1920, height: 1080 },
+  square:    { width: 1080, height: 1080 },
 };
 
 export interface ComfyUISettings {

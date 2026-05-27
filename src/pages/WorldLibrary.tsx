@@ -8,7 +8,6 @@ import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infras
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
 import { proxyImageUrl } from '../lib/proxyFetch';
-import { getEndpointConfig } from '../lib/endpointResolver';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -39,13 +38,14 @@ export default function WorldLibrary() {
 
   useEffect(() => {
     if (currentProjectId) {
-      getEndpointConfig().then((config) => {
-        if (config.isRemote && config.remoteComfy) {
-          setComfyEndpoint(config.remoteComfy);
-        } else if (config.localComfy) {
-          setComfyEndpoint(config.localComfy);
-        }
-      });
+      supabase
+        .from('generation_settings')
+        .select('comfyui_endpoint')
+        .eq('project_id', currentProjectId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.comfyui_endpoint) setComfyEndpoint(data.comfyui_endpoint);
+        });
     }
   }, [currentProjectId]);
 

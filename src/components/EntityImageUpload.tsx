@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase';
 import { analyzeImageWithVision } from '../services/visionService';
 import { generateImage, ComfyUISettings, ImageOrientation } from '../services/comfyuiService';
 import { proxyImageUrl } from '../lib/proxyFetch';
-import { getEndpointConfig } from '../lib/endpointResolver';
 
 interface EntityImageUploadProps {
   entityType: string;
@@ -59,13 +58,14 @@ export default function EntityImageUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getEndpointConfig().then((config) => {
-      if (config.isRemote && config.remoteComfy) {
-        setComfyEndpoint(config.remoteComfy);
-      } else if (config.localComfy) {
-        setComfyEndpoint(config.localComfy);
-      }
-    });
+    supabase
+      .from('generation_settings')
+      .select('comfyui_endpoint')
+      .eq('project_id', projectId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.comfyui_endpoint) setComfyEndpoint(data.comfyui_endpoint);
+      });
   }, [projectId]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
