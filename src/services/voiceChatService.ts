@@ -131,9 +131,7 @@ export async function sendChatMessage(
   };
   if (modelName) body.model = modelName;
 
-  console.log('[VoiceChat] Sending to:', chatEndpoint, JSON.stringify(body, null, 2));
-
-  const res = await fetch(chatEndpoint, {
+  let res = await fetch(chatEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -141,7 +139,33 @@ export async function sendChatMessage(
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Chat API error: ${errText}`);
+    const isTemplateError = errText.includes('jinja template') || errText.includes('roles are supported');
+
+    if (isTemplateError) {
+      const completionsEndpoint = chatEndpoint.replace('/v1/chat/completions', '/v1/completions');
+      const prompt = buildTextPrompt(messages, systemPrompt);
+      const fallbackBody: Record<string, unknown> = {
+        prompt,
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: false,
+        stop: ['\nUser:', '\nuser:'],
+      };
+      if (modelName) fallbackBody.model = modelName;
+
+      res = await fetch(completionsEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fallbackBody),
+      });
+
+      if (!res.ok) {
+        const fallbackErr = await res.text();
+        throw new Error(`Chat API error: ${fallbackErr}`);
+      }
+    } else {
+      throw new Error(`Chat API error: ${errText}`);
+    }
   }
 
   const data = await res.json();
@@ -150,11 +174,27 @@ export async function sendChatMessage(
     return data.choices[0].message.content;
   }
   if (data.choices?.[0]?.text) {
-    return data.choices[0].text;
+    return data.choices[0].text.trim();
   }
   if (data.content) {
     return data.content;
   }
 
   throw new Error('Unexpected response format from chat API');
+}
+
+function buildTextPrompt(messages: { role: string; content: string }[], systemPrompt: string): string {
+  let prompt = '';
+  if (systemPrompt) {
+    prompt += `${systemPrompt}\n\n`;
+  }
+  for (const msg of messages) {
+    if (msg.role === 'user') {
+      prompt += `User: ${msg.content}\n`;
+    } else {
+      prompt += `Assistant: ${msg.content}\n`;
+    }
+  }
+  prompt += 'Assistant:';
+  return prompt;
 }
