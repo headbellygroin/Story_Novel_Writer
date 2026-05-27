@@ -163,7 +163,8 @@ export default function EntityImageUpload({
         batchSize: 1,
       };
 
-      const prompt = customPrompt.trim() || buildEntityPrompt(entityType, entityName, entityDescription || '');
+      const descForPrompt = imageDescription || entityDescription || '';
+      const prompt = customPrompt.trim() || buildEntityPrompt(entityType, entityName, descForPrompt);
       const result = await generateImage(prompt, comfySettings);
 
       onImageChange(result.comfyUrl, imageDescription || prompt);
@@ -177,7 +178,8 @@ export default function EntityImageUpload({
   }
 
   function openPromptEditor() {
-    const autoPrompt = buildEntityPrompt(entityType, entityName, entityDescription || '');
+    const descForPrompt = imageDescription || entityDescription || '';
+    const autoPrompt = buildEntityPrompt(entityType, entityName, descForPrompt);
     setCustomPrompt(autoPrompt);
     setShowPromptEditor(true);
   }
