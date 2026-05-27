@@ -30,9 +30,14 @@ async function getVisionEndpoint(): Promise<string> {
   return endpoint.replace(/\/v1\/.*$/, '');
 }
 
-export async function checkVisionConnection(): Promise<boolean> {
+export async function checkVisionConnection(endpoint?: string): Promise<boolean> {
   try {
-    const base = await getVisionEndpoint();
+    let base: string;
+    if (endpoint) {
+      base = endpoint.replace(/\/v1\/.*$/, '');
+    } else {
+      base = await getVisionEndpoint();
+    }
     const res = await aiProxyGet(`${base}/v1/models`);
     return res.ok;
   } catch {

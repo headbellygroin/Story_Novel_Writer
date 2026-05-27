@@ -190,7 +190,8 @@ export default function Settings() {
 
   async function handleCheckVision() {
     setVisionStatus('checking');
-    const connected = await checkVisionConnection();
+    const endpoint = settings.api_endpoint || 'http://localhost:1234/v1/chat/completions';
+    const connected = await checkVisionConnection(endpoint);
     setVisionStatus(connected ? 'connected' : 'disconnected');
   }
 

@@ -116,7 +116,9 @@ export default function EntityImageUpload({
     setError('');
 
     try {
-      const response = await fetch(imageUrl);
+      // Fetch image using the proxied URL (handles Tailscale/remote access)
+      const resolvedUrl = proxyImageUrl(imageUrl, comfyEndpoint);
+      const response = await fetch(resolvedUrl);
       const blob = await response.blob();
 
       const base64 = await new Promise<string>((resolve) => {
@@ -127,7 +129,7 @@ export default function EntityImageUpload({
 
       const settingsRes = await supabase
         .from('generation_settings')
-        .select('vision_model_name')
+        .select('vision_model_name, api_endpoint')
         .eq('project_id', projectId)
         .maybeSingle();
 
@@ -136,6 +138,7 @@ export default function EntityImageUpload({
         entityType,
         entityName,
         model: settingsRes.data?.vision_model_name || 'llava-1.6-mistral-7b',
+        apiEndpoint: settingsRes.data?.api_endpoint || undefined,
       });
 
       onImageChange(imageUrl, description);

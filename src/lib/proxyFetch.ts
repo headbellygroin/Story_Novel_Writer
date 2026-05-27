@@ -112,24 +112,36 @@ export function comfyProxyMediaUrl(endpoint: string, path: string): string {
 
 /**
  * Rewrites a stored ComfyUI image URL to be accessible from the current network context.
- * For local/Tailscale targets, builds a direct URL; for public targets, routes through the proxy.
+ * Stored URLs may contain 127.0.0.1 / localhost origins that don't work remotely.
+ * We extract the path and rebuild against the currently configured endpoint.
  */
 export function proxyImageUrl(storedUrl: string, comfyEndpoint: string): string {
   if (!storedUrl) return storedUrl;
 
   if (storedUrl.includes('supabase.co')) return storedUrl;
+  if (storedUrl.includes('/functions/v1/comfyui-proxy')) return storedUrl;
 
+  // Extract the /view?... path from any ComfyUI URL (stored with any origin)
   const viewMatch = storedUrl.match(/\/view\?.+$/);
   if (viewMatch) {
     const path = viewMatch[0];
     if (isLocalTarget(comfyEndpoint)) {
       const normalizedBase = comfyEndpoint.replace(/\/$/, '');
-      return `${normalizedBase}/${path}`;
+      return `${normalizedBase}${path}`;
     }
     return `${COMFYUI_PROXY_URL}?endpoint=${encodeURIComponent(comfyEndpoint)}&path=${encodeURIComponent(path)}`;
   }
 
-  if (storedUrl.includes('/functions/v1/comfyui-proxy')) return storedUrl;
+  // If it's a full URL with a local/private origin but no /view path, try rebasing
+  try {
+    const parsed = new URL(storedUrl);
+    if (isLocalTarget(storedUrl)) {
+      const normalizedBase = comfyEndpoint.replace(/\/$/, '');
+      return `${normalizedBase}${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // not a valid URL, return as-is
+  }
 
   return storedUrl;
 }
