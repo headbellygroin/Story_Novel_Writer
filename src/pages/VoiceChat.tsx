@@ -516,7 +516,7 @@ export default function VoiceChat() {
 
   if (!currentProjectId) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
         <div className="text-center text-slate-600">Please select or create a project first.</div>
       </div>
     );
@@ -524,7 +524,7 @@ export default function VoiceChat() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
         <div className="text-center text-slate-600">Loading...</div>
       </div>
     );
@@ -539,92 +539,97 @@ export default function VoiceChat() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold text-slate-900">Voice Chat</h1>
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-            connectionStatus === 'connected' ? 'bg-emerald-50 text-emerald-700' :
-            connectionStatus === 'checking' ? 'bg-amber-50 text-amber-700' :
-            'bg-red-50 text-red-700'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected' ? 'bg-emerald-500' :
-              connectionStatus === 'checking' ? 'bg-amber-500 animate-pulse' :
-              'bg-red-500'
-            }`} />
-            {connectionStatus === 'connected' ? 'Connected' :
-             connectionStatus === 'checking' ? 'Checking...' :
-             'Disconnected'}
-          </span>
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Sticky header area */}
+      <div className="flex-shrink-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-slate-900">Voice Chat</h1>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+              connectionStatus === 'connected' ? 'bg-emerald-50 text-emerald-700' :
+              connectionStatus === 'checking' ? 'bg-amber-50 text-amber-700' :
+              'bg-red-50 text-red-700'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-emerald-500' :
+                connectionStatus === 'checking' ? 'bg-amber-500 animate-pulse' :
+                'bg-red-500'
+              }`} />
+              {connectionStatus === 'connected' ? 'Connected' :
+               connectionStatus === 'checking' ? 'Checking...' :
+               'Disconnected'}
+            </span>
+          </div>
+          <ProjectSelector />
         </div>
-        <ProjectSelector />
+
+        {(!speechSupported || !synthSupported) && (
+          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="text-sm text-amber-800">
+              {!speechSupported && 'Voice input requires a secure context (HTTPS or localhost). You can still type messages below. '}
+              {!synthSupported && 'Speech synthesis is not available in this browser.'}
+            </p>
+          </div>
+        )}
+
+        {!settings?.api_endpoint && (
+          <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-sm text-red-800">No API endpoint configured. Set up your LM Studio endpoint in Settings first.</p>
+          </div>
+        )}
       </div>
 
-      {(!speechSupported || !synthSupported) && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-sm text-amber-800">
-            {!speechSupported && 'Voice input requires a secure context (HTTPS or localhost). You can still type messages below. '}
-            {!synthSupported && 'Speech synthesis is not available in this browser.'}
-          </p>
-        </div>
-      )}
+      {/* Main content area - fills remaining height */}
+      <div className="flex-1 min-h-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-4">
+        <div className="flex gap-6 h-full">
+          {/* Voice Settings - Left */}
+          <div className="w-48 flex-shrink-0 hidden lg:block">
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 space-y-4">
+              <h3 className="font-semibold text-slate-900 text-sm">Voice Settings</h3>
 
-      {!settings?.api_endpoint && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-sm text-red-800">No API endpoint configured. Set up your LM Studio endpoint in Settings first.</p>
-        </div>
-      )}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Voice</label>
+                <select
+                  value={selectedVoice}
+                  onChange={(e) => setVoiceChatState({ voice: e.target.value })}
+                  className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="">System Default</option>
+                  {voices.map((v) => (
+                    <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                  ))}
+                </select>
+              </div>
 
-      <div className="flex gap-6">
-        {/* Voice Settings - Left */}
-        <div className="w-48 flex-shrink-0 hidden lg:block">
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 space-y-4 sticky top-4">
-            <h3 className="font-semibold text-slate-900 text-sm">Voice Settings</h3>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Speed: {speechRate.toFixed(1)}x</label>
+                <input type="range" min="0.5" max="2" step="0.1" value={speechRate}
+                  onChange={(e) => setVoiceChatState({ rate: parseFloat(e.target.value) })} className="w-full accent-sky-600" />
+              </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Voice</label>
-              <select
-                value={selectedVoice}
-                onChange={(e) => setVoiceChatState({ voice: e.target.value })}
-                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-              >
-                <option value="">System Default</option>
-                {voices.map((v) => (
-                  <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                ))}
-              </select>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Pitch: {speechPitch.toFixed(1)}</label>
+                <input type="range" min="0.5" max="2" step="0.1" value={speechPitch}
+                  onChange={(e) => setVoiceChatState({ pitch: parseFloat(e.target.value) })} className="w-full accent-sky-600" />
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={autoListen} onChange={(e) => setVoiceChatState({ autoListen: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+                <span className="text-xs text-slate-700">Auto-listen after response</span>
+              </label>
+
+              <button onClick={clearChat}
+                className="w-full px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
+                Clear Conversation
+              </button>
             </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Speed: {speechRate.toFixed(1)}x</label>
-              <input type="range" min="0.5" max="2" step="0.1" value={speechRate}
-                onChange={(e) => setVoiceChatState({ rate: parseFloat(e.target.value) })} className="w-full accent-sky-600" />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Pitch: {speechPitch.toFixed(1)}</label>
-              <input type="range" min="0.5" max="2" step="0.1" value={speechPitch}
-                onChange={(e) => setVoiceChatState({ pitch: parseFloat(e.target.value) })} className="w-full accent-sky-600" />
-            </div>
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={autoListen} onChange={(e) => setVoiceChatState({ autoListen: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-              <span className="text-xs text-slate-700">Auto-listen after response</span>
-            </label>
-
-            <button onClick={clearChat}
-              className="w-full px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
-              Clear Conversation
-            </button>
           </div>
-        </div>
 
-        {/* Chat - Center */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex-1 flex flex-col" style={{ minHeight: '500px' }}>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Chat - Center */}
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 && (
                 <div className="text-center text-slate-400 mt-20">
                   <svg className="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -768,7 +773,7 @@ export default function VoiceChat() {
           {!planPanelOpen ? (
             <button
               onClick={() => setPlanPanelOpen(true)}
-              className="sticky top-4 w-10 h-10 bg-white rounded-lg shadow-sm border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors relative"
+              className="w-10 h-10 bg-white rounded-lg shadow-sm border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors relative"
               title="Open plan panel"
             >
               <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -781,7 +786,7 @@ export default function VoiceChat() {
               )}
             </button>
           ) : (
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 sticky top-4 flex flex-col" style={{ maxHeight: 'calc(100vh - 8rem)' }}>
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col max-h-full overflow-hidden">
               <div className="flex items-center justify-between p-3 border-b border-slate-200">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-slate-900 text-sm">Edit Plan</h3>
@@ -877,6 +882,7 @@ export default function VoiceChat() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

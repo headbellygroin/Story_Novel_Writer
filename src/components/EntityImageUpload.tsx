@@ -11,6 +11,7 @@ interface EntityImageUploadProps {
   imageUrl: string;
   imageDescription: string;
   projectId: string;
+  entityId?: string;
   entityDescription?: string;
   onImageChange: (url: string, description: string) => void;
 }
@@ -44,6 +45,7 @@ export default function EntityImageUpload({
   imageUrl,
   imageDescription,
   projectId,
+  entityId,
   entityDescription,
   onImageChange,
 }: EntityImageUploadProps) {
@@ -185,7 +187,17 @@ export default function EntityImageUpload({
 
       // Persist image to Supabase storage so it's always accessible
       const persistedUrl = await persistComfyImage(result.comfyUrl, settings.comfyui_endpoint);
-      onImageChange(persistedUrl, imageDescription || prompt);
+      const desc = imageDescription || prompt;
+
+      // Save directly to DB so navigation away doesn't lose the image
+      if (entityId) {
+        await supabase
+          .from(entityType as 'characters')
+          .update({ image_url: persistedUrl, image_description: desc, updated_at: new Date().toISOString() })
+          .eq('id', entityId);
+      }
+
+      onImageChange(persistedUrl, desc);
       setShowPromptEditor(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Generation failed';

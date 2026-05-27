@@ -181,7 +181,9 @@ export async function sendChatMessage(
   modelName?: string
 ): Promise<string> {
 
-  const historyMessages = history.map((m) => ({ role: m.role, content: m.content }));
+  // Send only recent history to avoid overflowing the model's context window
+  const recentHistory = history.slice(-30);
+  const historyMessages = recentHistory.map((m) => ({ role: m.role, content: m.content }));
 
   // Always include system prompt as the first message so the AI has full context
   const messages: { role: string; content: string }[] = [];

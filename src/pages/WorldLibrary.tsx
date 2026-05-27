@@ -190,6 +190,7 @@ export default function WorldLibrary() {
         onSave={saveEntity}
         onCancel={resetForm}
         isEditing={!!editingId}
+        entityId={editingId || undefined}
       />}
 
       {loading ? (
@@ -225,6 +226,7 @@ function EntityForm({
   onSave,
   onCancel,
   isEditing,
+  entityId,
 }: {
   type: EntityType;
   formData: any;
@@ -232,6 +234,7 @@ function EntityForm({
   onSave: () => void;
   onCancel: () => void;
   isEditing: boolean;
+  entityId?: string;
 }) {
   const { currentProjectId } = useStore();
   const fields = getFieldsForType(type);
@@ -264,6 +267,7 @@ function EntityForm({
             imageDescription={formData.image_description || ''}
             entityDescription={formData.description || ''}
             projectId={currentProjectId}
+            entityId={entityId}
             onImageChange={(url, desc) =>
               setFormData({ ...formData, image_url: url, image_description: desc })
             }
