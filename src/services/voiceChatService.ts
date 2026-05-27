@@ -105,6 +105,8 @@ export function stopSpeaking(): void {
   }
 }
 
+import { aiProxyFetch } from '../lib/proxyFetch';
+
 export async function sendChatMessage(
   message: string,
   history: ChatMessage[],
@@ -112,6 +114,7 @@ export async function sendChatMessage(
   systemPrompt: string,
   modelName?: string
 ): Promise<string> {
+
   const historyMessages = history.map((m) => ({ role: m.role, content: m.content }));
   const firstUserContent = systemPrompt
     ? `[Context: ${systemPrompt}]\n\n${message}`
@@ -124,7 +127,6 @@ export async function sendChatMessage(
   const baseUrl = apiEndpoint.replace(/\/v1\/(chat\/)?completions.*/, '');
   const chatUrl = `${baseUrl}/v1/chat/completions`;
 
-  // Only send user and assistant roles - no system role
   const body: Record<string, unknown> = {
     messages,
     temperature: 0.7,
@@ -133,13 +135,8 @@ export async function sendChatMessage(
   };
   if (modelName) body.model = modelName;
 
-  let res = await fetch(chatUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res = await aiProxyFetch(chatUrl, body);
 
-  // If model template rejects system role, retry with raw prompt via completions endpoint
   if (!res.ok) {
     const errText = await res.text();
     if (errText.includes('jinja template') || errText.includes('roles are supported')) {
@@ -154,11 +151,7 @@ export async function sendChatMessage(
       };
       if (modelName) textBody.model = modelName;
 
-      res = await fetch(completionsUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(textBody),
-      });
+      res = await aiProxyFetch(completionsUrl, textBody);
 
       if (!res.ok) {
         const fallbackErr = await res.text();

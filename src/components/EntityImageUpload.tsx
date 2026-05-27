@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { analyzeImageWithVision } from '../services/visionService';
 import { generateImage, ComfyUISettings, ImageOrientation } from '../services/comfyuiService';
+import { proxyImageUrl } from '../lib/proxyFetch';
 
 interface EntityImageUploadProps {
   entityType: string;
@@ -53,7 +54,19 @@ export default function EntityImageUpload({
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const [orientation, setOrientation] = useState<ImageOrientation>('portrait');
+  const [comfyEndpoint, setComfyEndpoint] = useState('http://127.0.0.1:8188');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    supabase
+      .from('generation_settings')
+      .select('comfyui_endpoint')
+      .eq('project_id', projectId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.comfyui_endpoint) setComfyEndpoint(data.comfyui_endpoint);
+      });
+  }, [projectId]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -201,7 +214,7 @@ export default function EntityImageUpload({
         <div className="space-y-3">
           <div className="relative group rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
             <img
-              src={imageUrl}
+              src={proxyImageUrl(imageUrl, comfyEndpoint)}
               alt={entityName || 'Entity reference'}
               className="w-full h-48 object-cover"
             />

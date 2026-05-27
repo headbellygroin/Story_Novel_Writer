@@ -7,6 +7,7 @@ import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySli
 import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infrastructureSliders';
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
+import { proxyImageUrl } from '../lib/proxyFetch';
 
 type EntityType = 'characters' | 'places' | 'things' | 'technologies';
 
@@ -33,6 +34,20 @@ export default function WorldLibrary() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
+  const [comfyEndpoint, setComfyEndpoint] = useState('http://127.0.0.1:8188');
+
+  useEffect(() => {
+    if (currentProjectId) {
+      supabase
+        .from('generation_settings')
+        .select('comfyui_endpoint')
+        .eq('project_id', currentProjectId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.comfyui_endpoint) setComfyEndpoint(data.comfyui_endpoint);
+        });
+    }
+  }, [currentProjectId]);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -186,6 +201,7 @@ export default function WorldLibrary() {
               key={entity.id}
               entity={entity}
               type={activeTab}
+              comfyEndpoint={comfyEndpoint}
               onEdit={() => startEdit(entity)}
               onDelete={() => deleteEntity(entity.id)}
             />
@@ -581,11 +597,13 @@ function EntityForm({
 function EntityCard({
   entity,
   type,
+  comfyEndpoint,
   onEdit,
   onDelete,
 }: {
   entity: any;
   type: EntityType;
+  comfyEndpoint: string;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -606,7 +624,7 @@ function EntityCard({
       {entity.image_url && (
         <div className="relative h-40 bg-slate-100">
           <img
-            src={entity.image_url}
+            src={proxyImageUrl(entity.image_url, comfyEndpoint)}
             alt={entity.name}
             className="w-full h-full object-cover"
           />
