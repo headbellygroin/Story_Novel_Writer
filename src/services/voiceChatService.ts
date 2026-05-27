@@ -121,43 +121,60 @@ export async function sendChatMessage(
     ? [{ role: 'user', content: firstUserContent }]
     : [...historyMessages, { role: 'user', content: message }];
 
-  // Use text completions endpoint to avoid Jinja template issues with chat models
   const baseUrl = apiEndpoint.replace(/\/v1\/(chat\/)?completions.*/, '');
-  const completionsUrl = `${baseUrl}/v1/completions`;
   const chatUrl = `${baseUrl}/v1/chat/completions`;
 
-  // Try text completions first (avoids template issues entirely)
-  const prompt = buildTextPrompt(messages, systemPrompt);
-  const textBody: Record<string, unknown> = {
-    prompt,
+  // Only send user and assistant roles - no system role
+  const body: Record<string, unknown> = {
+    messages,
     temperature: 0.7,
     max_tokens: 1000,
     stream: false,
-    stop: ['\nUser:', '\nuser:', '\n\nUser:'],
   };
-  if (modelName) textBody.model = modelName;
+  if (modelName) body.model = modelName;
 
-  let res = await fetch(completionsUrl, {
+  let res = await fetch(chatUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(textBody),
+    body: JSON.stringify(body),
   });
 
-  // If text completions not supported, fall back to chat completions
-  if (!res.ok && (res.status === 404 || res.status === 501)) {
-    const chatBody: Record<string, unknown> = {
-      messages,
-      temperature: 0.7,
-      max_tokens: 1000,
-      stream: false,
-    };
-    if (modelName) chatBody.model = modelName;
+  // If model template rejects system role, retry with raw prompt via completions endpoint
+  if (!res.ok) {
+    const errText = await res.text();
+    if (errText.includes('jinja template') || errText.includes('roles are supported')) {
+      const completionsUrl = `${baseUrl}/v1/completions`;
+      const prompt = buildTextPrompt(messages, systemPrompt);
+      const textBody: Record<string, unknown> = {
+        prompt,
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: false,
+        stop: ['\nUser:', '\nuser:', '\n\nUser:'],
+      };
+      if (modelName) textBody.model = modelName;
 
-    res = await fetch(chatUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(chatBody),
-    });
+      res = await fetch(completionsUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(textBody),
+      });
+
+      if (!res.ok) {
+        const fallbackErr = await res.text();
+        if (fallbackErr.includes('jinja template') || fallbackErr.includes('roles are supported')) {
+          throw new Error(
+            'Your LM Studio model template only supports user/assistant roles but LM Studio is injecting a system message. ' +
+            'Fix: In LM Studio, go to My Models > select your model > Prompt Template, and either: ' +
+            '(1) Switch to a model from lmstudio-community, or ' +
+            '(2) Clear the "System Prompt" field in the server settings (left panel).'
+          );
+        }
+        throw new Error(`Chat API error: ${fallbackErr}`);
+      }
+    } else {
+      throw new Error(`Chat API error: ${errText}`);
+    }
   }
 
   if (!res.ok) {
