@@ -18,6 +18,15 @@ export interface VoiceChatMessage {
 
 export type ConnStatus = 'unchecked' | 'connected' | 'disconnected' | 'checking';
 
+export interface PendingEdit {
+  id: string;
+  table: string;
+  action: 'update' | 'create';
+  name: string;
+  fields: Record<string, string>;
+  summary: string;
+}
+
 interface VoiceChatState {
   voice: string;
   rate: number;
@@ -41,6 +50,10 @@ interface AppState {
   clearVoiceChatMessages: () => void;
   voiceChatState: VoiceChatState;
   setVoiceChatState: (updates: Partial<VoiceChatState>) => void;
+  pendingEdits: PendingEdit[];
+  addPendingEdits: (edits: PendingEdit[]) => void;
+  removePendingEdit: (id: string) => void;
+  clearPendingEdits: () => void;
   aiConnStatus: ConnStatus;
   visionConnStatus: ConnStatus;
   comfyConnStatus: ConnStatus;
@@ -86,6 +99,16 @@ export const useStore = create<AppState>()(
         set((state) => ({
           voiceChatState: { ...state.voiceChatState, ...updates },
         })),
+      pendingEdits: [],
+      addPendingEdits: (edits) =>
+        set((state) => ({
+          pendingEdits: [...state.pendingEdits, ...edits],
+        })),
+      removePendingEdit: (id) =>
+        set((state) => ({
+          pendingEdits: state.pendingEdits.filter((e) => e.id !== id),
+        })),
+      clearPendingEdits: () => set({ pendingEdits: [] }),
       aiConnStatus: 'unchecked',
       visionConnStatus: 'unchecked',
       comfyConnStatus: 'unchecked',
@@ -100,6 +123,7 @@ export const useStore = create<AppState>()(
         currentOutlineId: state.currentOutlineId,
         voiceChatMessages: state.voiceChatMessages,
         voiceChatState: state.voiceChatState,
+        pendingEdits: state.pendingEdits,
       }),
     }
   )

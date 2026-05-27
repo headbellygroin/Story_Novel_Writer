@@ -14,6 +14,7 @@ import {
   ChatMessage,
   VoiceChatConfig,
 } from '../services/voiceChatService';
+import type { PendingEdit } from '../store/useStore';
 
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
@@ -143,14 +144,7 @@ async function buildProjectContext(projectId: string): Promise<string> {
 
 // --- Pending Edit Types & Logic ---
 
-interface EditCommand {
-  id: string;
-  table: string;
-  action: 'update' | 'create';
-  name: string;
-  fields: Record<string, string>;
-  summary: string;
-}
+type EditCommand = PendingEdit;
 
 const STORY_FORGE_AWARENESS = `
 # Your Role in Story Forge
@@ -305,7 +299,7 @@ async function executeEdit(cmd: EditCommand, projectId: string): Promise<string>
 // --- Component ---
 
 export default function VoiceChat() {
-  const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages, voiceChatState, setVoiceChatState } = useStore();
+  const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages, voiceChatState, setVoiceChatState, pendingEdits, addPendingEdits, removePendingEdit, clearPendingEdits } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings> | null>(null);
   const [loading, setLoading] = useState(true);
   const [isListening, setIsListening] = useState(false);
@@ -317,12 +311,6 @@ export default function VoiceChat() {
   const [error, setError] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [projectContext, setProjectContext] = useState('');
-  const [pendingEdits, setPendingEdits] = useState<EditCommand[]>(() => {
-    try {
-      const stored = localStorage.getItem('pendingEdits');
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
   const [planPanelOpen, setPlanPanelOpen] = useState(true);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [executingAll, setExecutingAll] = useState(false);
@@ -338,10 +326,6 @@ export default function VoiceChat() {
   const speechPitch = voiceChatState.pitch;
   const autoListen = voiceChatState.autoListen;
   const isProcessing = voiceChatState.isProcessing;
-
-  useEffect(() => {
-    localStorage.setItem('pendingEdits', JSON.stringify(pendingEdits));
-  }, [pendingEdits]);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -443,7 +427,7 @@ export default function VoiceChat() {
       }
 
       if (proposals.length > 0) {
-        setPendingEdits(prev => [...prev, ...proposals]);
+        addPendingEdits(proposals);
         setPlanPanelOpen(true);
       }
 
@@ -513,13 +497,13 @@ export default function VoiceChat() {
     if (!currentProjectId) return;
     setExecutingId(edit.id);
     await executeEdit(edit, currentProjectId);
-    setPendingEdits(prev => prev.filter(e => e.id !== edit.id));
+    removePendingEdit(edit.id);
     setExecutingId(null);
     buildProjectContext(currentProjectId).then(setProjectContext);
   }
 
   function rejectEdit(editId: string) {
-    setPendingEdits(prev => prev.filter(e => e.id !== editId));
+    removePendingEdit(editId);
   }
 
   async function acceptAllEdits() {
@@ -528,13 +512,13 @@ export default function VoiceChat() {
     for (const edit of pendingEdits) {
       await executeEdit(edit, currentProjectId);
     }
-    setPendingEdits([]);
+    clearPendingEdits();
     setExecutingAll(false);
     buildProjectContext(currentProjectId).then(setProjectContext);
   }
 
   function clearAllEdits() {
-    setPendingEdits([]);
+    clearPendingEdits();
   }
 
   if (!currentProjectId) {
