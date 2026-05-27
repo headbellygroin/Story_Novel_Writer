@@ -18,10 +18,9 @@ import {
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
 export default function VoiceChat() {
-  const { currentProjectId } = useStore();
+  const { currentProjectId, voiceChatMessages, addVoiceChatMessage, clearVoiceChatMessages } = useStore();
   const [settings, setSettings] = useState<Partial<GenerationSettings> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -32,8 +31,11 @@ export default function VoiceChat() {
   const [speechPitch, setSpeechPitch] = useState(1.0);
   const [autoListen, setAutoListen] = useState(false);
   const [error, setError] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null);
+
+  const messages = voiceChatMessages as ChatMessage[];
 
   const speechSupported = isSpeechRecognitionSupported();
   const synthSupported = isSpeechSynthesisSupported();
@@ -41,6 +43,25 @@ export default function VoiceChat() {
   useEffect(() => {
     if (currentProjectId) loadSettings();
   }, [currentProjectId]);
+
+  useEffect(() => {
+    if (settings?.api_endpoint) {
+      checkConnection(settings.api_endpoint as string);
+    } else if (!loading) {
+      setConnectionStatus('disconnected');
+    }
+  }, [settings, loading]);
+
+  async function checkConnection(endpoint: string) {
+    setConnectionStatus('checking');
+    try {
+      const baseUrl = endpoint.replace(/\/v1\/(chat\/)?completions.*/, '');
+      const res = await fetch(`${baseUrl}/v1/models`, { method: 'GET' });
+      setConnectionStatus(res.ok ? 'connected' : 'disconnected');
+    } catch {
+      setConnectionStatus('disconnected');
+    }
+  }
 
   useEffect(() => {
     const loadVoices = () => {
@@ -89,7 +110,7 @@ export default function VoiceChat() {
     if (!text.trim() || !settings?.api_endpoint) return;
 
     const userMessage: ChatMessage = { role: 'user', content: text.trim(), timestamp: Date.now() };
-    setMessages((prev) => [...prev, userMessage]);
+    addVoiceChatMessage(userMessage);
     setInputText('');
     setIsProcessing(true);
     setError('');
@@ -107,7 +128,7 @@ export default function VoiceChat() {
       );
 
       const assistantMessage: ChatMessage = { role: 'assistant', content: response, timestamp: Date.now() };
-      setMessages((prev) => [...prev, assistantMessage]);
+      addVoiceChatMessage(assistantMessage);
 
       if (synthSupported) {
         setIsSpeaking(true);
@@ -159,7 +180,7 @@ export default function VoiceChat() {
   }
 
   function clearChat() {
-    setMessages([]);
+    clearVoiceChatMessages();
     stopSpeaking();
     setIsSpeaking(false);
   }
@@ -183,7 +204,23 @@ export default function VoiceChat() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-slate-900">Voice Chat</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-slate-900">Voice Chat</h1>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+            connectionStatus === 'connected' ? 'bg-emerald-50 text-emerald-700' :
+            connectionStatus === 'checking' ? 'bg-amber-50 text-amber-700' :
+            'bg-red-50 text-red-700'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${
+              connectionStatus === 'connected' ? 'bg-emerald-500' :
+              connectionStatus === 'checking' ? 'bg-amber-500 animate-pulse' :
+              'bg-red-500'
+            }`} />
+            {connectionStatus === 'connected' ? 'Connected' :
+             connectionStatus === 'checking' ? 'Checking...' :
+             'Disconnected'}
+          </span>
+        </div>
         <ProjectSelector />
       </div>
 

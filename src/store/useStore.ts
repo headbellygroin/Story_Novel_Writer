@@ -9,6 +9,12 @@ export interface BackgroundTask {
   completedAt?: number;
 }
 
+export interface VoiceChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
 interface AppState {
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
@@ -19,6 +25,9 @@ interface AppState {
   updateBackgroundTask: (id: string, updates: Partial<BackgroundTask>) => void;
   removeBackgroundTask: (id: string) => void;
   dismissCompletedTasks: () => void;
+  voiceChatMessages: VoiceChatMessage[];
+  addVoiceChatMessage: (msg: VoiceChatMessage) => void;
+  clearVoiceChatMessages: () => void;
 }
 
 const stored = {
@@ -58,4 +67,10 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({
       backgroundTasks: state.backgroundTasks.filter((t) => t.status === 'running'),
     })),
+  voiceChatMessages: [],
+  addVoiceChatMessage: (msg) =>
+    set((state) => ({
+      voiceChatMessages: [...state.voiceChatMessages, msg],
+    })),
+  clearVoiceChatMessages: () => set({ voiceChatMessages: [] }),
 }));
