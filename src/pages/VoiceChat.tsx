@@ -778,7 +778,7 @@ export default function VoiceChat() {
         </div>
 
         {/* Pending Edits Plan Panel - Right */}
-        <div className={`flex-shrink-0 transition-all duration-300 ${planPanelOpen ? 'w-80' : 'w-10'}`}>
+        <div className={`flex-shrink-0 transition-all duration-300 ${planPanelOpen ? 'w-96' : 'w-10'}`}>
           {!planPanelOpen ? (
             <button
               onClick={() => setPlanPanelOpen(true)}
@@ -825,45 +825,40 @@ export default function VoiceChat() {
                   </div>
                 ) : (
                   pendingEdits.map((edit) => (
-                    <div key={edit.id} className="border border-slate-200 rounded-lg p-2.5 space-y-2 hover:border-slate-300 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${TABLE_COLORS[edit.table] || 'bg-slate-100 text-slate-600'}`}>
-                              {edit.table.replace('_', ' ')}
-                            </span>
-                            <span className="text-[10px] text-slate-500 uppercase">{edit.action}</span>
-                          </div>
-                          <p className="text-xs font-medium text-slate-900 truncate">{edit.name}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{edit.summary}</p>
+                    <div key={edit.id} className="border border-slate-200 rounded-lg p-3 space-y-2.5 hover:border-slate-300 transition-colors">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded ${TABLE_COLORS[edit.table] || 'bg-slate-100 text-slate-600'}`}>
+                            {edit.table.replace('_', ' ')}
+                          </span>
+                          <span className="text-xs text-slate-500 uppercase">{edit.action}</span>
                         </div>
+                        <p className="text-sm font-semibold text-slate-900">{edit.name}</p>
+                        <p className="text-sm text-slate-600 mt-1 leading-relaxed">{edit.summary}</p>
                       </div>
 
                       {Object.keys(edit.fields).length > 0 && (
-                        <div className="bg-slate-50 rounded p-1.5 space-y-0.5">
-                          {Object.entries(edit.fields).slice(0, 3).map(([key, val]) => (
-                            <div key={key} className="text-[10px] text-slate-600 truncate">
-                              <span className="font-medium">{key}:</span> {val}
+                        <div className="bg-slate-50 rounded-md p-2.5 space-y-1">
+                          {Object.entries(edit.fields).map(([key, val]) => (
+                            <div key={key} className="text-xs text-slate-700 leading-relaxed">
+                              <span className="font-semibold text-slate-900">{key}:</span> {val}
                             </div>
                           ))}
-                          {Object.keys(edit.fields).length > 3 && (
-                            <div className="text-[10px] text-slate-400">+{Object.keys(edit.fields).length - 3} more fields</div>
-                          )}
                         </div>
                       )}
 
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-2">
                         <button
                           onClick={() => acceptEdit(edit)}
                           disabled={executingId === edit.id || executingAll}
-                          className="flex-1 px-2 py-1 text-[11px] font-medium bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                          className="flex-1 px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 transition-colors"
                         >
                           {executingId === edit.id ? 'Applying...' : 'Accept'}
                         </button>
                         <button
                           onClick={() => rejectEdit(edit.id)}
                           disabled={executingAll}
-                          className="flex-1 px-2 py-1 text-[11px] font-medium bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                          className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-50 transition-colors"
                         >
                           Reject
                         </button>
