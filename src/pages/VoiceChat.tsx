@@ -773,6 +773,34 @@ export default function VoiceChat() {
                   </svg>
                 </button>
               </div>
+
+              {/* Propose Syntax Reference */}
+              <details className="px-4 pb-3">
+                <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700 select-none">
+                  Propose syntax reference
+                </summary>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-teal-50 border border-teal-200 rounded-md p-2">
+                    <p className="font-semibold text-teal-800 mb-1">Outlines</p>
+                    <p className="text-teal-700 leading-relaxed">table=outlines | fields: synopsis, act_structure, themes, notes</p>
+                  </div>
+                  <div className="bg-sky-50 border border-sky-200 rounded-md p-2">
+                    <p className="font-semibold text-sky-800 mb-1">Characters</p>
+                    <p className="text-sky-700 leading-relaxed">table=characters | fields: role, description, personality, background, goals</p>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2">
+                    <p className="font-semibold text-emerald-800 mb-1">Places</p>
+                    <p className="text-emerald-700 leading-relaxed">table=places | fields: type, description, history, significance</p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-md p-2">
+                    <p className="font-semibold text-amber-800 mb-1">Story Bible</p>
+                    <p className="text-amber-700 leading-relaxed">table=story_bible_entries | fields: category, subject, fact, importance</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
+                  Tell the AI which table to target: "Propose outlines for each book using the outlines table."
+                </p>
+              </details>
             </div>
           </div>
         </div>
