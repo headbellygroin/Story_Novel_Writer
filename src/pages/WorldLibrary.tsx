@@ -39,6 +39,8 @@ export default function WorldLibrary() {
   const [comfyEndpoint, setComfyEndpoint] = useState('');
   const [exportingLocations, setExportingLocations] = useState(false);
   const [exportingCharacters, setExportingCharacters] = useState(false);
+  const [exportingThings, setExportingThings] = useState(false);
+  const [exportingTech, setExportingTech] = useState(false);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -171,6 +173,114 @@ export default function WorldLibrary() {
       alert('Export failed. Check console.');
     } finally {
       setExportingCharacters(false);
+    }
+  }
+
+  async function handleExportThings() {
+    if (!currentProjectId) return;
+    setExportingThings(true);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const { data: things, error } = await supabase
+        .from('things')
+        .select('name, description, image_url')
+        .eq('project_id', currentProjectId)
+        .order('name');
+      if (error) throw error;
+      if (!things || things.length === 0) {
+        alert('No things found.');
+        setExportingThings(false);
+        return;
+      }
+      const config = await getEndpointConfig();
+      const endpoint = config.isRemote && config.remoteComfy
+        ? config.remoteComfy
+        : config.localComfy || 'http://127.0.0.1:8188';
+      const zip = new JSZip();
+      const imagesFolder = zip.folder('images');
+      for (const thing of things) {
+        if (!thing.image_url) continue;
+        try {
+          const resolvedUrl = proxyImageUrl(thing.image_url, endpoint);
+          const imgResponse = await fetch(resolvedUrl);
+          if (imgResponse.ok) {
+            const blob = await imgResponse.blob();
+            const ext = blob.type.includes('png') ? 'png' : 'jpg';
+            const safeName = thing.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+            imagesFolder!.file(`${safeName}.${ext}`, blob);
+          }
+        } catch (imgErr) {
+          console.warn(`Failed to fetch image for ${thing.name}:`, imgErr);
+        }
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'things_package.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed. Check console.');
+    } finally {
+      setExportingThings(false);
+    }
+  }
+
+  async function handleExportTech() {
+    if (!currentProjectId) return;
+    setExportingTech(true);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const { data: tech, error } = await supabase
+        .from('technologies')
+        .select('name, description, image_url')
+        .eq('project_id', currentProjectId)
+        .order('name');
+      if (error) throw error;
+      if (!tech || tech.length === 0) {
+        alert('No technologies found.');
+        setExportingTech(false);
+        return;
+      }
+      const config = await getEndpointConfig();
+      const endpoint = config.isRemote && config.remoteComfy
+        ? config.remoteComfy
+        : config.localComfy || 'http://127.0.0.1:8188';
+      const zip = new JSZip();
+      const imagesFolder = zip.folder('images');
+      for (const item of tech) {
+        if (!item.image_url) continue;
+        try {
+          const resolvedUrl = proxyImageUrl(item.image_url, endpoint);
+          const imgResponse = await fetch(resolvedUrl);
+          if (imgResponse.ok) {
+            const blob = await imgResponse.blob();
+            const ext = blob.type.includes('png') ? 'png' : 'jpg';
+            const safeName = item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+            imagesFolder!.file(`${safeName}.${ext}`, blob);
+          }
+        } catch (imgErr) {
+          console.warn(`Failed to fetch image for ${item.name}:`, imgErr);
+        }
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'technologies_package.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed. Check console.');
+    } finally {
+      setExportingTech(false);
     }
   }
 
@@ -316,6 +426,24 @@ export default function WorldLibrary() {
             className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
             {exportingCharacters ? 'Exporting...' : 'Download Character Package'}
+          </button>
+        )}
+        {activeTab === 'things' && (
+          <button
+            onClick={handleExportThings}
+            disabled={exportingThings}
+            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {exportingThings ? 'Exporting...' : 'Download Things Package'}
+          </button>
+        )}
+        {activeTab === 'technologies' && (
+          <button
+            onClick={handleExportTech}
+            disabled={exportingTech}
+            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {exportingTech ? 'Exporting...' : 'Download Technology Package'}
           </button>
         )}
       </div>
