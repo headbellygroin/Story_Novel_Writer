@@ -183,7 +183,7 @@ export default function WorldLibrary() {
       const JSZip = (await import('jszip')).default;
       const { data: things, error } = await supabase
         .from('things')
-        .select('name, description, image_url')
+        .select('name, type, description, properties, history, notes, image_url, canon_status')
         .eq('project_id', currentProjectId)
         .order('name');
       if (error) throw error;
@@ -200,7 +200,12 @@ export default function WorldLibrary() {
       let md = '# Things Reference\n\n';
       for (const thing of things) {
         md += `## ${thing.name}\n\n`;
-        if (thing.description) md += `${thing.description}\n\n`;
+        if (thing.type) md += `**Type:** ${thing.type}\n\n`;
+        if (thing.canon_status) md += `**Canon Status:** ${thing.canon_status}\n\n`;
+        if (thing.description) md += `**Description:** ${thing.description}\n\n`;
+        if (thing.properties) md += `**Properties:** ${thing.properties}\n\n`;
+        if (thing.history) md += `**History:** ${thing.history}\n\n`;
+        if (thing.notes) md += `**Notes:** ${thing.notes}\n\n`;
         md += '---\n\n';
       }
       zip.file('things_reference.md', md);
@@ -244,7 +249,7 @@ export default function WorldLibrary() {
       const JSZip = (await import('jszip')).default;
       const { data: tech, error } = await supabase
         .from('technologies')
-        .select('name, description, image_url')
+        .select('name, type, description, rules, applications, notes, image_url, canon_status')
         .eq('project_id', currentProjectId)
         .order('name');
       if (error) throw error;
@@ -261,7 +266,12 @@ export default function WorldLibrary() {
       let md = '# Technologies Reference\n\n';
       for (const item of tech) {
         md += `## ${item.name}\n\n`;
-        if (item.description) md += `${item.description}\n\n`;
+        if (item.type) md += `**Type:** ${item.type}\n\n`;
+        if (item.canon_status) md += `**Canon Status:** ${item.canon_status}\n\n`;
+        if (item.description) md += `**Description:** ${item.description}\n\n`;
+        if (item.rules) md += `**Rules:** ${item.rules}\n\n`;
+        if (item.applications) md += `**Applications:** ${item.applications}\n\n`;
+        if (item.notes) md += `**Notes:** ${item.notes}\n\n`;
         md += '---\n\n';
       }
       zip.file('technologies_reference.md', md);
