@@ -197,6 +197,13 @@ export default function WorldLibrary() {
         ? config.remoteComfy
         : config.localComfy || 'http://127.0.0.1:8188';
       const zip = new JSZip();
+      let md = '# Things Reference\n\n';
+      for (const thing of things) {
+        md += `## ${thing.name}\n\n`;
+        if (thing.description) md += `${thing.description}\n\n`;
+        md += '---\n\n';
+      }
+      zip.file('things_reference.md', md);
       const imagesFolder = zip.folder('images');
       for (const thing of things) {
         if (!thing.image_url) continue;
@@ -251,6 +258,13 @@ export default function WorldLibrary() {
         ? config.remoteComfy
         : config.localComfy || 'http://127.0.0.1:8188';
       const zip = new JSZip();
+      let md = '# Technologies Reference\n\n';
+      for (const item of tech) {
+        md += `## ${item.name}\n\n`;
+        if (item.description) md += `${item.description}\n\n`;
+        md += '---\n\n';
+      }
+      zip.file('technologies_reference.md', md);
       const imagesFolder = zip.folder('images');
       for (const item of tech) {
         if (!item.image_url) continue;
