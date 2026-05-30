@@ -8,6 +8,7 @@ import { PERSONALITY_SLIDERS, getSliderDescription } from '../lib/personalitySli
 import { INFRASTRUCTURE_SLIDERS, getInfraSliderDescription } from '../lib/infrastructureSliders';
 import { CHARACTER_DOSSIER_TEMPLATE, DOSSIER_SECTIONS, countFilledSections } from '../lib/characterDossierTemplate';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
+import { generateSceneStreaming } from '../services/aiService';
 import { proxyImageUrl, comfyProxyGet } from '../lib/proxyFetch';
 import { getEndpointConfig } from '../lib/endpointResolver';
 
@@ -531,6 +532,99 @@ function EntityForm({
   const [slidersOpen, setSlidersOpen] = useState(false);
   const [infraSlidersOpen, setInfraSlidersOpen] = useState(false);
   const [dossierOpen, setDossierOpen] = useState(false);
+  const [generatingDossier, setGeneratingDossier] = useState(false);
+
+  async function handleGenerateWriteup() {
+    if (!currentProjectId || !formData.name?.trim()) return;
+    const settingsRes = await supabase
+      .from('generation_settings')
+      .select('*')
+      .eq('project_id', currentProjectId)
+      .maybeSingle();
+    if (!settingsRes.data) {
+      alert('Please configure AI settings first in the Settings page.');
+      return;
+    }
+    setGeneratingDossier(true);
+    try {
+      const charContext: string[] = [];
+      charContext.push(`Character Name: ${formData.name}`);
+      if (formData.role) charContext.push(`Role: ${formData.role}`);
+      if (formData.description) charContext.push(`Description: ${formData.description}`);
+      if (formData.personality) charContext.push(`Personality: ${formData.personality}`);
+      if (formData.background) charContext.push(`Background: ${formData.background}`);
+      if (formData.goals) charContext.push(`Goals: ${formData.goals}`);
+      if (formData.dialogue_style) charContext.push(`Dialogue Style: ${formData.dialogue_style}`);
+      if (formData.notes) charContext.push(`Notes: ${formData.notes}`);
+      const sliderData = formData.personality_sliders as Record<string, number> | undefined;
+      if (sliderData && Object.keys(sliderData).length > 0) {
+        const sliderLines = Object.entries(sliderData)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => {
+            const slider = PERSONALITY_SLIDERS.find(s => s.id === k);
+            return slider ? `${slider.label}: ${v}/10` : `${k}: ${v}/10`;
+          });
+        if (sliderLines.length > 0) charContext.push(`Personality Sliders:\n${sliderLines.join('\n')}`);
+      }
+      const infraData = formData.infrastructure_sliders as Record<string, number> | undefined;
+      if (infraData && Object.keys(infraData).length > 0) {
+        const infraLines = Object.entries(infraData)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => {
+            const slider = INFRASTRUCTURE_SLIDERS.find(s => s.id === k);
+            return slider ? `${slider.label}: ${v}/10` : `${k}: ${v}/10`;
+          });
+        if (infraLines.length > 0) charContext.push(`Infrastructure Sliders:\n${infraLines.join('\n')}`);
+      }
+      HEROS_JOURNEY_FIELDS.forEach(f => {
+        if (formData[f.key]?.trim()) charContext.push(`${f.label}: ${formData[f.key]}`);
+      });
+      if (formData.dossier?.trim()) charContext.push(`Existing Dossier Content:\n${formData.dossier}`);
+
+      const prompt = `You are a creative writing assistant specializing in deep character profiles. Based on the following character information, write a comprehensive, narrative-style Character Dossier writeup. Use the template structure below but write in flowing, evocative prose -- not bullet points. Fill each section with insightful, specific content derived from the character data provided. If information for a section isn't available, use creative inference based on what IS provided. Skip sections that truly cannot be inferred.
+
+=== CHARACTER DATA ===
+${charContext.join('\n\n')}
+
+=== DOSSIER TEMPLATE SECTIONS TO FILL ===
+1. Core Role (emotional/narrative purpose)
+2. Function/Occupation
+3. Public Appearance (how society sees them)
+4. Internal Appearance (how loved ones see them)
+5. Personality Traits (positive, negative, contradictory)
+6. Emotional Function Within Group
+7. Relationship With Setting
+8. Key Relationships
+9. Personal Fear
+10. Personal Flaw
+11. Quiet Human Moments (small realistic details)
+12. Comedy Dynamics
+13. Symbolic Theme
+14. Character Arc (beginning, midpoint, end)
+15. Relationship To The Wider World
+
+Write the dossier now, using markdown headers (##) for each section. Be specific, vivid, and true to the character data provided.`;
+
+      await generateSceneStreaming(
+        {
+          sceneDescription: prompt,
+          context: {},
+          settings: {
+            ...settingsRes.data,
+            style_rules: (settingsRes.data.style_rules as Record<string, boolean>) || undefined,
+          },
+        },
+        (streamedText) => {
+          setFormData({ ...formData, dossier: streamedText });
+        },
+      );
+    } catch (err) {
+      console.error('Dossier generation failed:', err);
+      alert('Dossier generation failed. Check console for details.');
+    } finally {
+      setGeneratingDossier(false);
+    }
+  }
 
   const filledStages = type === 'characters'
     ? HEROS_JOURNEY_FIELDS.filter(f => formData[f.key]?.trim()).length
@@ -846,14 +940,27 @@ function EntityForm({
                   relationships, fears, flaws, quiet moments, comedy, symbolism, and arc. Fill in what applies -- leave
                   irrelevant sections blank.
                 </p>
-                {!formData.dossier?.trim() && (
+                <div className="flex gap-2">
+                  {!formData.dossier?.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, dossier: CHARACTER_DOSSIER_TEMPLATE })}
+                      className="px-3 py-1.5 bg-orange-600 text-white text-xs font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                    >
+                      Load Template
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, dossier: CHARACTER_DOSSIER_TEMPLATE })}
-                    className="px-3 py-1.5 bg-orange-600 text-white text-xs font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                    onClick={handleGenerateWriteup}
+                    disabled={generatingDossier || !formData.name?.trim()}
+                    className="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Load Template
+                    {generatingDossier ? 'Generating...' : 'Generate Writeup'}
                   </button>
+                </div>
+                {generatingDossier && (
+                  <div className="text-xs text-teal-600 animate-pulse">AI is writing the character dossier...</div>
                 )}
                 <textarea
                   value={formData.dossier || ''}
