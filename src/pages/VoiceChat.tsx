@@ -316,6 +316,7 @@ export default function VoiceChat() {
   const [executingAll, setExecutingAll] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const messages = voiceChatMessages as ChatMessage[];
   const speechSupported = isSpeechRecognitionSupported();
@@ -341,6 +342,16 @@ export default function VoiceChat() {
       setConnectionStatus('disconnected');
     }
   }, [settings, loading]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && abortRef.current) {
+        abortRef.current.abort();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   async function checkConnection(endpoint: string) {
     setConnectionStatus('checking');
@@ -404,6 +415,9 @@ export default function VoiceChat() {
     setVoiceChatState({ isProcessing: true });
     setError('');
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const basePrompt = (settings.system_prompt as string) ||
         'You are a helpful creative writing assistant. Keep responses concise and conversational for voice chat.';
@@ -417,7 +431,8 @@ export default function VoiceChat() {
         settings.api_endpoint as string,
         systemPrompt,
         (settings.model_name as string) || undefined,
-        (settings.max_tokens as number) || undefined
+        (settings.max_tokens as number) || undefined,
+        controller.signal
       );
 
       const { cleanText, proposals } = parseProposals(response);
@@ -453,11 +468,20 @@ export default function VoiceChat() {
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to get response');
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        addVoiceChatMessage({ role: 'assistant', content: '[Request cancelled]', timestamp: Date.now() });
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to get response');
+      }
     } finally {
+      abortRef.current = null;
       setVoiceChatState({ isProcessing: false });
     }
   }, [settings, messages, synthSupported, speechSupported, voiceChatState, getVoiceConfig, currentProjectId, projectContext]);
+
+  const handleCancelRequest = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const startListening = useCallback(() => {
     if (!speechSupported) return;
@@ -763,15 +787,26 @@ export default function VoiceChat() {
                   className="flex-1 px-4 py-2.5 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-sky-500 text-sm disabled:opacity-50"
                 />
 
-                <button
-                  onClick={() => handleSendMessage(inputText)}
-                  disabled={!inputText.trim() || isProcessing || isListening}
-                  className="flex-shrink-0 w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Send message">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                  </svg>
-                </button>
+                {isProcessing ? (
+                  <button
+                    onClick={handleCancelRequest}
+                    className="flex-shrink-0 w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 transition-colors animate-pulse"
+                    title="Stop generation (Esc)">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSendMessage(inputText)}
+                    disabled={!inputText.trim() || isListening}
+                    className="flex-shrink-0 w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="Send message">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {/* Propose Syntax Reference */}

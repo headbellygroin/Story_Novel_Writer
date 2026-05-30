@@ -32,7 +32,8 @@ function isLocalTarget(url: string): boolean {
 export async function aiProxyFetch(
   targetUrl: string,
   body: Record<string, unknown>,
-  stream = false
+  stream = false,
+  signal?: AbortSignal
 ): Promise<Response> {
   // Resolve localhost to remote Tailscale IP if we're not on the AI machine
   const resolved = await resolveUrl(targetUrl);
@@ -42,12 +43,14 @@ export async function aiProxyFetch(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     });
   }
   return fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: proxyHeaders,
     body: JSON.stringify({ target_url: resolved, method: 'POST', body, stream }),
+    signal,
   });
 }
 

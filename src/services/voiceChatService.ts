@@ -179,7 +179,8 @@ export async function sendChatMessage(
   apiEndpoint: string,
   systemPrompt: string,
   modelName?: string,
-  maxTokens?: number
+  maxTokens?: number,
+  signal?: AbortSignal
 ): Promise<string> {
 
   const historyMessages = history.map((m) => ({
@@ -206,7 +207,7 @@ export async function sendChatMessage(
   };
   if (modelName) body.model = modelName;
 
-  let res = await aiProxyFetch(chatUrl, body);
+  let res = await aiProxyFetch(chatUrl, body, false, signal);
 
   if (!res.ok) {
     const errText = await res.text();
@@ -222,7 +223,7 @@ export async function sendChatMessage(
       };
       if (modelName) textBody.model = modelName;
 
-      res = await aiProxyFetch(completionsUrl, textBody);
+      res = await aiProxyFetch(completionsUrl, textBody, false, signal);
 
       if (!res.ok) {
         const fallbackErr = await res.text();
