@@ -15,6 +15,7 @@
 9. [Export](#export)
 10. [Files & Storage](#files--storage)
 11. [End-to-End Workflow](#end-to-end-workflow)
+12. [Context Assembly Architecture](#context-assembly-architecture)
 
 ---
 
@@ -48,7 +49,7 @@ Handles all four media types: scene images (NetaYume Lumina / Flux workflow), an
 | Planning | Projects, Dossier, Outline |
 | World | World Library (Characters, Places, Things, Technologies), Story Bible, Style Anchors, Prohibited Words |
 | Writing | Write (scene editor), Voice Chat |
-| Quality | Consistency Tracking (Story Events, Character States, Scene References), Logic Checks |
+| Quality | Consistency Tracking (Story Events, Character States, Character Arc, Scene References), Logic Checks, Reveal Timeline |
 | Production | Pipeline (5 stages: Images, Animation, TTS, Assembly, Lip-sync), Audiobook TTS |
 | Output | Export (HTML / Markdown / Text), Save & Load (JSON backup) |
 
@@ -122,7 +123,7 @@ Beyond the endpoints, Settings lets you tune:
 
 - **LLM parameters** -- Temperature, Max Tokens, Top P, Top K, Repetition Penalty, Presence/Frequency Penalty. Sensible defaults work for most models; lower temperature (0.3-0.5) for analysis tasks, higher (0.7-0.9) for creative writing.
 - **System Prompt & Style Guide** -- A base persona and per-project writing style instructions injected into every generation request.
-- **Style Rules** -- 7 toggle switches for common writing guidance:
+- **Style Rules** -- 9 toggle switches for common writing guidance:
   1. Avoid Adverbs (prefer precise verbs)
   2. Kill Leading "The" (dynamic sentence openings)
   3. Eliminate Linking Verbs (replace was/were/seemed with action)
@@ -130,6 +131,8 @@ Beyond the endpoints, Settings lets you tune:
   5. Prefer Active Voice (subject performs action)
   6. Minimal Dialogue Tags (use "said" only)
   7. Cut Filter Words (remove felt/saw/heard/seemed)
+  8. Preserve Emotional Anchors (never contradict or diminish Story Bible entries marked as Emotional Anchors -- running jokes, found family moments, traditions, rituals)
+  9. Emergent Culture (communities create their own traditions, songs, stories, and folklore independent of protagonist actions)
 - **Image orientation** -- Portrait (768x1344) / Landscape (1344x768) / Square (1024x1024) preset.
 - **Image noise seed** -- Random (unique each run) or Fixed (reproducible output).
 - **Positive conditioning prompts** -- Background, Foreground, and Characters fields that feed the image generation workflow alongside the AI-generated scene prompt.
@@ -176,9 +179,9 @@ When you click Generate, the AI receives a deep context package assembled from 1
 - Story dossier and outline summary
 - Active Style Anchors (reference passages)
 - Active Prohibited Words
-- Active Style Rules (7 available rules)
-- World Library entries (characters, places, things, technologies)
-- Story Bible facts (sorted by importance: critical > high > medium > low)
+- Active Style Rules (9 available rules)
+- World Library entries (characters, places, things, technologies) -- filtered by `generation_relevant` flag
+- Story Bible facts (sorted by importance: critical > high > medium > low, filtered by generation_relevant)
 - Character States for the current scene
 - Story Events tracking
 - Scene References (full text of referenced scenes)
@@ -187,6 +190,15 @@ When you click Generate, the AI receives a deep context package assembled from 1
 - Previous scene summaries (for continuity)
 
 The AI service uses **priority-based context stacking** -- it calculates available token budget (context_length minus max_tokens minus overhead), then includes sections by priority until the budget is full. This ensures the most important context always fits, even with a 32K window.
+
+**Context Filtering Rules:**
+- If **Context Tags** are set on a scene: only tagged entities are injected (explicit inclusion)
+- If **no Context Tags** are set: all entities with `generation_relevant = true` are injected (entities marked as author-reference-only are excluded)
+- Entities with Canon Status "Deprecated" are always excluded
+- Entities with Canon Status "Experimental" are tagged as such in the prompt so the AI treats them cautiously
+
+**Information Ownership:**
+When a character has a filled dossier, the dossier is the primary context for that character. The raw personality/background fields are NOT also injected -- this prevents redundant token usage. Characters without a dossier fall back to their individual fields as context.
 
 **Sidebar Panels:**
 
@@ -229,9 +241,21 @@ The AI has full access to your project context via the configured system prompt 
 
 The central database for everything that exists in your story's world. Divided into four entity types with full CRUD operations:
 
+**All Entity Types share these features:**
+- **Canon Status** -- 5 certainty levels:
+  - **Canon** -- Immutable, locked-in lore (green)
+  - **Stable** -- Likely permanent, rarely changed (blue)
+  - **Draft** -- Actively evolving, subject to change (amber)
+  - **Experimental** -- Brainstorming, may be discarded entirely (rose)
+  - **Deprecated** -- Old lore, no longer active, excluded from AI context (gray)
+- **AI Generation Relevant** toggle -- Controls whether this entity is injected into AI context during scene generation. When disabled (Author Reference Only), the entity is stored for your reference but never sent to the AI. Useful for background notes, favorite foods, trivia, and other data that doesn't need to consume AI token budget. Default: enabled.
+- **Emergent Character** toggle -- Marks non-character entities (ships, stations, buildings, institutions) as having their own personality and agency. Enables Infrastructure Sliders for that entity.
+- **Entity Images** -- Upload reference images to any entity. The vision model (llava-v1.6-mistral-7b) can auto-generate detailed visual descriptions (2-3 paragraphs) stored with the entity and used during generation.
+- **Export** -- ZIP download per entity type (markdown reference document + all images).
+
 **Characters**
-- Physical description, personality, background, role, relationships, motivations, secrets
-- **Hero's Journey Tracking** -- 12 stages (Ordinary World, Call to Adventure, Refusal, Meeting the Mentor, Crossing the Threshold, Tests/Allies/Enemies, Approach, Ordeal, Reward, The Road Back, Resurrection, Return with Elixir) with text descriptions for each
+- Physical description, personality, background, role, relationships, motivations, dialogue style, notes
+- **Hero's Journey Tracking** -- 12 stages (Ordinary World through Return with Elixir) with text descriptions for each stage
 - **Personality Sliders** -- 15 dimensions on a -10 to +10 scale:
   1. Stress / Calm
   2. Fear / Courage
@@ -249,7 +273,13 @@ The central database for everything that exists in your story's world. Divided i
   14. Stability / Sensitivity
   15. Shame / Self-Worth
 
-  Each slider has descriptive text at 5 levels (extreme negative, moderate negative, neutral, moderate positive, extreme positive). Slider values are formatted into the AI prompt to influence how the model writes each character.
+  Each slider has descriptive text at 5 levels. Slider values are formatted into the AI prompt to influence how the model writes each character. Sliders evolve over time via Character Arc Events.
+
+- **Character Dossier** -- Deep character development profile with two generation modes:
+  - **Structured Mode** -- Produces organized markdown with ## headers for each section (Core Role, Function/Occupation, Public Appearance, Internal Appearance, Personality Traits, Emotional Function, Relationship With Setting, Key Relationships, Personal Fear, Personal Flaw, Quiet Human Moments, Comedy Dynamics, Symbolic Theme, Character Arc, Relationship To The Wider World, Legacy/Post-Crisis)
+  - **Narrative Mode** -- Produces flowing prose with no headers. Reads like a personnel file or character essay. Better for direct franchise documentation.
+  - Can also be filled manually via the Load Template button or freeform text.
+  - When a dossier is filled, it becomes the primary context source for that character during generation (personality/background fields are not redundantly injected).
 
 **Places**
 Name, type, physical description, history, atmosphere, significance. Used to ground scene generation in the correct setting.
@@ -260,21 +290,41 @@ Objects, artefacts, weapons, vehicles, and other significant items. Includes pro
 **Technologies**
 Magic systems, technologies, scientific concepts, or any other rules-based system. Includes how it works, its limits, and who can use it.
 
-**Entity Images:**
-Any entity can have a reference image attached via the EntityImageUpload component. The image is uploaded to Supabase Storage (`entity-images` bucket). When uploaded, the vision model (llava-v1.6-mistral-7b) can automatically analyze the image and generate a detailed visual description (2-3 paragraphs) that is stored with the entity and used during writing generation.
+**Infrastructure Sliders** (visible when Emergent Character is enabled on any entity type):
+9 dimensions for entities with agency -- ships, stations, buildings, institutions:
+1. Redundancy
+2. Adaptability
+3. Efficiency
+4. Survivability
+5. Comfort Prioritization
+6. Repairability
+7. Crew Familiarity Drift
+8. Environmental Warmth
+9. Emergency Preservation Bias
 
 ### Story Bible
 
 Canonical facts that the AI must always know and respect. Each fact has:
-- **Category** -- Character, World Rule, Timeline, Relationship, Plot Point, General
+- **Category** -- Character Facts, World Rules, Timeline, Relationships, Plot Points, Emotional Anchors, General (plus any custom category)
 - **Importance** -- Critical, High, Medium, Low (affects priority in context stacking)
 - **Subject** -- The entity or topic the fact is about
 - **Fact** -- The canonical statement
 - **Tags** -- Optional categorization tags
+- **Canon Status** -- Canon, Stable, Draft, Experimental, Deprecated
+- **AI Generation Relevant** toggle -- When disabled, the entry is stored for author reference but excluded from AI context. Shown with an "Author Only" badge in the entry list.
 
-Active Story Bible entries are injected into every generation prompt, sorted by importance. Use this for hard rules: "magic cannot bring the dead back to life", "the war ended in Year 412", "Elena is left-handed".
+Active Story Bible entries (with generation_relevant enabled and canon_status not deprecated) are injected into every generation prompt, sorted by importance. Use this for hard rules: "magic cannot bring the dead back to life", "the war ended in Year 412", "Elena is left-handed".
 
-Category filter tabs show counts per category. Search/filter field for finding specific entries.
+**Emotional Anchors** category is specifically for elements that build long-term reader attachment:
+- Running jokes
+- Found family moments
+- Community rituals and traditions
+- Recurring songs or sayings
+- Symbolic objects with emotional resonance
+
+When the "Preserve Emotional Anchors" style rule is active, the AI is instructed to never contradict, diminish, or retire these elements unless explicitly told to.
+
+Category filter tabs show counts per category. Search/filter field for finding specific entries. Download as Markdown button exports all entries grouped by category.
 
 ### Style Anchors
 
@@ -301,7 +351,7 @@ All active prohibited words are injected into every writing prompt and editing p
 
 ### Consistency Tracking
 
-Three-tab interface for maintaining continuity across a long story:
+Four-tab interface for maintaining continuity across a long story:
 
 **Story Events**
 A log of important plot events. Each event has:
@@ -322,6 +372,15 @@ Track how a character changes from scene to scene. Each state entry tracks 5 dim
 - Notes (additional context)
 
 Filter by character. The AI uses the most recent applicable state when writing a character.
+
+**Character Arc**
+Tracks how personality sliders evolve over the course of the story via Arc Events. Each arc event represents a significant experience that shifts a character's personality:
+- Linked to a specific character
+- Specifies which personality slider(s) change and by how much
+- Includes a description of what caused the shift
+- Status: Proposed (AI-suggested) or Accepted (confirmed by author)
+
+Only Accepted arc events affect the character's active personality sliders during generation. The AI service computes evolved slider values by applying all accepted events chronologically to the character's baseline sliders.
 
 **Scene References**
 Tag specific earlier scenes that the current scene should be aware of. 6 reference types:
@@ -348,6 +407,46 @@ The AI reads the relevant content and produces a detailed report highlighting lo
 Previous audit reports are stored and can be reviewed/deleted at any time. Uses low temperature (0.3) for deterministic, focused analysis.
 
 > Logic Checks consume significant context. The 32K context window of Midnight Miqu handles this well, especially for full-chapter audits.
+
+### Reveal Timeline
+
+Tracks when information is revealed to the reader across multiple books and acts. Essential for managing mystery reveals, foreshadowing payoffs, and gradual worldbuilding disclosure in long-running series.
+
+Each reveal entry has:
+- **Book Number** -- which book/volume the reveal occurs in
+- **Act/Section** -- where within the book
+- **Reveal Method** -- how the information is disclosed:
+  - Direct (stated explicitly)
+  - Implied (hinted at through context)
+  - Foreshadowed (seeded earlier, confirmed later)
+  - Discovered (character or reader figures it out)
+  - Character Reveals (one character tells another)
+- **Entity Type** -- what kind of thing is being revealed (character, place, thing, technology, world rule)
+- **Entity Name** -- the specific entity involved
+- **Fact** -- the actual information being revealed
+- **Notes** -- additional context about the reveal
+
+Filter by book number to see all reveals per volume. Timeline layout groups entries by book with visual headers.
+
+Use this system to prevent accidentally revealing information too early, to track which mysteries are still unresolved, and to plan when payoffs should land.
+
+---
+
+### Information Ownership Conventions
+
+Story Forge follows ownership conventions to prevent context duplication and contradictions:
+
+| Information Type | Primary Owner | Referenced By | Not Stored In |
+|-----------------|---------------|---------------|---------------|
+| Character Personality/Background | Character Record (or Dossier if filled) | Scene generation | Story Bible (redundant) |
+| Character Arc Progression | Hero's Journey + Arc Events | Dossier, Generation | Story Bible |
+| World Rules | Story Bible | Everything | Character fields |
+| Reveal Information | Reveal Timeline | Outline | Story Bible (use reveals) |
+| Emotional Anchors | Story Bible (emotional_anchor category) | Style Rules | Character fields |
+| Scene-specific States | Character States | Scene generation | Dossier |
+| Setting Details | Places record | Scene generation | Story Bible (redundant) |
+
+**Practical effect:** When a character has a filled dossier, the dossier replaces the raw personality/background/goals fields in AI context. This prevents sending the same information twice and saves token budget for other context.
 
 ---
 
@@ -689,3 +788,74 @@ If you only want narrated audio without images/animation/lip-sync:
 3. Select the chapter, choose a Kokoro voice and speed.
 4. Click Prepare Chunks, then Generate All.
 5. Use Play All to preview, Download All to save.
+
+---
+
+## Context Assembly Architecture
+
+This section documents how Story Forge decides what information to send to the AI during scene generation.
+
+### Priority System
+
+The AI service assembles context sections sorted by priority (highest first) and includes them until the token budget is full:
+
+| Priority | Section | Content |
+|----------|---------|---------|
+| 12 | Style Anchors | Reference passages defining target voice/tone |
+| 11 | Story Bible Facts | Canonical facts sorted by importance (critical > high > medium > low) |
+| 10 | Previous Scene Summaries | Compressed history of earlier scenes in this chapter |
+| 10 | Previous Scenes | Full text of 1-2 immediately prior scenes |
+| 9 | Referenced Scenes | Full text of explicitly tagged reference scenes |
+| 8 | Story Events | Plot events sorted by importance |
+| 7 | Character States | Most recent physical/emotional/knowledge state per character |
+| 6 | Chapter Summary | Current chapter's summary text |
+| 5 | Story Synopsis | Overall outline synopsis |
+| 4 | Characters | Name, role, personality (or dossier), dialogue style, sliders |
+| 3 | Places/Setting | Name, type, description, infrastructure traits |
+| 2 | Things | Significant objects |
+| 2 | Technologies | Magic/tech systems |
+
+Additionally, the following are always injected outside the priority system:
+- System Prompt (base persona)
+- Style Guide (project-specific writing instructions)
+- Active Style Rules (9 available rules as strict directives)
+- Prohibited Words (blocklist)
+- Scene Description (what to write)
+
+### Filtering Rules
+
+**Context Tags (scene-specific):**
+When context tags are set on a scene, ONLY the tagged entities are included. This is the strongest filter and overrides all other logic. Use context tags to focus the AI on exactly what matters for a specific scene.
+
+**Generation Relevant flag:**
+When no context tags are set, entities with `generation_relevant = false` are excluded. This prevents author-reference-only data (favorite foods, minor trivia, background notes) from consuming token budget.
+
+**Canon Status filtering:**
+- Deprecated entities are always excluded from context
+- Experimental entities are included but tagged with `[EXPERIMENTAL]` so the AI treats them cautiously
+- All other statuses are included normally
+
+**Dossier Ownership:**
+When a character has a filled dossier, only the dossier (plus dialogue style and sliders) is injected. The raw personality, background, and goals fields are NOT also sent -- the dossier already contains this information in richer form. Characters without a dossier fall back to individual fields.
+
+### Token Budget Calculation
+
+```
+Available Budget = Context Length - Max Tokens (output) - 300 (prompt frame overhead)
+```
+
+Sections are added in priority order. When a section won't fit in full, it's truncated to the remaining budget. Lower-priority sections may be dropped entirely if budget is exhausted.
+
+### Style Rules in Context
+
+Active style rules are injected as a `=== ENFORCED STYLE RULES ===` block between the system prompt and the main context. Each rule is a strict directive (e.g., "STRICT RULE: Do NOT use adverbs..."). The 9 available rules:
+
+1. Avoid Adverbs
+2. Kill Leading "The"
+3. Eliminate Linking Verbs
+4. Show, Don't Tell
+5. Prefer Active Voice
+6. Minimal Dialogue Tags
+7. Cut Filter Words
+8. Preserve Emotional Anchors
+9. Emergent Culture
