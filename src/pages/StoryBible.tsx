@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
 import ProjectSelector from '../components/ProjectSelector';
 import { CANON_STATUSES, CANON_STATUS_COLORS, CANON_STATUS_DOT } from '../lib/canonStatus';
+import { generateLoreAudit } from '../services/loreAuditService';
 
 type BibleEntry = Database['public']['Tables']['story_bible_entries']['Row'];
 
@@ -35,6 +36,7 @@ export default function StoryBible() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [auditing, setAuditing] = useState(false);
   const [formData, setFormData] = useState({
     category: 'general',
     subject: '',
@@ -181,6 +183,28 @@ export default function StoryBible() {
     }
   }
 
+  async function handleLoreAudit() {
+    if (!currentProjectId) return;
+    setAuditing(true);
+    try {
+      const md = await generateLoreAudit(currentProjectId);
+      const blob = new Blob([md], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'lore_audit.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Audit failed:', err);
+      alert('Audit generation failed. Check console.');
+    } finally {
+      setAuditing(false);
+    }
+  }
+
   const categories = (() => {
     const defaultKeys = new Set(DEFAULT_CATEGORIES.map(c => c.key));
     const extras = entries
@@ -249,6 +273,13 @@ export default function StoryBible() {
           className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap"
         >
           {exporting ? 'Exporting...' : 'Download Story Bible'}
+        </button>
+        <button
+          onClick={handleLoreAudit}
+          disabled={auditing}
+          className="px-4 py-2 bg-amber-700 text-white rounded-lg hover:bg-amber-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap"
+        >
+          {auditing ? 'Auditing...' : 'Lore Audit'}
         </button>
       </div>
 
