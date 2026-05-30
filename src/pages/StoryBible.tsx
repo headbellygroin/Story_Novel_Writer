@@ -33,6 +33,7 @@ export default function StoryBible() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [formData, setFormData] = useState({
     category: 'general',
     subject: '',
@@ -121,6 +122,64 @@ export default function StoryBible() {
     setFormData({ category: 'general', subject: '', fact: '', importance: 'medium', tags: '', canon_status: 'canon' });
   }
 
+  async function handleExportBible() {
+    if (!currentProjectId) return;
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('story_bible_entries')
+        .select('*')
+        .eq('project_id', currentProjectId)
+        .order('category')
+        .order('importance')
+        .order('subject');
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        alert('No story bible entries found.');
+        setExporting(false);
+        return;
+      }
+
+      const grouped: Record<string, typeof data> = {};
+      for (const entry of data) {
+        if (!grouped[entry.category]) grouped[entry.category] = [];
+        grouped[entry.category].push(entry);
+      }
+
+      let md = '# Story Bible\n\n';
+      for (const [category, items] of Object.entries(grouped)) {
+        const label = category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        md += `## ${label}\n\n`;
+        for (const item of items) {
+          const status = (item as any).canon_status || 'canon';
+          md += `### ${item.subject}\n`;
+          md += `**Importance:** ${item.importance} | **Status:** ${status}\n\n`;
+          md += `${item.fact}\n\n`;
+          if (item.tags && item.tags.length > 0) {
+            md += `*Tags: ${item.tags.join(', ')}*\n\n`;
+          }
+          md += '---\n\n';
+        }
+      }
+
+      const blob = new Blob([md], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'story_bible.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed. Check console.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const categories = (() => {
     const defaultKeys = new Set(DEFAULT_CATEGORIES.map(c => c.key));
     const extras = entries
@@ -182,6 +241,13 @@ export default function StoryBible() {
           className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm whitespace-nowrap"
         >
           Add Entry
+        </button>
+        <button
+          onClick={handleExportBible}
+          disabled={exporting}
+          className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap"
+        >
+          {exporting ? 'Exporting...' : 'Download Story Bible'}
         </button>
       </div>
 
