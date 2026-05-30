@@ -178,7 +178,22 @@ Story Forge covers the full authoring lifecycle: brainstorming, world-building, 
 - Understand that everything you help build here will be used by the Write tab to generate actual prose
 - The prose then feeds into the Pipeline to become visual/audio content
 - Keep continuity and consistency in mind — what you add should not contradict existing Story Bible facts or established Character States
-- Think like a creative partner and story consultant, not just a chatbot`;
+- Think like a creative partner and story consultant, not just a chatbot
+
+## Outlining & Structural Rules
+When proposing outlines or chapters, strictly follow any structural rules the user has set in their Story Dossier (braindump/notes). These rules are absolute constraints — treat them like a brief from the author. Common examples:
+- Number of locations to visit per book
+- Which characters are focal per book
+- Which associated planets/people to explore when a character is focal
+- Arc progression across the series
+If the dossier specifies structural rules, reference them explicitly in your proposals so the user can verify compliance.
+
+## Workflow: Series -> Books -> Chapters -> Writing
+The intended workflow is:
+1. First, propose the series-level outline (all books at high level) using the outlines table
+2. Once approved, propose detailed chapter breakdowns for each book using the chapters table
+3. Then the user moves to the Write tab for chapter-by-chapter prose generation
+Always confirm the current step before jumping ahead.`;
 
 const EDIT_INSTRUCTIONS = `
 # Edit Proposals
@@ -189,8 +204,9 @@ Format:
 [PROPOSE:table=places|action=create|name=The Rusty Nail|summary=Add new bar location|field_type=Bar|field_description=A seedy dive bar on deck 7]
 [PROPOSE:table=story_bible_entries|action=create|name=FTL Rule|summary=Add world rule about FTL travel|field_category=world_rule|field_subject=Faster-than-light|field_fact=FTL travel requires quantum crystals]
 [PROPOSE:table=outlines|action=create|name=Book 1: The Captain|summary=Outline for first book|field_synopsis=Captain Benjamin rallies his crew|field_act_structure=Part 1: Setup. Part 2: Conflict. Part 3: Resolution|field_themes=leadership, loyalty|field_notes=Opens aboard the ship]
+[PROPOSE:table=chapters|action=create|name=Chapter 1: The Galley|outline=Book 1: The Captain|order=1|summary=Crew gathers for breakfast|field_key_events=Benjamin addresses the crew about their next mission|field_notes=Introduces core cast]
 
-Supported tables: characters, places, things, technologies, story_bible_entries, outlines
+Supported tables: characters, places, things, technologies, story_bible_entries, outlines, chapters
 Supported actions: update (modifies existing by name), create (adds new)
 Field names use the prefix "field_" followed by the column name.
 
@@ -200,6 +216,7 @@ For things: type, description, properties, history, notes
 For technologies: type, description, rules, applications, notes
 For story_bible_entries: category, subject, fact, importance (critical/high/medium/low)
 For outlines: synopsis, act_structure, themes, notes
+For chapters: key_events, notes (also requires outline=<outline title> and order=<number>; summary goes in the "summary" field automatically)
 
 IMPORTANT RULES:
 - Only propose edits when the user is clearly asking for changes or when you've discussed and agreed on modifications
@@ -240,6 +257,8 @@ function parseProposals(text: string): { cleanText: string; proposals: EditComma
       else if (key === 'action') cmd.action = val as 'update' | 'create';
       else if (key === 'name') cmd.name = val;
       else if (key === 'summary') cmd.summary = val;
+      else if (key === 'outline') cmd.outline = val;
+      else if (key === 'order') cmd.order = parseInt(val, 10);
       else if (key.startsWith('field_')) cmd.fields[key.slice(6)] = val;
     }
 
@@ -258,7 +277,7 @@ function parseProposals(text: string): { cleanText: string; proposals: EditComma
 
 async function executeEdit(cmd: EditCommand, projectId: string): Promise<string> {
   try {
-    const nameColumn = cmd.table === 'outlines' ? 'title' : 'name';
+    const nameColumn = (cmd.table === 'outlines' || cmd.table === 'chapters') ? 'title' : 'name';
 
     if (cmd.action === 'update') {
       const { data: existing } = await supabase
@@ -278,12 +297,30 @@ async function executeEdit(cmd: EditCommand, projectId: string): Promise<string>
 
       return error ? `Error: ${error.message}` : `Updated ${cmd.name}`;
     } else {
-      const insertPayload: Record<string, string> = {
+      const insertPayload: Record<string, unknown> = {
         project_id: projectId,
         ...cmd.fields,
       };
 
-      if (cmd.table === 'outlines') {
+      if (cmd.table === 'chapters') {
+        insertPayload.title = cmd.name;
+        insertPayload.order_index = cmd.order ?? 0;
+        if (cmd.summary) insertPayload.summary = cmd.summary;
+
+        if (cmd.outline) {
+          const { data: outlineRow } = await supabase
+            .from('outlines')
+            .select('id')
+            .eq('project_id', projectId)
+            .ilike('title', cmd.outline)
+            .maybeSingle();
+
+          if (!outlineRow) return `Could not find outline "${cmd.outline}" to attach chapter`;
+          insertPayload.outline_id = outlineRow.id;
+        } else {
+          return `Chapter "${cmd.name}" requires an outline= field`;
+        }
+      } else if (cmd.table === 'outlines') {
         insertPayload.title = cmd.name;
       } else if (cmd.table === 'story_bible_entries') {
         if (!insertPayload.subject) insertPayload.subject = cmd.name;
@@ -847,6 +884,13 @@ export default function VoiceChat() {
                     <p className="text-amber-700 leading-relaxed mb-1">table=story_bible_entries | fields: category, subject, fact, importance</p>
                     <code className="block text-[10px] bg-amber-100 rounded px-1.5 py-1 text-amber-900 break-all leading-snug">
                       [PROPOSE:table=story_bible_entries|action=create|name=Tide Rule|field_category=world_rule|field_subject=Tidal Magic|field_fact=Magic only works during high tide|field_importance=high]
+                    </code>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-300 rounded-md p-2">
+                    <p className="font-semibold text-slate-800 mb-1">Chapters</p>
+                    <p className="text-slate-700 leading-relaxed mb-1">table=chapters | outline=&lt;title&gt; | order=&lt;n&gt; | fields: key_events, notes</p>
+                    <code className="block text-[10px] bg-slate-100 rounded px-1.5 py-1 text-slate-900 break-all leading-snug">
+                      [PROPOSE:table=chapters|action=create|name=Chapter 1: The Galley|outline=Book 1: The Arrival|order=1|summary=Crew gathers for breakfast|field_key_events=Captain addresses the crew|field_notes=Introduces core cast]
                     </code>
                   </div>
                 </div>

@@ -25,6 +25,8 @@ export interface PendingEdit {
   name: string;
   fields: Record<string, string>;
   summary: string;
+  outline?: string;
+  order?: number;
 }
 
 interface VoiceChatState {
