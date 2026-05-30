@@ -144,6 +144,45 @@ export default function RevealTimeline() {
   const bookNumbers = [...new Set(entries.map(e => e.book_number))].sort((a, b) => a - b);
   const maxBook = bookNumbers.length > 0 ? Math.max(...bookNumbers) : 1;
 
+  function downloadReveals() {
+    if (entries.length === 0) return;
+
+    const allGrouped = entries.reduce<Record<number, RevealEntry[]>>((acc, entry) => {
+      if (!acc[entry.book_number]) acc[entry.book_number] = [];
+      acc[entry.book_number].push(entry);
+      return acc;
+    }, {});
+
+    let md = '# Reveal Timeline\n\n';
+    for (const [bookNum, bookEntries] of Object.entries(allGrouped).sort(([a], [b]) => Number(a) - Number(b))) {
+      md += `## Book ${bookNum}\n\n`;
+      for (const entry of bookEntries) {
+        const method = REVEAL_METHODS.find(m => m.key === entry.reveal_method)?.label || entry.reveal_method;
+        md += `### ${entry.entity_name || 'General'}\n`;
+        md += `**Method:** ${method}`;
+        if (entry.act) md += ` | **Act:** ${entry.act}`;
+        if (entry.entity_type) {
+          const typeLabel = ENTITY_TYPES.find(t => t.key === entry.entity_type)?.label || entry.entity_type;
+          md += ` | **Type:** ${typeLabel}`;
+        }
+        md += '\n\n';
+        md += `${entry.fact}\n\n`;
+        if (entry.notes) md += `*Notes: ${entry.notes}*\n\n`;
+        md += '---\n\n';
+      }
+    }
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'reveal_timeline.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   const filtered = filterBook !== null
     ? entries.filter(e => e.book_number === filterBook)
     : entries;
@@ -208,6 +247,13 @@ export default function RevealTimeline() {
           className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm whitespace-nowrap ml-auto"
         >
           Add Reveal
+        </button>
+        <button
+          onClick={downloadReveals}
+          disabled={entries.length === 0}
+          className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors text-sm whitespace-nowrap"
+        >
+          Download Reveals
         </button>
       </div>
 
