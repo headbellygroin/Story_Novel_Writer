@@ -782,23 +782,35 @@ export default function VoiceChat() {
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-teal-50 border border-teal-200 rounded-md p-2">
                     <p className="font-semibold text-teal-800 mb-1">Outlines</p>
-                    <p className="text-teal-700 leading-relaxed">table=outlines | fields: synopsis, act_structure, themes, notes</p>
+                    <p className="text-teal-700 leading-relaxed mb-1">table=outlines | fields: synopsis, act_structure, themes, notes</p>
+                    <code className="block text-[10px] bg-teal-100 rounded px-1.5 py-1 text-teal-900 break-all leading-snug">
+                      [PROPOSE:table=outlines|action=create|name=Book 1: The Arrival|field_synopsis=A stranger arrives in a coastal town|field_act_structure=Part 1: Discovery. Part 2: Conflict. Part 3: Resolution|field_themes=identity, belonging|field_notes=Opens with a storm]
+                    </code>
                   </div>
                   <div className="bg-sky-50 border border-sky-200 rounded-md p-2">
                     <p className="font-semibold text-sky-800 mb-1">Characters</p>
-                    <p className="text-sky-700 leading-relaxed">table=characters | fields: role, description, personality, background, goals</p>
+                    <p className="text-sky-700 leading-relaxed mb-1">table=characters | fields: role, description, personality, background, goals</p>
+                    <code className="block text-[10px] bg-sky-100 rounded px-1.5 py-1 text-sky-900 break-all leading-snug">
+                      [PROPOSE:table=characters|action=create|name=Mara Voss|field_role=protagonist|field_description=A tall woman with calloused hands|field_personality=Stubborn, loyal, quick-tempered|field_background=Grew up on fishing boats|field_goals=Find her missing brother]
+                    </code>
                   </div>
                   <div className="bg-emerald-50 border border-emerald-200 rounded-md p-2">
                     <p className="font-semibold text-emerald-800 mb-1">Places</p>
-                    <p className="text-emerald-700 leading-relaxed">table=places | fields: type, description, history, significance</p>
+                    <p className="text-emerald-700 leading-relaxed mb-1">table=places | fields: type, description, history, significance</p>
+                    <code className="block text-[10px] bg-emerald-100 rounded px-1.5 py-1 text-emerald-900 break-all leading-snug">
+                      [PROPOSE:table=places|action=create|name=The Salt Quarter|field_type=District|field_description=A crumbling waterfront neighbourhood|field_history=Once the merchant hub before the flood|field_significance=Where the rebels meet in secret]
+                    </code>
                   </div>
                   <div className="bg-amber-50 border border-amber-200 rounded-md p-2">
                     <p className="font-semibold text-amber-800 mb-1">Story Bible</p>
-                    <p className="text-amber-700 leading-relaxed">table=story_bible_entries | fields: category, subject, fact, importance</p>
+                    <p className="text-amber-700 leading-relaxed mb-1">table=story_bible_entries | fields: category, subject, fact, importance</p>
+                    <code className="block text-[10px] bg-amber-100 rounded px-1.5 py-1 text-amber-900 break-all leading-snug">
+                      [PROPOSE:table=story_bible_entries|action=create|name=Tide Rule|field_category=world_rule|field_subject=Tidal Magic|field_fact=Magic only works during high tide|field_importance=high]
+                    </code>
                   </div>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
-                  Tell the AI which table to target: "Propose outlines for each book using the outlines table."
+                  Copy an example above and swap the values. Tell the AI which table to target: "Propose outlines for each book using the outlines table."
                 </p>
               </details>
             </div>
