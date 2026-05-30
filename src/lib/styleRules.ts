@@ -48,6 +48,18 @@ export const BUILT_IN_STYLE_RULES: StyleRule[] = [
     description: 'Remove "felt", "saw", "heard", "seemed", "noticed" -- put the reader directly in the experience.',
     prompt: 'STRICT RULE: Eliminate filter words that create distance between the reader and the experience. Do NOT write "she felt the cold wind" -- write "cold wind bit her cheeks." Do NOT write "he saw the door open" -- write "the door swung open." Remove: felt, noticed, saw, heard, seemed, realized, watched, observed, wondered.',
   },
+  {
+    id: 'preserve_emotional_anchors',
+    label: 'Preserve Emotional Anchors',
+    description: 'Never contradict or diminish Story Bible entries marked as Emotional Anchors. Reinforce them naturally.',
+    prompt: 'STRICT RULE: Story elements designated as Emotional Anchors (running jokes, found family moments, community rituals, recurring songs, shared traditions) must NEVER be contradicted, diminished, or undermined. These elements exist for long-term reader attachment. When an anchor is referenced in a scene, reinforce its emotional significance naturally. Do not resolve, retire, or subvert anchors unless explicitly instructed. Treat them as load-bearing emotional pillars of the franchise.',
+  },
+  {
+    id: 'emergent_culture',
+    label: 'Emergent Culture',
+    description: 'Communities create their own traditions, stories, and folklore independent of protagonist actions.',
+    prompt: 'STRICT RULE: When writing scenes in established communities, include evidence of cultural life that predates and exists independently of the protagonist\'s presence. Background characters reference their own stories, songs, sayings, and traditions. Taverns have regulars with inside jokes. Crews develop their own slang. Settlements remember events the protagonist was not part of. Not all cultural change originates from the main characters. Communities are living systems that generate folklore, nicknames, warnings, and rituals on their own.',
+  },
 ];
 
 export function getActiveRulePrompts(styleRules: Record<string, boolean>): string[] {

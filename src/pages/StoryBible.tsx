@@ -13,6 +13,7 @@ const DEFAULT_CATEGORIES = [
   { key: 'timeline', label: 'Timeline' },
   { key: 'relationship', label: 'Relationships' },
   { key: 'plot_point', label: 'Plot Points' },
+  { key: 'emotional_anchor', label: 'Emotional Anchors' },
   { key: 'general', label: 'General' },
 ];
 

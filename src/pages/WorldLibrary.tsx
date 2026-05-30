@@ -533,6 +533,7 @@ function EntityForm({
   const [infraSlidersOpen, setInfraSlidersOpen] = useState(false);
   const [dossierOpen, setDossierOpen] = useState(false);
   const [generatingDossier, setGeneratingDossier] = useState(false);
+  const [dossierMode, setDossierMode] = useState<'structured' | 'narrative'>('narrative');
 
   async function handleGenerateWriteup() {
     if (!currentProjectId || !formData.name?.trim()) return;
@@ -581,7 +582,7 @@ function EntityForm({
       });
       if (formData.dossier?.trim()) charContext.push(`Existing Dossier Content:\n${formData.dossier}`);
 
-      const prompt = `You are a creative writing assistant specializing in deep character profiles. Based on the following character information, write a comprehensive, narrative-style Character Dossier writeup. Use the template structure below but write in flowing, evocative prose -- not bullet points. Fill each section with insightful, specific content derived from the character data provided. If information for a section isn't available, use creative inference based on what IS provided. Skip sections that truly cannot be inferred.
+      const structuredInstructions = `You are a creative writing assistant specializing in deep character profiles. Based on the following character information, write a comprehensive Character Dossier using structured markdown sections. Use ## headers for each section. Fill each section with insightful, specific content derived from the character data provided. If information for a section isn't available, use creative inference based on what IS provided. Skip sections that truly cannot be inferred.
 
 === CHARACTER DATA ===
 ${charContext.join('\n\n')}
@@ -604,6 +605,15 @@ ${charContext.join('\n\n')}
 15. Relationship To The Wider World
 
 Write the dossier now, using markdown headers (##) for each section. Be specific, vivid, and true to the character data provided.`;
+
+      const narrativeInstructions = `You are a creative writing assistant specializing in deep character profiles. Based on the following character information, write a comprehensive character dossier as flowing narrative prose. Write it like an in-universe personnel file, biography, or character essay. Do NOT use section headers, bullet points, or lists. The text should read naturally as continuous prose, suitable for direct inclusion in franchise documentation. Cover: their role and function, how the world sees them versus how those close to them see them, personality (including contradictions), emotional function in the group, fears, flaws, quiet human moments, comedic qualities, symbolic themes, and character arc. Be specific, vivid, and true to the character data. If information for an aspect isn't available, use creative inference based on what IS provided.
+
+=== CHARACTER DATA ===
+${charContext.join('\n\n')}
+
+Write the narrative dossier now. No headers. No bullet points. Flowing prose only.`;
+
+      const prompt = dossierMode === 'narrative' ? narrativeInstructions : structuredInstructions;
 
       await generateSceneStreaming(
         {
@@ -950,6 +960,24 @@ Write the dossier now, using markdown headers (##) for each section. Be specific
                       Load Template
                     </button>
                   )}
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 bg-slate-100 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setDossierMode('structured')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dossierMode === 'structured' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Structured
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDossierMode('narrative')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dossierMode === 'narrative' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Narrative
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={handleGenerateWriteup}
@@ -959,6 +987,11 @@ Write the dossier now, using markdown headers (##) for each section. Be specific
                     {generatingDossier ? 'Generating...' : 'Generate Writeup'}
                   </button>
                 </div>
+                <p className="text-xs text-slate-400">
+                  {dossierMode === 'narrative'
+                    ? 'Flowing prose -- reads like a personnel file or character essay. No headers.'
+                    : 'Section-based template with ## headers for each category.'}
+                </p>
                 {generatingDossier && (
                   <div className="text-xs text-teal-600 animate-pulse">AI is writing the character dossier...</div>
                 )}
