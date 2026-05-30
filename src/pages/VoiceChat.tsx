@@ -188,8 +188,9 @@ Format:
 [PROPOSE:table=characters|action=update|name=Captain Dax|summary=Update background to mention mining colony|field_description=She grew up on a mining colony|field_goals=Find her lost sister]
 [PROPOSE:table=places|action=create|name=The Rusty Nail|summary=Add new bar location|field_type=Bar|field_description=A seedy dive bar on deck 7]
 [PROPOSE:table=story_bible_entries|action=create|name=FTL Rule|summary=Add world rule about FTL travel|field_category=world_rule|field_subject=Faster-than-light|field_fact=FTL travel requires quantum crystals]
+[PROPOSE:table=outlines|action=create|name=Book 1: The Captain|summary=Outline for first book|field_synopsis=Captain Benjamin rallies his crew|field_act_structure=Part 1: Setup. Part 2: Conflict. Part 3: Resolution|field_themes=leadership, loyalty|field_notes=Opens aboard the ship]
 
-Supported tables: characters, places, things, technologies, story_bible_entries
+Supported tables: characters, places, things, technologies, story_bible_entries, outlines
 Supported actions: update (modifies existing by name), create (adds new)
 Field names use the prefix "field_" followed by the column name.
 
@@ -198,6 +199,7 @@ For places: type, description, history, significance, notes
 For things: type, description, properties, history, notes
 For technologies: type, description, rules, applications, notes
 For story_bible_entries: category, subject, fact, importance (critical/high/medium/low)
+For outlines: synopsis, act_structure, themes, notes
 
 IMPORTANT RULES:
 - Only propose edits when the user is clearly asking for changes or when you've discussed and agreed on modifications
@@ -256,12 +258,14 @@ function parseProposals(text: string): { cleanText: string; proposals: EditComma
 
 async function executeEdit(cmd: EditCommand, projectId: string): Promise<string> {
   try {
+    const nameColumn = cmd.table === 'outlines' ? 'title' : 'name';
+
     if (cmd.action === 'update') {
       const { data: existing } = await supabase
         .from(cmd.table as 'characters')
         .select('id')
         .eq('project_id', projectId)
-        .ilike('name', cmd.name)
+        .ilike(nameColumn, cmd.name)
         .maybeSingle();
 
       if (!existing) return `Could not find "${cmd.name}" in ${cmd.table}`;
@@ -276,13 +280,15 @@ async function executeEdit(cmd: EditCommand, projectId: string): Promise<string>
     } else {
       const insertPayload: Record<string, string> = {
         project_id: projectId,
-        name: cmd.name,
         ...cmd.fields,
       };
 
-      if (cmd.table === 'story_bible_entries') {
+      if (cmd.table === 'outlines') {
+        insertPayload.title = cmd.name;
+      } else if (cmd.table === 'story_bible_entries') {
         if (!insertPayload.subject) insertPayload.subject = cmd.name;
-        delete insertPayload.name;
+      } else {
+        insertPayload.name = cmd.name;
       }
 
       const { error } = await supabase
