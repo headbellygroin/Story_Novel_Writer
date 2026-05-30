@@ -38,6 +38,7 @@ export default function WorldLibrary() {
   const [formData, setFormData] = useState<any>({});
   const [comfyEndpoint, setComfyEndpoint] = useState('');
   const [exportingLocations, setExportingLocations] = useState(false);
+  const [exportingCharacters, setExportingCharacters] = useState(false);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -112,6 +113,64 @@ export default function WorldLibrary() {
       alert('Export failed. Check console.');
     } finally {
       setExportingLocations(false);
+    }
+  }
+
+  async function handleExportCharacters() {
+    if (!currentProjectId) return;
+    setExportingCharacters(true);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const { data: characters, error } = await supabase
+        .from('characters')
+        .select('name, description, role, personality, background, goals, image_url')
+        .eq('project_id', currentProjectId)
+        .order('name');
+      if (error) throw error;
+      if (!characters || characters.length === 0) {
+        alert('No characters found.');
+        setExportingCharacters(false);
+        return;
+      }
+      const config = await getEndpointConfig();
+      const endpoint = config.isRemote && config.remoteComfy
+        ? config.remoteComfy
+        : config.localComfy || 'http://127.0.0.1:8188';
+      const zip = new JSZip();
+      const mdResponse = await fetch('/downloads/sailor_town_characters.md');
+      if (mdResponse.ok) {
+        zip.file('characters_reference.md', await mdResponse.text());
+      }
+      const imagesFolder = zip.folder('images');
+      for (const char of characters) {
+        if (!char.image_url) continue;
+        try {
+          const resolvedUrl = proxyImageUrl(char.image_url, endpoint);
+          const imgResponse = await fetch(resolvedUrl);
+          if (imgResponse.ok) {
+            const blob = await imgResponse.blob();
+            const ext = blob.type.includes('png') ? 'png' : 'jpg';
+            const safeName = char.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '');
+            imagesFolder!.file(`${safeName}.${ext}`, blob);
+          }
+        } catch (imgErr) {
+          console.warn(`Failed to fetch image for ${char.name}:`, imgErr);
+        }
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'characters_package.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed. Check console.');
+    } finally {
+      setExportingCharacters(false);
     }
   }
 
@@ -248,6 +307,15 @@ export default function WorldLibrary() {
             className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
           >
             {exportingLocations ? 'Exporting...' : 'Download Map Package'}
+          </button>
+        )}
+        {activeTab === 'characters' && (
+          <button
+            onClick={handleExportCharacters}
+            disabled={exportingCharacters}
+            className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {exportingCharacters ? 'Exporting...' : 'Download Character Package'}
           </button>
         )}
       </div>
