@@ -232,6 +232,14 @@ Users can configure their preferred provider order:
 - Community asset libraries
 - Voting/participation tools for live events
 
+### Character Portrait Lipsync for Dialogue
+- When a character speaks in a chapter, their portrait image flashes up and lip-syncs the dialogue audio
+- Pipeline would need a dialogue attribution step: parse prose to identify who is speaking, map to character portrait + voice profile
+- Route dialogue TTS chunks through LTX lipsync workflow using the character's portrait as source frame
+- Narration segments use standard scene images/animations; dialogue segments use portrait lipsync video
+- Requires: clean front-facing character portraits (already have these), per-character voice assignments in TTS, a new pipeline stage between TTS and assembly that splits narration vs. dialogue
+- End result: visual novel / animated audiobook hybrid -- scene imagery for action, talking portraits for dialogue
+
 ---
 
 ## When to Pull the Trigger
