@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
-import { generateScene, GenerationMode } from '../services/aiService';
+import { generateScene, GenerationMode, ContextMode, assemblePromptReport, PromptAssemblyReport } from '../services/aiService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
 import { formatInfraSlidersForPrompt } from '../lib/infrastructureSliders';
 import { getAcceptedArcEventsForCharacter, computeEvolvedSliders } from '../services/arcAnalysisService';
@@ -12,6 +12,8 @@ import ContextTagsPanel from '../components/write/ContextTagsPanel';
 import SceneImagePanel from '../components/write/SceneImagePanel';
 import SceneBriefPanel from '../components/write/SceneBriefPanel';
 import EditingPassPanel from '../components/write/EditingPassPanel';
+import PromptReportPanel from '../components/write/PromptReportPanel';
+import ChapterContextTagsPanel from '../components/write/ChapterContextTagsPanel';
 
 type Scene = Database['public']['Tables']['scenes']['Row'];
 type Chapter = Database['public']['Tables']['chapters']['Row'];
@@ -29,8 +31,10 @@ export default function Write() {
   const [sceneFormData, setSceneFormData] = useState<Partial<Scene>>({});
   const [settings, setSettings] = useState<GenerationSettings | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<'scenes' | 'context' | 'brief' | 'image'>('scenes');
+  const [sidebarTab, setSidebarTab] = useState<'scenes' | 'context' | 'brief' | 'image' | 'report'>('scenes');
   const [generationMode, setGenerationMode] = useState<GenerationMode>('scene');
+  const [contextMode, setContextMode] = useState<ContextMode>('relevant');
+  const [promptReport, setPromptReport] = useState<PromptAssemblyReport | null>(null);
 
   useEffect(() => {
     if (currentProjectId && currentOutlineId) {
@@ -147,6 +151,7 @@ export default function Write() {
         contextTagsRes,
         prohibitedWordsRes,
         manifestoRes,
+        chapterTagsRes,
       ] = await Promise.all([
         currentOutlineId ? supabase.from('outlines').select('*').eq('id', currentOutlineId).maybeSingle() : null,
         supabase.from('chapters').select('*').eq('id', scene.chapter_id).maybeSingle(),
@@ -165,6 +170,7 @@ export default function Write() {
         supabase.from('scene_context_tags').select('*').eq('scene_id', sceneId),
         supabase.from('prohibited_words').select('word').eq('project_id', currentProjectId),
         supabase.from('franchise_manifesto').select('content').eq('project_id', currentProjectId).maybeSingle(),
+        supabase.from('chapter_context_tags').select('*').eq('chapter_id', scene.chapter_id),
       ]);
 
       const prohibitedWords = (prohibitedWordsRes.data || []).map((w: { word: string }) => w.word);
@@ -172,7 +178,10 @@ export default function Write() {
       const allPlaces = worldData[1].data || [];
       const allThings = worldData[2].data || [];
       const allTechs = worldData[3].data || [];
-      const contextTags = contextTagsRes.data || [];
+      const sceneContextTags = contextTagsRes.data || [];
+      const chapterContextTags = chapterTagsRes.data || [];
+
+      const contextTags = sceneContextTags.length > 0 ? sceneContextTags : chapterContextTags;
       const hasContextTags = contextTags.length > 0;
 
       const taggedIds = new Set(contextTags.map(t => t.entity_id));
@@ -296,6 +305,7 @@ export default function Write() {
       const content = await generateScene({
         sceneDescription: scene.description,
         generationMode,
+        contextMode,
         context: {
           franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
@@ -350,6 +360,210 @@ export default function Write() {
       alert('Failed to generate scene. Please check your AI settings and ensure your local model is running.');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function refreshPromptReport() {
+    if (!currentProjectId || !settings || !selectedSceneId) return;
+
+    const scene = scenes.find(s => s.id === selectedSceneId);
+    if (!scene) return;
+
+    try {
+      const [
+        outline,
+        chapter,
+        worldData,
+        eventsRes,
+        statesRes,
+        refsRes,
+        bibleRes,
+        styleRes,
+        summariesRes,
+        contextTagsRes,
+        prohibitedWordsRes,
+        manifestoRes,
+        chapterTagsRes,
+      ] = await Promise.all([
+        currentOutlineId ? supabase.from('outlines').select('*').eq('id', currentOutlineId).maybeSingle() : null,
+        supabase.from('chapters').select('*').eq('id', scene.chapter_id).maybeSingle(),
+        Promise.all([
+          supabase.from('characters').select('*').eq('project_id', currentProjectId),
+          supabase.from('places').select('*').eq('project_id', currentProjectId),
+          supabase.from('things').select('*').eq('project_id', currentProjectId),
+          supabase.from('technologies').select('*').eq('project_id', currentProjectId),
+        ]),
+        supabase.from('story_events').select('*').eq('project_id', currentProjectId).order('created_at'),
+        supabase.from('character_states').select('*').eq('project_id', currentProjectId).order('created_at', { ascending: false }),
+        supabase.from('scene_references').select('*').eq('project_id', currentProjectId).eq('active', true),
+        supabase.from('story_bible_entries').select('*').eq('project_id', currentProjectId),
+        supabase.from('style_anchors').select('*').eq('project_id', currentProjectId).eq('active', true),
+        supabase.from('scene_summaries').select('*, scenes!inner(title, order_index, chapter_id)').eq('project_id', currentProjectId),
+        supabase.from('scene_context_tags').select('*').eq('scene_id', selectedSceneId),
+        supabase.from('prohibited_words').select('word').eq('project_id', currentProjectId),
+        supabase.from('franchise_manifesto').select('content').eq('project_id', currentProjectId).maybeSingle(),
+        supabase.from('chapter_context_tags').select('*').eq('chapter_id', scene.chapter_id),
+      ]);
+
+      const prohibitedWords = (prohibitedWordsRes.data || []).map((w: { word: string }) => w.word);
+      const allCharacters = worldData[0].data || [];
+      const allPlaces = worldData[1].data || [];
+      const allThings = worldData[2].data || [];
+      const allTechs = worldData[3].data || [];
+      const sceneContextTags = contextTagsRes.data || [];
+      const chapterContextTags = chapterTagsRes.data || [];
+
+      const contextTags = sceneContextTags.length > 0 ? sceneContextTags : chapterContextTags;
+      const hasContextTags = contextTags.length > 0;
+
+      const taggedIds = new Set(contextTags.map(t => t.entity_id));
+
+      const characters = hasContextTags
+        ? allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id))
+        : allCharacters;
+      const places = hasContextTags
+        ? allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id))
+        : allPlaces;
+      const things = hasContextTags
+        ? allThings.filter((t: Record<string, string>) => taggedIds.has(t.id))
+        : allThings;
+      const technologies = hasContextTags
+        ? allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id))
+        : allTechs;
+
+      const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
+        subject: b.subject,
+        fact: b.fact,
+        importance: b.importance,
+        category: b.category,
+        canon_status: b.canon_status || 'canon',
+      }));
+
+      const taggedBibleIds = contextTags
+        .filter(t => t.entity_type === 'story_bible_entries')
+        .map(t => t.entity_id);
+      const filteredBibleFacts = hasContextTags && taggedBibleIds.length > 0
+        ? storyBibleFacts.filter((_: Record<string, string>, i: number) => {
+            const entry = (bibleRes.data || [])[i];
+            return taggedBibleIds.includes(entry.id);
+          })
+        : storyBibleFacts;
+
+      const styleAnchors = (styleRes.data || []).map((a: Record<string, string>) => ({
+        label: a.label,
+        passage: a.passage,
+        notes: a.notes,
+      }));
+
+      const storyEvents = (eventsRes.data || []).map((e: Record<string, string>) => ({
+        title: e.title,
+        description: e.description,
+        importance: e.importance,
+      }));
+
+      const latestStates = new Map<string, Record<string, string>>();
+      for (const s of statesRes.data || []) {
+        if (!latestStates.has(s.character_id)) {
+          const char = allCharacters.find((c: Record<string, string>) => c.id === s.character_id);
+          latestStates.set(s.character_id, {
+            character_name: char?.name || 'Unknown',
+            physical_state: s.physical_state,
+            emotional_state: s.emotional_state,
+            knowledge: s.knowledge,
+          });
+        }
+      }
+
+      const allScenes = await supabase.from('scenes').select('id, title, content').eq('project_id', currentProjectId);
+      const referencedScenes: Array<{ title: string; content: string; note: string }> = [];
+      for (const ref of refsRes.data || []) {
+        const refScene = (allScenes.data || []).find((s: Record<string, string>) => s.id === ref.scene_id);
+        if (refScene) {
+          referencedScenes.push({ title: refScene.title, content: refScene.content || '', note: ref.reference_note });
+        }
+      }
+
+      const sceneSummaries = (summariesRes.data || [])
+        .filter((s: any) => {
+          const sceneData = s.scenes;
+          return sceneData &&
+            sceneData.chapter_id === scene.chapter_id &&
+            sceneData.order_index < scene.order_index;
+        })
+        .map((s: any) => ({
+          sceneTitle: s.scenes?.title || 'Untitled',
+          summary: s.summary,
+          key_facts: s.key_facts || [],
+        }));
+
+      const recentScenes = scenes
+        .filter(s => s.order_index < scene.order_index && s.content)
+        .slice(-2);
+      const previousScenes = recentScenes.length > 0
+        ? recentScenes.map(s => `${s.title}:\n${s.content}`).join('\n\n---\n\n')
+        : undefined;
+
+      const enrichedCharacters = await Promise.all(characters.map(async (c: any) => {
+        const baseSliders = c.personality_sliders
+          ? (typeof c.personality_sliders === 'string' ? JSON.parse(c.personality_sliders) : c.personality_sliders)
+          : null;
+
+        let slidersText: string | undefined;
+        if (baseSliders) {
+          const arcEvents = await getAcceptedArcEventsForCharacter(currentProjectId!, c.id);
+          const evolved = arcEvents.length > 0 ? computeEvolvedSliders(baseSliders, arcEvents) : baseSliders;
+          slidersText = formatSlidersForPrompt(evolved);
+        }
+
+        const infraSliders = c.infrastructure_sliders
+          ? (typeof c.infrastructure_sliders === 'string' ? JSON.parse(c.infrastructure_sliders) : c.infrastructure_sliders)
+          : null;
+        const infraText = infraSliders ? formatInfraSlidersForPrompt(infraSliders) : undefined;
+
+        return {
+          ...c,
+          dialogue_style: c.dialogue_style || undefined,
+          personality_sliders_text: slidersText,
+          infrastructure_sliders_text: infraText,
+        };
+      }));
+
+      const enrichEntitiesWithInfra = (entities: any[]) => entities.map((e: any) => {
+        if (!e.emergent_character || !e.infrastructure_sliders) return e;
+        const sliders = typeof e.infrastructure_sliders === 'string' ? JSON.parse(e.infrastructure_sliders) : e.infrastructure_sliders;
+        return { ...e, infrastructure_sliders_text: formatInfraSlidersForPrompt(sliders) };
+      });
+
+      const report = assemblePromptReport({
+        sceneDescription: scene.description,
+        generationMode,
+        contextMode,
+        context: {
+          franchiseManifesto: manifestoRes?.data?.content || undefined,
+          outlineSynopsis: outline?.data?.synopsis,
+          chapterSummary: chapter.data?.summary,
+          characters: enrichedCharacters,
+          places: enrichEntitiesWithInfra(places),
+          things: enrichEntitiesWithInfra(things),
+          technologies: enrichEntitiesWithInfra(technologies),
+          previousScenes: previousScenes || undefined,
+          previousSceneSummaries: sceneSummaries.length > 0 ? sceneSummaries : undefined,
+          storyEvents: storyEvents.length > 0 ? storyEvents : undefined,
+          characterStates: latestStates.size > 0 ? Array.from(latestStates.values()) as any : undefined,
+          referencedScenes: referencedScenes.length > 0 ? referencedScenes : undefined,
+          storyBibleFacts: filteredBibleFacts.length > 0 ? filteredBibleFacts : undefined,
+          styleAnchors: styleAnchors.length > 0 ? styleAnchors : undefined,
+          prohibitedWords: prohibitedWords.length > 0 ? prohibitedWords : undefined,
+        },
+        settings: {
+          ...settings,
+          style_rules: (settings.style_rules as Record<string, boolean>) || undefined,
+        },
+      });
+
+      setPromptReport(report);
+    } catch (error) {
+      console.error('Error generating prompt report:', error);
     }
   }
 
@@ -548,6 +762,16 @@ export default function Write() {
                   >
                     Image
                   </button>
+                  <button
+                    onClick={() => setSidebarTab('report')}
+                    className={`flex-1 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                      sidebarTab === 'report'
+                        ? 'border-amber-500 text-amber-700'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Tokens
+                  </button>
                 </div>
 
                 {sidebarTab === 'scenes' && (
@@ -608,6 +832,12 @@ export default function Write() {
                       sceneId={selectedScene.id}
                       projectId={currentProjectId}
                     />
+                    {selectedChapterId && (
+                      <ChapterContextTagsPanel
+                        chapterId={selectedChapterId}
+                        projectId={currentProjectId}
+                      />
+                    )}
                   </div>
                 )}
 
@@ -648,6 +878,18 @@ export default function Write() {
                       Please configure AI settings first in the Settings page.
                     </p>
                   </div>
+                )}
+
+                {sidebarTab === 'report' && selectedScene && (
+                  <PromptReportPanel
+                    report={promptReport}
+                    contextMode={contextMode}
+                    onContextModeChange={(mode) => {
+                      setContextMode(mode);
+                      setPromptReport(null);
+                    }}
+                    onRefresh={refreshPromptReport}
+                  />
                 )}
               </div>
             )}

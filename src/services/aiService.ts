@@ -49,6 +49,21 @@ export interface SceneSummaryData {
 }
 
 export type GenerationMode = 'scene' | 'design_brief' | 'outline';
+export type ContextMode = 'minimal' | 'relevant' | 'full';
+
+export interface PromptAssemblyReport {
+  sections: Array<{
+    label: string;
+    key: string;
+    tokens: number;
+    included: boolean;
+    truncated: boolean;
+  }>;
+  frameTokens: number;
+  totalPromptTokens: number;
+  maxBudget: number;
+  contextMode: ContextMode;
+}
 
 const GENERATION_MODE_INSTRUCTIONS: Record<GenerationMode, string> = {
   scene: `Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`,
@@ -59,6 +74,7 @@ const GENERATION_MODE_INSTRUCTIONS: Record<GenerationMode, string> = {
 export interface GenerateSceneRequest {
   sceneDescription: string;
   generationMode?: GenerationMode;
+  contextMode?: ContextMode;
   context: {
     franchiseManifesto?: string;
     characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; infrastructure_sliders_text?: string; dossier?: string; canon_status?: string }>;
@@ -93,14 +109,14 @@ function truncateToTokenBudget(text: string, maxTokens: number): string {
 }
 
 export async function generateScene(request: GenerateSceneRequest): Promise<string> {
-  const { sceneDescription, context, settings, generationMode = 'scene' } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
   const reservedForPromptFrame = 300;
   const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
 
-  const contextPrompt = buildContextPrompt(context, availableForContext);
+  const contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -174,14 +190,14 @@ export async function generateSceneStreaming(
   request: GenerateSceneRequest,
   onChunk: (text: string) => void,
 ): Promise<string> {
-  const { sceneDescription, context, settings, generationMode = 'scene' } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
   const reservedForPromptFrame = 300;
   const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
 
-  const contextPrompt = buildContextPrompt(context, availableForContext);
+  const contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -277,16 +293,35 @@ ${modeInstruction}`;
 
 interface ContextSection {
   key: string;
+  label: string;
   content: string;
   priority: number;
 }
 
-function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number): string {
+const SECTION_LABELS: Record<string, string> = {
+  manifesto: 'Franchise Manifesto',
+  bible: 'Story Bible',
+  style: 'Style Anchors',
+  synopsis: 'Story Synopsis',
+  chapter: 'Chapter Summary',
+  events: 'Story Events / Timeline',
+  states: 'Character States',
+  characters: 'Characters',
+  places: 'Places / Setting',
+  things: 'Things / Objects',
+  tech: 'Technology / Magic',
+  refs: 'Referenced Scenes',
+  summaries: 'Scene Summaries',
+  previous: 'Previous Scenes (Full)',
+};
+
+function buildSections(context: GenerateSceneRequest['context'], contextMode: ContextMode): ContextSection[] {
   const sections: ContextSection[] = [];
 
   if (context.franchiseManifesto) {
     sections.push({
       key: 'manifesto',
+      label: SECTION_LABELS.manifesto,
       content: `=== FRANCHISE MANIFESTO (ABSOLUTE RULES - OVERRIDE ALL OTHER GUIDANCE) ===\n${context.franchiseManifesto}`,
       priority: 13,
     });
@@ -294,21 +329,30 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
 
   if (context.storyBibleFacts && context.storyBibleFacts.length > 0) {
     const activeFacts = context.storyBibleFacts.filter(f => f.canon_status !== 'deprecated');
-    const sorted = [...activeFacts].sort((a, b) => {
-      const rank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-      return (rank[b.importance] || 0) - (rank[a.importance] || 0);
-    });
-    const facts = sorted
-      .map(f => {
-        const tag = f.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
-        return `[${f.importance.toUpperCase()}] ${f.subject}${tag}: ${f.fact}`;
-      })
-      .join('\n');
-    sections.push({
-      key: 'bible',
-      content: `=== STORY BIBLE (CANONICAL FACTS - DO NOT CONTRADICT) ===\n${facts}`,
-      priority: 11,
-    });
+    let factsToInclude = activeFacts;
+    if (contextMode === 'minimal') {
+      factsToInclude = activeFacts.filter(f => f.importance === 'critical');
+    } else if (contextMode === 'relevant') {
+      factsToInclude = activeFacts.filter(f => f.importance === 'critical' || f.importance === 'high');
+    }
+    if (factsToInclude.length > 0) {
+      const sorted = [...factsToInclude].sort((a, b) => {
+        const rank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+        return (rank[b.importance] || 0) - (rank[a.importance] || 0);
+      });
+      const facts = sorted
+        .map(f => {
+          const tag = f.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+          return `[${f.importance.toUpperCase()}] ${f.subject}${tag}: ${f.fact}`;
+        })
+        .join('\n');
+      sections.push({
+        key: 'bible',
+        label: SECTION_LABELS.bible,
+        content: `=== STORY BIBLE (CANONICAL FACTS - DO NOT CONTRADICT) ===\n${facts}`,
+        priority: 11,
+      });
+    }
   }
 
   if (context.styleAnchors && context.styleAnchors.length > 0) {
@@ -317,35 +361,44 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       .join('\n\n');
     sections.push({
       key: 'style',
+      label: SECTION_LABELS.style,
       content: `=== STYLE REFERENCE (MATCH THIS VOICE AND TONE) ===\n${anchors}`,
       priority: 12,
     });
   }
 
   if (context.outlineSynopsis) {
-    sections.push({ key: 'synopsis', content: `=== STORY SYNOPSIS ===\n${context.outlineSynopsis}`, priority: 5 });
+    sections.push({ key: 'synopsis', label: SECTION_LABELS.synopsis, content: `=== STORY SYNOPSIS ===\n${context.outlineSynopsis}`, priority: 5 });
   }
 
   if (context.chapterSummary) {
-    sections.push({ key: 'chapter', content: `=== CHAPTER SUMMARY ===\n${context.chapterSummary}`, priority: 6 });
+    sections.push({ key: 'chapter', label: SECTION_LABELS.chapter, content: `=== CHAPTER SUMMARY ===\n${context.chapterSummary}`, priority: 6 });
   }
 
   if (context.storyEvents && context.storyEvents.length > 0) {
-    const sorted = [...context.storyEvents].sort((a, b) => {
-      const rank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-      return (rank[b.importance] || 0) - (rank[a.importance] || 0);
-    });
-    const events = sorted
-      .map(e => `[${e.importance.toUpperCase()}] ${e.title}: ${e.description}`)
-      .join('\n');
-    sections.push({ key: 'events', content: `=== IMPORTANT STORY EVENTS (FOR CONSISTENCY) ===\n${events}`, priority: 8 });
+    let eventsToInclude = context.storyEvents;
+    if (contextMode === 'minimal') {
+      eventsToInclude = context.storyEvents.filter(e => e.importance === 'critical');
+    } else if (contextMode === 'relevant') {
+      eventsToInclude = context.storyEvents.filter(e => e.importance === 'critical' || e.importance === 'high');
+    }
+    if (eventsToInclude.length > 0) {
+      const sorted = [...eventsToInclude].sort((a, b) => {
+        const rank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+        return (rank[b.importance] || 0) - (rank[a.importance] || 0);
+      });
+      const events = sorted
+        .map(e => `[${e.importance.toUpperCase()}] ${e.title}: ${e.description}`)
+        .join('\n');
+      sections.push({ key: 'events', label: SECTION_LABELS.events, content: `=== IMPORTANT STORY EVENTS (FOR CONSISTENCY) ===\n${events}`, priority: 8 });
+    }
   }
 
   if (context.characterStates && context.characterStates.length > 0) {
     const states = context.characterStates
       .map(s => `${s.character_name}:\n  Physical: ${s.physical_state}\n  Emotional: ${s.emotional_state}\n  Knowledge: ${s.knowledge}`)
       .join('\n\n');
-    sections.push({ key: 'states', content: `=== CHARACTER CURRENT STATES ===\n${states}`, priority: 7 });
+    sections.push({ key: 'states', label: SECTION_LABELS.states, content: `=== CHARACTER CURRENT STATES ===\n${states}`, priority: 7 });
   }
 
   if (context.characters && context.characters.length > 0) {
@@ -354,13 +407,19 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       const statusTag = c.canon_status === 'experimental' ? ' [EXPERIMENTAL - may not be canon]' : '';
       let info = `- ${c.name} (${c.role})${statusTag}: ${c.personality}\n  Background: ${c.background}`;
       if (c.dialogue_style) info += `\n  Dialogue Style: ${c.dialogue_style}`;
-      if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
-      if (c.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${c.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (contextMode !== 'minimal') {
+        if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+        if (c.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${c.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      }
       if (c.image_description) info += `\n  Visual: ${c.image_description}`;
-      if (c.dossier?.trim()) info += `\n  Character Dossier:\n${c.dossier.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (contextMode === 'full' && c.dossier?.trim()) info += `\n  Character Dossier:\n${c.dossier.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (contextMode === 'relevant' && c.dossier?.trim()) {
+        const dossierLines = c.dossier.split('\n').slice(0, 10);
+        info += `\n  Character Dossier (summary):\n${dossierLines.map((l: string) => `    ${l}`).join('\n')}`;
+      }
       return info;
     }).join('\n');
-    if (charInfo) sections.push({ key: 'characters', content: `=== CHARACTERS IN THIS SCENE ===\n${charInfo}`, priority: 4 });
+    if (charInfo) sections.push({ key: 'characters', label: SECTION_LABELS.characters, content: `=== CHARACTERS IN THIS SCENE ===\n${charInfo}`, priority: 4 });
   }
 
   if (context.places && context.places.length > 0) {
@@ -370,10 +429,10 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       const emergentTag = p.emergent_character ? ' [EMERGENT CHARACTER]' : '';
       let info = `- ${p.name} (${p.type})${statusTag}${emergentTag}: ${p.description}`;
       if (p.image_description) info += `\n  Visual: ${p.image_description}`;
-      if (p.emergent_character && p.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${p.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (p.emergent_character && p.infrastructure_sliders_text && contextMode !== 'minimal') info += `\n  Infrastructure Traits:\n${p.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
-    if (placeInfo) sections.push({ key: 'places', content: `=== SETTING ===\n${placeInfo}`, priority: 3 });
+    if (placeInfo) sections.push({ key: 'places', label: SECTION_LABELS.places, content: `=== SETTING ===\n${placeInfo}`, priority: 3 });
   }
 
   if (context.things && context.things.length > 0) {
@@ -383,10 +442,10 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       const emergentTag = t.emergent_character ? ' [EMERGENT CHARACTER]' : '';
       let info = `- ${t.name} (${t.type})${statusTag}${emergentTag}: ${t.description}`;
       if (t.image_description) info += `\n  Visual: ${t.image_description}`;
-      if (t.emergent_character && t.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${t.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (t.emergent_character && t.infrastructure_sliders_text && contextMode !== 'minimal') info += `\n  Infrastructure Traits:\n${t.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
-    if (thingInfo) sections.push({ key: 'things', content: `=== IMPORTANT OBJECTS ===\n${thingInfo}`, priority: 2 });
+    if (thingInfo) sections.push({ key: 'things', label: SECTION_LABELS.things, content: `=== IMPORTANT OBJECTS ===\n${thingInfo}`, priority: 2 });
   }
 
   if (context.technologies && context.technologies.length > 0) {
@@ -396,17 +455,17 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       const emergentTag = t.emergent_character ? ' [EMERGENT CHARACTER]' : '';
       let info = `- ${t.name} (${t.type})${statusTag}${emergentTag}: ${t.description}`;
       if (t.image_description) info += `\n  Visual: ${t.image_description}`;
-      if (t.emergent_character && t.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${t.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (t.emergent_character && t.infrastructure_sliders_text && contextMode !== 'minimal') info += `\n  Infrastructure Traits:\n${t.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
-    if (techInfo) sections.push({ key: 'tech', content: `=== TECHNOLOGY/MAGIC SYSTEMS ===\n${techInfo}`, priority: 2 });
+    if (techInfo) sections.push({ key: 'tech', label: SECTION_LABELS.tech, content: `=== TECHNOLOGY/MAGIC SYSTEMS ===\n${techInfo}`, priority: 2 });
   }
 
   if (context.referencedScenes && context.referencedScenes.length > 0) {
     const refs = context.referencedScenes
       .map(r => `Scene: "${r.title}"\nReference Note: ${r.note}\nContent:\n${r.content}`)
       .join('\n\n---\n\n');
-    sections.push({ key: 'refs', content: `=== REFERENCED SCENES (MAINTAIN CONSISTENCY) ===\n${refs}`, priority: 9 });
+    sections.push({ key: 'refs', label: SECTION_LABELS.refs, content: `=== REFERENCED SCENES (MAINTAIN CONSISTENCY) ===\n${refs}`, priority: 9 });
   }
 
   if (context.previousSceneSummaries && context.previousSceneSummaries.length > 0) {
@@ -421,15 +480,25 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
       .join('\n\n');
     sections.push({
       key: 'summaries',
+      label: SECTION_LABELS.summaries,
       content: `=== PREVIOUS SCENE SUMMARIES (COMPRESSED HISTORY) ===\n${summaries}`,
       priority: 10,
     });
   }
 
   if (context.previousScenes) {
-    sections.push({ key: 'previous', content: `=== PREVIOUS SCENES IN THIS CHAPTER ===\n${context.previousScenes}`, priority: 10 });
+    if (contextMode === 'minimal') {
+      // Skip full previous scenes in minimal mode
+    } else {
+      sections.push({ key: 'previous', label: SECTION_LABELS.previous, content: `=== PREVIOUS SCENES IN THIS CHAPTER ===\n${context.previousScenes}`, priority: 10 });
+    }
   }
 
+  return sections;
+}
+
+function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number, contextMode: ContextMode = 'full'): string {
+  const sections = buildSections(context, contextMode);
   sections.sort((a, b) => b.priority - a.priority);
 
   const result: string[] = [];
@@ -452,4 +521,74 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
   }
 
   return result.join('\n\n');
+}
+
+export function assemblePromptReport(request: GenerateSceneRequest): PromptAssemblyReport {
+  const { context, settings, contextMode = 'full' } = request;
+
+  const contextLength = settings.context_length || 4096;
+  const reservedForOutput = settings.max_tokens;
+  const reservedForPromptFrame = 300;
+  const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
+
+  const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
+  const rulesBlock = activeRules.length > 0
+    ? `\n\n=== ENFORCED STYLE RULES ===\n${activeRules.join('\n\n')}\n`
+    : '';
+  const prohibitedBlock = context.prohibitedWords && context.prohibitedWords.length > 0
+    ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
+    : '';
+
+  const frameText = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}\n\n${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}`;
+  const frameTokens = estimateTokens(frameText);
+
+  const sections = buildSections(context, contextMode);
+  sections.sort((a, b) => b.priority - a.priority);
+
+  const reportSections: PromptAssemblyReport['sections'] = [];
+  let usedTokens = 0;
+
+  for (const section of sections) {
+    const sectionTokens = estimateTokens(section.content);
+    const fits = usedTokens + sectionTokens <= availableForContext;
+    const remaining = availableForContext - usedTokens;
+    const wouldTruncate = !fits && remaining > 100;
+
+    reportSections.push({
+      label: section.label,
+      key: section.key,
+      tokens: fits ? sectionTokens : (wouldTruncate ? remaining : sectionTokens),
+      included: fits || wouldTruncate,
+      truncated: wouldTruncate,
+    });
+
+    if (fits) {
+      usedTokens += sectionTokens;
+    } else {
+      if (wouldTruncate) usedTokens += remaining;
+      break;
+    }
+  }
+
+  // Mark remaining sections as not included
+  const includedKeys = new Set(reportSections.map(s => s.key));
+  for (const section of sections) {
+    if (!includedKeys.has(section.key)) {
+      reportSections.push({
+        label: section.label,
+        key: section.key,
+        tokens: estimateTokens(section.content),
+        included: false,
+        truncated: false,
+      });
+    }
+  }
+
+  return {
+    sections: reportSections,
+    frameTokens,
+    totalPromptTokens: frameTokens + usedTokens,
+    maxBudget: availableForContext,
+    contextMode,
+  };
 }
