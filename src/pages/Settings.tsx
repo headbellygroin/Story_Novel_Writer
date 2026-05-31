@@ -326,11 +326,11 @@ export default function Settings() {
     { key: 'design_brief', label: 'Design Brief', description: 'Chapter/scene design briefs, heavy planning documents' },
     { key: 'tag_recommendation', label: 'Tag Recommendation', description: 'Automatic context tag recommendation after briefs' },
     { key: 'outline', label: 'Outline', description: 'Book, chapter, and scene outlines, franchise planning' },
-    { key: 'scene', label: 'Scene Writing', description: 'First-pass scene drafting with focused context' },
+    { key: 'scene', label: 'Scene Writing', description: 'Scene generation, dialogue, character interactions' },
     { key: 'rewrite', label: 'Rewrite / Polish', description: 'Scene rewrites, dialogue polish, final prose pass' },
+    { key: 'brainstorm', label: 'Brainstorm', description: 'Quick creative generation, NPC names, locations, songs' },
     { key: 'utility', label: 'Fast Utility', description: 'Summaries, metadata, JSON, formatting, prompt cleanup' },
-    { key: 'vision', label: 'Vision / Image Prompting', description: 'Character art review, cover review, visual consistency' },
-    { key: 'vision_quick', label: 'Quick Vision / Captioning', description: 'Fast image captions and quick visual checks' },
+    { key: 'vision', label: 'Vision / Image Analysis', description: 'Character art review, cover review, visual consistency' },
   ] as const;
 
   const [presets, setPresets] = useState<ModelPreset[]>([]);
@@ -466,11 +466,11 @@ export default function Settings() {
       { task_mode: 'design_brief', label: 'Meta Llama (Design Brief)', model_name: 'meta-llama', api_endpoint: endpoint, context_length: 128000, max_tokens: 2000, temperature: 0.35, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Large context needed: manifesto + bible + characters + locations + reveals', is_active: true },
       { task_mode: 'tag_recommendation', label: 'Mistral 7B (Tags)', model_name: 'mistral-7b-instruct-v0.2.gguf', api_endpoint: endpoint, context_length: 32768, max_tokens: 1500, temperature: 0.1, top_p: 0.85, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Brief + entity list needs more than 4096; no prose quality needed', is_active: true },
       { task_mode: 'outline', label: 'Meta Llama (Outline)', model_name: 'meta-llama', api_endpoint: endpoint, context_length: 128000, max_tokens: 3000, temperature: 0.4, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Large context + strong reasoning for structural planning', is_active: true },
-      { task_mode: 'scene', label: 'Nous Hermes 34B (Scene)', model_name: 'nous-hermes-2-yi-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 2000, temperature: 0.75, top_p: 0.92, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Context already focused by tags; fits in 4096 after brief+tags', is_active: true },
+      { task_mode: 'scene', label: 'Midnight Miqu 70B (Scene)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32400, max_tokens: 3000, temperature: 0.85, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Best prose model for scene generation with full context', is_active: true },
       { task_mode: 'rewrite', label: 'Midnight Miqu 70B (Polish)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32400, max_tokens: 3000, temperature: 0.8, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Best prose quality for rewrites and emotional depth', is_active: true },
-      { task_mode: 'utility', label: 'Mistral 7B (Utility)', model_name: 'mistral-7b-instruct-v0.2.gguf', api_endpoint: endpoint, context_length: 32768, max_tokens: 1000, temperature: 0.3, top_p: 0.85, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast lightweight worker for summaries/metadata/JSON', is_active: true },
+      { task_mode: 'brainstorm', label: 'Mistral 7B (Brainstorm)', model_name: 'mistral-7b-instruct-v0.2.gguf', api_endpoint: endpoint, context_length: 32768, max_tokens: 1000, temperature: 0.7, top_p: 0.9, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Quick creative generation for NPC names, locations, songs', is_active: true },
+      { task_mode: 'utility', label: 'Mistral 7B (Utility)', model_name: 'mistral-7b-instruct-v0.2.gguf', api_endpoint: endpoint, context_length: 32768, max_tokens: 1500, temperature: 0.1, top_p: 0.85, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast lightweight worker for summaries/metadata/JSON', is_active: true },
       { task_mode: 'vision', label: 'LLaVA 34B (Vision)', model_name: 'llava-v1.6-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 1000, temperature: 0.2, top_p: 0.9, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Strongest vision model for detailed art/cover review', is_active: true },
-      { task_mode: 'vision_quick', label: 'LLaVA 7B (Quick Vision)', model_name: 'llava-v1.6-mistral-7b', api_endpoint: endpoint, context_length: 4096, max_tokens: 500, temperature: 0.2, top_p: 0.9, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast captioning and quick visual checks', is_active: true },
     ];
 
     Promise.all(defaults.map(d => savePreset(d)));
@@ -908,10 +908,11 @@ export default function Settings() {
                 <span>1. Design Brief</span><span className="font-mono text-slate-500">Meta Llama (128K ctx)</span>
                 <span>2. Tag Recommendation</span><span className="font-mono text-slate-500">Mistral 7B (32K ctx)</span>
                 <span>3. Outline</span><span className="font-mono text-slate-500">Meta Llama (128K ctx)</span>
-                <span>4. Scene Writing</span><span className="font-mono text-slate-500">Nous Hermes 34B (4K ctx)</span>
+                <span>4. Scene Writing</span><span className="font-mono text-slate-500">Midnight Miqu 70B (32K ctx)</span>
                 <span>5. Rewrite / Polish</span><span className="font-mono text-slate-500">Midnight Miqu 70B (32K ctx)</span>
-                <span>6. Utility</span><span className="font-mono text-slate-500">Mistral 7B (32K ctx)</span>
-                <span>7. Vision</span><span className="font-mono text-slate-500">LLaVA 34B (4K ctx)</span>
+                <span>6. Brainstorm</span><span className="font-mono text-slate-500">Mistral 7B (32K ctx)</span>
+                <span>7. Utility</span><span className="font-mono text-slate-500">Mistral 7B (32K ctx)</span>
+                <span>8. Vision</span><span className="font-mono text-slate-500">LLaVA 34B (4K ctx)</span>
               </div>
             </div>
           )}
