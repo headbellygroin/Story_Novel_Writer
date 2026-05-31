@@ -39,6 +39,7 @@ export default function Write() {
   const [promptReport, setPromptReport] = useState<PromptAssemblyReport | null>(null);
   const [tagRecommendations, setTagRecommendations] = useState<TagRecommendation[] | null>(null);
   const [recommendingTags, setRecommendingTags] = useState(false);
+  const [activePresetLabel, setActivePresetLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentProjectId && currentOutlineId) {
@@ -51,6 +52,20 @@ export default function Write() {
       loadScenes();
     }
   }, [selectedChapterId]);
+
+  useEffect(() => {
+    if (!currentProjectId) return;
+    supabase
+      .from('model_presets')
+      .select('label, model_name')
+      .eq('project_id', currentProjectId)
+      .eq('task_mode', generationMode)
+      .eq('is_active', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        setActivePresetLabel(data ? `${data.label} (${data.model_name})` : null);
+      });
+  }, [currentProjectId, generationMode]);
 
   async function loadData() {
     if (!currentProjectId || !currentOutlineId) return;
@@ -142,6 +157,22 @@ export default function Write() {
 
     setGenerating(true);
     try {
+      // Auto-routing: load preset for current generation mode
+      const presetRes = await supabase
+        .from('model_presets')
+        .select('*')
+        .eq('project_id', currentProjectId)
+        .eq('task_mode', generationMode)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const activePreset = presetRes.data;
+      if (activePreset) {
+        console.log(`[Story Forge] Auto-routing: ${generationMode} -> ${activePreset.model_name} (ctx: ${activePreset.context_length}, max: ${activePreset.max_tokens}, temp: ${activePreset.temperature})`);
+      } else {
+        console.log(`[Story Forge] No preset for "${generationMode}", using default settings: ${settings.model_name}`);
+      }
+
       const [
         outline,
         chapter,
@@ -329,6 +360,18 @@ export default function Write() {
         },
         settings: {
           ...settings,
+          ...(activePreset ? {
+            model_name: activePreset.model_name,
+            api_endpoint: activePreset.api_endpoint || settings.api_endpoint,
+            context_length: activePreset.context_length,
+            max_tokens: activePreset.max_tokens,
+            temperature: activePreset.temperature,
+            ...(activePreset.top_p != null ? { top_p: activePreset.top_p } : {}),
+            ...(activePreset.top_k != null ? { top_k: activePreset.top_k } : {}),
+            ...(activePreset.repetition_penalty != null ? { repetition_penalty: activePreset.repetition_penalty } : {}),
+            ...(activePreset.presence_penalty != null ? { presence_penalty: activePreset.presence_penalty } : {}),
+            ...(activePreset.frequency_penalty != null ? { frequency_penalty: activePreset.frequency_penalty } : {}),
+          } : {}),
           style_rules: (settings.style_rules as Record<string, boolean>) || undefined,
         },
       });
@@ -1009,6 +1052,14 @@ export default function Write() {
                   </button>
                 </div>
               </div>
+              {activePresetLabel && (
+                <div className="text-xs text-slate-500 mt-1 text-right">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                    {activePresetLabel}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">

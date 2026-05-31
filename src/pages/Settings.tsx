@@ -60,6 +60,138 @@ function ConnDot({ status }: { status: ConnStatus }) {
   return <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />;
 }
 
+function PresetEditor({
+  mode,
+  preset,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  mode: { key: string; label: string; description: string };
+  preset: { id?: string; task_mode: string; label: string; model_name: string; api_endpoint: string; context_length: number; max_tokens: number; temperature: number; top_p?: number | null; top_k?: number | null; repetition_penalty?: number | null; presence_penalty?: number | null; frequency_penalty?: number | null; is_active: boolean };
+  onSave: (p: typeof preset) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState({ ...preset });
+
+  return (
+    <div className="border border-teal-300 bg-teal-50/50 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <span className="text-sm font-semibold text-teal-800">{mode.label}</span>
+          <span className="text-xs text-slate-500 ml-2">{mode.description}</span>
+        </div>
+        <label className="flex items-center gap-1.5 text-xs">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+            className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+          />
+          Active
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Model Name</label>
+          <input
+            type="text"
+            value={form.model_name}
+            onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="model-name"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Display Label</label>
+          <input
+            type="text"
+            value={form.label}
+            onChange={(e) => setForm({ ...form, label: e.target.value })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="Friendly name"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3 mb-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Context Length</label>
+          <input
+            type="number"
+            value={form.context_length}
+            onChange={(e) => setForm({ ...form, context_length: parseInt(e.target.value) || 4096 })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Max Tokens</label>
+          <input
+            type="number"
+            value={form.max_tokens}
+            onChange={(e) => setForm({ ...form, max_tokens: parseInt(e.target.value) || 1200 })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Temperature</label>
+          <input
+            type="number"
+            step="0.05"
+            min="0"
+            max="2"
+            value={form.temperature}
+            onChange={(e) => setForm({ ...form, temperature: parseFloat(e.target.value) || 0.6 })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Rep. Penalty</label>
+          <input
+            type="number"
+            step="0.05"
+            min="1"
+            max="2"
+            value={form.repetition_penalty ?? ''}
+            onChange={(e) => setForm({ ...form, repetition_penalty: e.target.value ? parseFloat(e.target.value) : null })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="1.15"
+          />
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-slate-600 mb-1">API Endpoint (leave blank to use default)</label>
+        <input
+          type="text"
+          value={form.api_endpoint}
+          onChange={(e) => setForm({ ...form, api_endpoint: e.target.value })}
+          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+          placeholder="http://localhost:1234/v1/chat/completions"
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => onSave(form)}
+          disabled={saving || !form.model_name}
+          className="px-3 py-1.5 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 disabled:opacity-50 transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Preset'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 bg-slate-100 text-slate-600 text-sm rounded hover:bg-slate-200 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 export default function Settings() {
@@ -105,6 +237,38 @@ export default function Settings() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [existingId, setExistingId] = useState<string | null>(null);
 
+  // Model presets state
+  interface ModelPreset {
+    id?: string;
+    task_mode: string;
+    label: string;
+    model_name: string;
+    api_endpoint: string;
+    context_length: number;
+    max_tokens: number;
+    temperature: number;
+    top_p?: number | null;
+    top_k?: number | null;
+    repetition_penalty?: number | null;
+    presence_penalty?: number | null;
+    frequency_penalty?: number | null;
+    is_active: boolean;
+  }
+
+  const TASK_MODES = [
+    { key: 'design_brief', label: 'Design Brief / Planning', description: 'Design Briefs, Lore Audits, Context Tags, Arc Planning' },
+    { key: 'outline', label: 'Outline', description: 'Book, Chapter, and Scene Outlines' },
+    { key: 'scene', label: 'Scene Writing', description: 'Scene Generation, Dialogue, Character Interactions' },
+    { key: 'rewrite', label: 'Rewrite / Editing', description: 'Editing Passes, Rewrites, Polish' },
+    { key: 'brainstorm', label: 'Brainstorm', description: 'Quick Creative, NPC Names, Locations, Songs' },
+    { key: 'vision', label: 'Vision / Image Analysis', description: 'Character Art, Cover, Scene Image Review' },
+    { key: 'utility', label: 'Utility', description: 'Summaries, Metadata, JSON, Formatting' },
+  ] as const;
+
+  const [presets, setPresets] = useState<ModelPreset[]>([]);
+  const [editingPreset, setEditingPreset] = useState<string | null>(null);
+  const [presetSaveStatus, setPresetSaveStatus] = useState<SaveStatus>('idle');
+
   // Connection states - persisted in store so they survive navigation
   const { aiConnStatus: aiStatus, visionConnStatus: visionStatus, comfyConnStatus: comfyStatus, setAiConnStatus: setAiStatus, setVisionConnStatus: setVisionStatus, setComfyConnStatus: setComfyStatus } = useStore();
   const [aiError, setAiError] = useState('');
@@ -130,16 +294,16 @@ export default function Settings() {
     if (!currentProjectId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('generation_settings')
-        .select('*')
-        .eq('project_id', currentProjectId)
-        .maybeSingle();
-      if (error && error.code !== 'PGRST116') throw error;
-      if (data) {
-        setSettings(data);
-        setExistingId(data.id);
+      const [settingsRes, presetsRes] = await Promise.all([
+        supabase.from('generation_settings').select('*').eq('project_id', currentProjectId).maybeSingle(),
+        supabase.from('model_presets').select('*').eq('project_id', currentProjectId).order('task_mode'),
+      ]);
+      if (settingsRes.error && settingsRes.error.code !== 'PGRST116') throw settingsRes.error;
+      if (settingsRes.data) {
+        setSettings(settingsRes.data);
+        setExistingId(settingsRes.data.id);
       }
+      setPresets(presetsRes.data || []);
     } catch (err) {
       console.error('Error loading settings:', err);
     } finally {
@@ -168,6 +332,78 @@ export default function Settings() {
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 4000);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Model Presets
+  // ---------------------------------------------------------------------------
+
+  async function savePreset(preset: ModelPreset) {
+    if (!currentProjectId) return;
+    setPresetSaveStatus('saving');
+    try {
+      const payload = {
+        project_id: currentProjectId,
+        task_mode: preset.task_mode,
+        label: preset.label,
+        model_name: preset.model_name,
+        api_endpoint: preset.api_endpoint || settings.api_endpoint || '',
+        context_length: preset.context_length,
+        max_tokens: preset.max_tokens,
+        temperature: preset.temperature,
+        top_p: preset.top_p ?? null,
+        top_k: preset.top_k ?? null,
+        repetition_penalty: preset.repetition_penalty ?? null,
+        presence_penalty: preset.presence_penalty ?? null,
+        frequency_penalty: preset.frequency_penalty ?? null,
+        is_active: preset.is_active,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (preset.id) {
+        const { error } = await supabase.from('model_presets').update(payload).eq('id', preset.id);
+        if (error) throw error;
+        setPresets(presets.map(p => p.id === preset.id ? { ...preset } : p));
+      } else {
+        const { data, error } = await supabase.from('model_presets').insert([payload]).select().single();
+        if (error) throw error;
+        setPresets([...presets, { ...preset, id: data.id }]);
+      }
+      setEditingPreset(null);
+      setPresetSaveStatus('saved');
+      setTimeout(() => setPresetSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error('Error saving preset:', err);
+      setPresetSaveStatus('error');
+      setTimeout(() => setPresetSaveStatus('idle'), 3000);
+    }
+  }
+
+  async function deletePreset(presetId: string) {
+    if (!confirm('Remove this model preset?')) return;
+    try {
+      const { error } = await supabase.from('model_presets').delete().eq('id', presetId);
+      if (error) throw error;
+      setPresets(presets.filter(p => p.id !== presetId));
+    } catch (err) {
+      console.error('Error deleting preset:', err);
+    }
+  }
+
+  function initializeDefaultPresets() {
+    if (!currentProjectId) return;
+    const endpoint = (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
+    const defaults: ModelPreset[] = [
+      { task_mode: 'design_brief', label: 'Hermes 34B (Planning)', model_name: 'nous-hermes-2-yi-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 1200, temperature: 0.55, is_active: true },
+      { task_mode: 'outline', label: 'Hermes 34B (Outline)', model_name: 'nous-hermes-2-yi-34b', api_endpoint: endpoint, context_length: 8192, max_tokens: 1200, temperature: 0.55, is_active: true },
+      { task_mode: 'scene', label: 'Midnight Miqu 70B (Writing)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32768, max_tokens: 4000, temperature: 0.85, is_active: true },
+      { task_mode: 'rewrite', label: 'Midnight Miqu 70B (Editing)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32768, max_tokens: 4000, temperature: 0.8, is_active: true },
+      { task_mode: 'brainstorm', label: 'MythoMax 13B (Creative)', model_name: 'mythomax-12-13b', api_endpoint: endpoint, context_length: 4096, max_tokens: 800, temperature: 0.9, is_active: true },
+      { task_mode: 'vision', label: 'LLaVA 34B (Vision)', model_name: 'llava-v1.6-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 1000, temperature: 0.3, is_active: true },
+      { task_mode: 'utility', label: 'Mistral 7B (Utility)', model_name: 'mistral-7b-instruct-v0.2', api_endpoint: endpoint, context_length: 4096, max_tokens: 800, temperature: 0.3, is_active: true },
+    ];
+
+    Promise.all(defaults.map(d => savePreset(d)));
   }
 
   // ---------------------------------------------------------------------------
@@ -476,6 +712,120 @@ export default function Settings() {
               <p className="text-xs text-slate-400 mt-1">Reduces word frequency (OpenAI-style)</p>
             </div>
           </div>
+        </Section>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Model Presets (Auto-Routing)                                        */}
+        {/* ------------------------------------------------------------------ */}
+        <Section
+          title="Model Presets (Auto-Routing)"
+          description="Configure which model, context length, and temperature to use for each task type. The system automatically selects the right model based on what you're generating."
+        >
+          {presets.length === 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
+              <p className="text-sm text-slate-600 mb-3">No model presets configured yet. Set up presets so Story Forge automatically picks the best model for each task.</p>
+              <button
+                onClick={initializeDefaultPresets}
+                className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
+              >
+                Load Default Presets
+              </button>
+              <p className="text-xs text-slate-400 mt-2">Pre-fills with your installed models (Hermes 34B, Midnight Miqu 70B, MythoMax 13B, LLaVA 34B, Mistral 7B)</p>
+            </div>
+          )}
+
+          {presets.length > 0 && (
+            <div className="space-y-3">
+              {TASK_MODES.map(mode => {
+                const preset = presets.find(p => p.task_mode === mode.key);
+                const isEditing = editingPreset === mode.key;
+
+                if (!preset && !isEditing) {
+                  return (
+                    <div key={mode.key} className="border border-dashed border-slate-300 rounded-lg p-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium text-slate-500">{mode.label}</span>
+                        <span className="text-xs text-slate-400 ml-2">Not configured (uses default settings)</span>
+                      </div>
+                      <button
+                        onClick={() => setEditingPreset(mode.key)}
+                        className="text-xs text-teal-600 hover:text-teal-800 font-medium"
+                      >
+                        Configure
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (isEditing) {
+                  const editData: ModelPreset = preset || {
+                    task_mode: mode.key,
+                    label: mode.label,
+                    model_name: '',
+                    api_endpoint: (settings.api_endpoint as string) || '',
+                    context_length: 4096,
+                    max_tokens: 1200,
+                    temperature: 0.6,
+                    is_active: true,
+                  };
+
+                  return (
+                    <PresetEditor
+                      key={mode.key}
+                      mode={mode}
+                      preset={editData}
+                      onSave={savePreset}
+                      onCancel={() => setEditingPreset(null)}
+                      saving={presetSaveStatus === 'saving'}
+                    />
+                  );
+                }
+
+                return (
+                  <div key={mode.key} className={`border rounded-lg p-3 transition-colors ${preset!.is_active ? 'border-teal-200 bg-teal-50/30' : 'border-slate-200 bg-slate-50 opacity-60'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${preset!.is_active ? 'bg-teal-500' : 'bg-slate-300'}`} />
+                        <span className="text-sm font-medium text-slate-800">{mode.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEditingPreset(mode.key)}
+                          className="text-xs text-slate-500 hover:text-slate-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => preset!.id && deletePreset(preset!.id)}
+                          className="text-xs text-red-400 hover:text-red-600"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 grid grid-cols-4 gap-2 text-xs text-slate-600">
+                      <div>
+                        <span className="text-slate-400">Model:</span>
+                        <span className="ml-1 font-mono">{preset!.model_name}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Context:</span>
+                        <span className="ml-1 font-mono">{preset!.context_length.toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Max Out:</span>
+                        <span className="ml-1 font-mono">{preset!.max_tokens.toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Temp:</span>
+                        <span className="ml-1 font-mono">{preset!.temperature}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Section>
 
         {/* ------------------------------------------------------------------ */}
