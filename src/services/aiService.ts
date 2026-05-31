@@ -51,6 +51,7 @@ export interface SceneSummaryData {
 export interface GenerateSceneRequest {
   sceneDescription: string;
   context: {
+    franchiseManifesto?: string;
     characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; infrastructure_sliders_text?: string; dossier?: string; canon_status?: string }>;
     places?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string; emergent_character?: boolean; infrastructure_sliders_text?: string }>;
     things?: Array<{ name: string; type: string; description: string; image_description?: string; canon_status?: string; emergent_character?: boolean; infrastructure_sliders_text?: string }>;
@@ -267,6 +268,14 @@ interface ContextSection {
 
 function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number): string {
   const sections: ContextSection[] = [];
+
+  if (context.franchiseManifesto) {
+    sections.push({
+      key: 'manifesto',
+      content: `=== FRANCHISE MANIFESTO (ABSOLUTE RULES - OVERRIDE ALL OTHER GUIDANCE) ===\n${context.franchiseManifesto}`,
+      priority: 13,
+    });
+  }
 
   if (context.storyBibleFacts && context.storyBibleFacts.length > 0) {
     const activeFacts = context.storyBibleFacts.filter(f => f.canon_status !== 'deprecated');

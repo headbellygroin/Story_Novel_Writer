@@ -5,6 +5,7 @@ import { getEndpointConfig } from '../lib/endpointResolver';
 
 const NAV_ITEMS = [
   { path: '/projects', label: 'Projects' },
+  { path: '/manifesto', label: 'Manifesto' },
   { path: '/dossier', label: 'Dossier' },
   { path: '/world', label: 'World' },
   { path: '/outline', label: 'Outline' },

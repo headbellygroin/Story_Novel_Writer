@@ -139,6 +139,7 @@ export default function Write() {
         summariesRes,
         contextTagsRes,
         prohibitedWordsRes,
+        manifestoRes,
       ] = await Promise.all([
         currentOutlineId ? supabase.from('outlines').select('*').eq('id', currentOutlineId).maybeSingle() : null,
         supabase.from('chapters').select('*').eq('id', scene.chapter_id).maybeSingle(),
@@ -156,6 +157,7 @@ export default function Write() {
         supabase.from('scene_summaries').select('*, scenes!inner(title, order_index, chapter_id)').eq('project_id', currentProjectId),
         supabase.from('scene_context_tags').select('*').eq('scene_id', sceneId),
         supabase.from('prohibited_words').select('word').eq('project_id', currentProjectId),
+        supabase.from('franchise_manifesto').select('content').eq('project_id', currentProjectId).maybeSingle(),
       ]);
 
       const prohibitedWords = (prohibitedWordsRes.data || []).map((w: { word: string }) => w.word);
@@ -287,6 +289,7 @@ export default function Write() {
       const content = await generateScene({
         sceneDescription: scene.description,
         context: {
+          franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
           chapterSummary: chapter.data?.summary,
           characters: enrichedCharacters,
@@ -565,6 +568,28 @@ export default function Write() {
 
                 {sidebarTab === 'context' && selectedScene && (
                   <div className="divide-y divide-slate-200">
+                    <div className="p-3">
+                      <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Generation Sources</h4>
+                      <div className="space-y-1">
+                        {[
+                          { label: 'Franchise Manifesto', active: true },
+                          { label: 'System Prompt', active: !!settings?.system_prompt },
+                          { label: 'Style Guide', active: !!settings?.style_guide },
+                          { label: 'Style Anchors', active: true },
+                          { label: 'Story Bible', active: true },
+                          { label: 'Character Context', active: true },
+                          { label: 'Outline Context', active: !!currentOutlineId },
+                          { label: 'Scene History', active: true },
+                        ].map(source => (
+                          <div key={source.label} className="flex items-center gap-2 text-xs">
+                            <span className={`w-3 h-3 rounded-sm flex items-center justify-center ${source.active ? 'bg-teal-100 text-teal-600' : 'bg-slate-100 text-slate-400'}`}>
+                              {source.active ? '\u2713' : '\u2013'}
+                            </span>
+                            <span className={source.active ? 'text-slate-700' : 'text-slate-400'}>{source.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     <SceneSummaryPanel
                       sceneId={selectedScene.id}
                       projectId={currentProjectId}

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Projects from './pages/Projects';
+import Manifesto from './pages/Manifesto';
 import WorldLibrary from './pages/WorldLibrary';
 import Outline from './pages/Outline';
 import Write from './pages/Write';
@@ -30,6 +31,14 @@ export default function App() {
           element={
             <Layout>
               <Projects />
+            </Layout>
+          }
+        />
+        <Route
+          path="/manifesto"
+          element={
+            <Layout>
+              <Manifesto />
             </Layout>
           }
         />
