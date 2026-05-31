@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
 import { generateScene, GenerationMode, ContextMode, assemblePromptReport, PromptAssemblyReport } from '../services/aiService';
+import { recommendContextTags, TagRecommendation, EntityCandidate } from '../services/contextRecommendationService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
 import { formatInfraSlidersForPrompt } from '../lib/infrastructureSliders';
 import { getAcceptedArcEventsForCharacter, computeEvolvedSliders } from '../services/arcAnalysisService';
@@ -14,6 +15,7 @@ import SceneBriefPanel from '../components/write/SceneBriefPanel';
 import EditingPassPanel from '../components/write/EditingPassPanel';
 import PromptReportPanel from '../components/write/PromptReportPanel';
 import ChapterContextTagsPanel from '../components/write/ChapterContextTagsPanel';
+import RecommendedTagsPanel from '../components/write/RecommendedTagsPanel';
 
 type Scene = Database['public']['Tables']['scenes']['Row'];
 type Chapter = Database['public']['Tables']['chapters']['Row'];
@@ -35,6 +37,8 @@ export default function Write() {
   const [generationMode, setGenerationMode] = useState<GenerationMode>('scene');
   const [contextMode, setContextMode] = useState<ContextMode>('relevant');
   const [promptReport, setPromptReport] = useState<PromptAssemblyReport | null>(null);
+  const [tagRecommendations, setTagRecommendations] = useState<TagRecommendation[] | null>(null);
+  const [recommendingTags, setRecommendingTags] = useState(false);
 
   useEffect(() => {
     if (currentProjectId && currentOutlineId) {
@@ -355,9 +359,12 @@ export default function Write() {
       if (error) throw error;
 
       setScenes(scenes.map(s => s.id === sceneId ? { ...s, content } : s));
+
+      // After Design Brief generation, recommend context tags
+      if (generationMode === 'design_brief' && content && selectedChapterId) {
+        triggerTagRecommendation(content, chapter.data?.summary || '', sceneId);
+      }
     } catch (error) {
-      console.error('Error generating scene:', error);
-      alert('Failed to generate scene. Please check your AI settings and ensure your local model is running.');
     } finally {
       setGenerating(false);
     }
@@ -564,6 +571,44 @@ export default function Write() {
       setPromptReport(report);
     } catch (error) {
       console.error('Error generating prompt report:', error);
+    }
+  }
+
+  async function triggerTagRecommendation(briefContent: string, chapterSummary: string, _sceneId: string) {
+    if (!currentProjectId || !settings) return;
+
+    setRecommendingTags(true);
+    try {
+      const [chars, places, things, techs, bible] = await Promise.all([
+        supabase.from('characters').select('id, name').eq('project_id', currentProjectId),
+        supabase.from('places').select('id, name').eq('project_id', currentProjectId),
+        supabase.from('things').select('id, name').eq('project_id', currentProjectId),
+        supabase.from('technologies').select('id, name').eq('project_id', currentProjectId),
+        supabase.from('story_bible_entries').select('id, subject, category').eq('project_id', currentProjectId),
+      ]);
+
+      const candidates: EntityCandidate[] = [
+        ...(chars.data || []).map(c => ({ id: c.id, name: c.name, type: 'characters' as const })),
+        ...(places.data || []).map(p => ({ id: p.id, name: p.name, type: 'places' as const })),
+        ...(things.data || []).map(t => ({ id: t.id, name: t.name, type: 'things' as const })),
+        ...(techs.data || []).map(t => ({ id: t.id, name: t.name, type: 'technologies' as const })),
+        ...(bible.data || []).map(b => ({ id: b.id, name: `${b.subject} (${b.category})`, type: 'story_bible_entries' as const })),
+      ];
+
+      const recommendations = await recommendContextTags(
+        briefContent,
+        chapterSummary,
+        candidates,
+        { ...settings, style_rules: (settings.style_rules as Record<string, boolean>) || undefined },
+      );
+
+      if (recommendations.length > 0) {
+        setTagRecommendations(recommendations);
+      }
+    } catch (error) {
+      console.error('Error generating tag recommendations:', error);
+    } finally {
+      setRecommendingTags(false);
     }
   }
 
@@ -967,6 +1012,24 @@ export default function Write() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
+              {(tagRecommendations || recommendingTags) && selectedChapterId && (
+                <div className="mb-4">
+                  {recommendingTags && (
+                    <div className="border border-slate-200 rounded-lg p-4 text-center">
+                      <p className="text-sm text-slate-600">Analyzing Design Brief for context recommendations...</p>
+                    </div>
+                  )}
+                  {tagRecommendations && !recommendingTags && (
+                    <RecommendedTagsPanel
+                      recommendations={tagRecommendations}
+                      chapterId={selectedChapterId}
+                      projectId={currentProjectId}
+                      onAccepted={() => setTagRecommendations(null)}
+                      onDismiss={() => setTagRecommendations(null)}
+                    />
+                  )}
+                </div>
+              )}
               {selectedScene.generated_image_url && (
                 <div className="mb-4 relative group">
                   <img
