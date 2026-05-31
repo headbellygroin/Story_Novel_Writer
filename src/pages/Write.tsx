@@ -91,14 +91,19 @@ export default function Write() {
   }
 
   async function saveScene() {
-    if (!currentProjectId || !selectedChapterId) return;
+    if (!currentProjectId || !selectedChapterId) {
+      alert('Please select a chapter first.');
+      return;
+    }
+    if (!sceneFormData.title) return;
 
     try {
       const maxOrder = scenes.length > 0 ? Math.max(...scenes.map(s => s.order_index)) : -1;
       const { data, error } = await supabase
         .from('scenes')
         .insert([{
-          ...sceneFormData,
+          title: sceneFormData.title,
+          description: sceneFormData.description || '',
           project_id: currentProjectId,
           chapter_id: selectedChapterId,
           order_index: maxOrder + 1,
@@ -114,6 +119,7 @@ export default function Write() {
       setSceneFormData({});
     } catch (error) {
       console.error('Error saving scene:', error);
+      alert('Failed to save scene. Check the console for details.');
     }
   }
 
