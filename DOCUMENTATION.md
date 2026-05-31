@@ -46,7 +46,7 @@ Handles all four media types: scene images (NetaYume Lumina / Flux workflow), an
 
 | Group | Features |
 |-------|----------|
-| Planning | Projects, Dossier, Outline |
+| Planning | Projects, Franchise Manifesto, Dossier, Outline |
 | World | World Library (Characters, Places, Things, Technologies), Story Bible, Style Anchors, Prohibited Words |
 | Writing | Write (scene editor), Voice Chat |
 | Quality | Consistency Tracking (Story Events, Character States, Character Arc, Scene References), Logic Checks, Reveal Timeline |
@@ -153,6 +153,39 @@ Every piece of content in Story Forge belongs to a project. Create a project wit
 
 Projects display as cards showing title, genre, description, and last updated date. The currently active project is visually highlighted.
 
+### Franchise Manifesto
+
+The Franchise Manifesto is the highest-authority guidance document in Story Forge. It stores immutable truths about your series that must never drift, contradict, or be diluted across other documents.
+
+**Purpose:**
+Story guidance previously lived in multiple places (Brain Dump, Tropes, System Prompt, Style Guide, Story Bible, Emotional Anchors). Core concepts like "Home is People" or "People vs Systems" could appear in several of these simultaneously. When one gets updated, the others may not, causing drift. The Franchise Manifesto solves this by providing a single source of truth that sits above all other guidance.
+
+**How it works:**
+- Written as plain text -- rules, truths, philosophical anchors, tone guidelines
+- Injected at Priority 13 (the highest priority in the context assembly system)
+- Appears in the AI prompt under the header "ABSOLUTE RULES - OVERRIDE ALL OTHER GUIDANCE"
+- Always included in full before any other context section
+- One manifesto per project
+
+**What to put here:**
+- Core themes that define the series
+- Tone rules that must never change
+- Philosophical positions the story takes
+- Character treatment rules (e.g. "No character is purely evil")
+- Reader experience goals (e.g. "The reader should always feel comfortable in the crew's company")
+- Any truth that, if contradicted, would break the story
+
+**What NOT to put here:**
+- Plot details (use Story Bible)
+- Character specifics (use World Library)
+- Style preferences (use Style Guide or Style Anchors)
+- Scene-level instructions (use Scene Brief)
+
+**Guidance Hierarchy (displayed on the Manifesto page):**
+Franchise Manifesto > System Prompt > Style Guide > Story Bible > Characters > Outline > Scene
+
+The Write page Context tab now shows a "Generation Sources" panel listing all guidance layers flowing into each generation, with active/inactive indicators.
+
 ### Dossier
 
 The Dossier is your pre-writing planning tool. Paste a free-form brain dump of your story idea and a list of genre tropes you want to include, then click Generate. The AI produces a structured story dossier covering premise, themes, tone, major characters, and key plot beats. Edit and save the result. The dossier is included in downstream AI context so the model understands what kind of story you're writing.
@@ -174,8 +207,9 @@ Chapters created here appear as options on the Write page and Pipeline page.
 The scene editor is the core of Story Forge. Select a chapter, then a scene within it. The editor has a main content area and a collapsible right sidebar with multiple panels.
 
 **AI Generation Context Package:**
-When you click Generate, the AI receives a deep context package assembled from 12+ database queries:
+When you click Generate, the AI receives a deep context package assembled from 13+ database queries:
 
+- Franchise Manifesto (absolute franchise-level rules)
 - Story dossier and outline summary
 - Active Style Anchors (reference passages)
 - Active Prohibited Words
@@ -438,6 +472,7 @@ Story Forge follows ownership conventions to prevent context duplication and con
 
 | Information Type | Primary Owner | Referenced By | Not Stored In |
 |-----------------|---------------|---------------|---------------|
+| Franchise-Level Truths | Franchise Manifesto | All generation | Story Bible, System Prompt, Brain Dump |
 | Character Personality/Background | Character Record (or Dossier if filled) | Scene generation | Story Bible (redundant) |
 | Character Arc Progression | Hero's Journey + Arc Events | Dossier, Generation | Story Bible |
 | World Rules | Story Bible | Everything | Character fields |
@@ -644,6 +679,7 @@ The Save/Load page exports the entire project as a JSON file covering all tables
 - Story bible entries, style anchors, scene context tags
 - Story dossiers, scene briefs, editing passes, logic checks
 - Prohibited words, generation settings
+- Franchise manifesto
 
 **Export features:**
 - Image URL fields are stripped for portability
@@ -715,13 +751,14 @@ Complete walkthrough from a blank project to a finished audiobook video chapter.
 
 ### 2 -- World Building
 
-1. Add main characters in the World Library with physical descriptions, personalities, backstory, and personality slider positions.
-2. Upload reference images for key characters -- the vision model will auto-generate detailed descriptions.
-3. Map each character's Hero's Journey stage.
-4. Add key places, important objects, and any magic/technology systems.
-5. Add canonical facts to the Story Bible -- rules the AI must never break. Set importance levels (critical facts are always included in context).
-6. Paste reference writing passages into Style Anchors and activate 1-3.
-7. Load the prohibited words preset and add any project-specific terms to avoid.
+1. Write the Franchise Manifesto (Manifesto page) -- core truths, tone rules, and philosophical positions that define the series. This is the single source of truth for franchise-level guidance.
+2. Add main characters in the World Library with physical descriptions, personalities, backstory, and personality slider positions.
+3. Upload reference images for key characters -- the vision model will auto-generate detailed descriptions.
+4. Map each character's Hero's Journey stage.
+5. Add key places, important objects, and any magic/technology systems.
+6. Add canonical facts to the Story Bible -- rules the AI must never break. Set importance levels (critical facts are always included in context).
+7. Paste reference writing passages into Style Anchors and activate 1-3.
+8. Load the prohibited words preset and add any project-specific terms to avoid.
 
 ### 3 -- Planning
 
@@ -801,6 +838,7 @@ The AI service assembles context sections sorted by priority (highest first) and
 
 | Priority | Section | Content |
 |----------|---------|---------|
+| 13 | Franchise Manifesto | Absolute franchise-level rules that override all other guidance |
 | 12 | Style Anchors | Reference passages defining target voice/tone |
 | 11 | Story Bible Facts | Canonical facts sorted by importance (critical > high > medium > low) |
 | 10 | Previous Scene Summaries | Compressed history of earlier scenes in this chapter |
@@ -821,6 +859,8 @@ Additionally, the following are always injected outside the priority system:
 - Active Style Rules (9 available rules as strict directives)
 - Prohibited Words (blocklist)
 - Scene Description (what to write)
+
+> **Note:** The Franchise Manifesto is injected WITHIN the priority system at the highest priority (13), not outside it. This means it competes for token budget like other context sections -- but because it has the highest priority, it is always included first and in full before anything else.
 
 ### Filtering Rules
 
