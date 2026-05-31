@@ -48,8 +48,17 @@ export interface SceneSummaryData {
   key_facts: string[];
 }
 
+export type GenerationMode = 'scene' | 'design_brief' | 'outline';
+
+const GENERATION_MODE_INSTRUCTIONS: Record<GenerationMode, string> = {
+  scene: `Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`,
+  design_brief: `Generate a structured Design Brief document based on the above context and instructions. Do NOT write prose, dialogue, or scenes. Output ONLY the structured planning document with clear section headings. Focus on emotional purpose, character goals, theme goals, worldbuilding goals, reveal restrictions, and ending beats. The brief should be detailed enough that multiple writers could independently produce a recognizable chapter from it.`,
+  outline: `Generate a structured chapter-by-chapter outline based on the above context and instructions. Do NOT write prose, dialogue, or scenes. For each chapter provide: title, POV character, location, emotional arc, plot beats, theme advancement, and key relationship moments. Focus on how each chapter serves the book's core question and advances character relationships.`,
+};
+
 export interface GenerateSceneRequest {
   sceneDescription: string;
+  generationMode?: GenerationMode;
   context: {
     franchiseManifesto?: string;
     characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; infrastructure_sliders_text?: string; dossier?: string; canon_status?: string }>;
@@ -84,7 +93,7 @@ function truncateToTokenBudget(text: string, maxTokens: number): string {
 }
 
 export async function generateScene(request: GenerateSceneRequest): Promise<string> {
-  const { sceneDescription, context, settings } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
@@ -102,14 +111,17 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
     ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
     : '';
 
+  const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : 'Outline Instructions';
+  const modeInstruction = GENERATION_MODE_INSTRUCTIONS[generationMode];
+
   const fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
 
-Scene to write:
+${modeLabel}:
 ${sceneDescription}
 
-Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`;
+${modeInstruction}`;
 
   const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
 
@@ -162,7 +174,7 @@ export async function generateSceneStreaming(
   request: GenerateSceneRequest,
   onChunk: (text: string) => void,
 ): Promise<string> {
-  const { sceneDescription, context, settings } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
@@ -180,14 +192,17 @@ export async function generateSceneStreaming(
     ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
     : '';
 
+  const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : 'Outline Instructions';
+  const modeInstruction = GENERATION_MODE_INSTRUCTIONS[generationMode];
+
   const fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
 
-Scene to write:
+${modeLabel}:
 ${sceneDescription}
 
-Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`;
+${modeInstruction}`;
 
   const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
 

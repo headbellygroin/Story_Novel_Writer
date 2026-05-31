@@ -252,6 +252,55 @@ When a character has a filled dossier, the dossier is the primary context for th
 
 > You can also paste pre-written text directly into the editor. The AI generation features are optional -- you can use Story Forge as a structured editor for existing writing and still run the full production pipeline.
 
+### Generation Modes
+
+The Write page includes a **Generation Mode** toggle that changes what the AI produces. This affects the final instruction sent to the AI while keeping all context injection (manifesto, bible, characters, places, etc.) identical.
+
+**Three modes available:**
+
+| Mode | Button Label | Final Instruction | Output Type |
+|------|-------------|-------------------|-------------|
+| **Scene** | Generate Scene | "Write this scene with vivid detail, engaging dialogue, and strong character voice..." | Prose (default) |
+| **Design Brief** | Generate Brief | "Generate a structured Design Brief document... Do NOT write prose, dialogue, or scenes..." | Structured planning document |
+| **Outline** | Generate Outline | "Generate a structured chapter-by-chapter outline... Do NOT write prose..." | Chapter-level planning document |
+
+**How to use each mode:**
+
+**Scene Mode (default):**
+The standard mode. Write a short scene description ("Benjamin arrives at the Gull & Lantern") and the AI generates prose.
+
+**Design Brief Mode:**
+For pre-writing planning. The scene description becomes a set of design instructions. Paste detailed instructions specifying:
+- What questions the brief should answer (emotional purpose, theme goals, worldbuilding goals)
+- What sections the output should contain (POV character, location, ending beat, reveal restrictions)
+- What constraints apply (what must NOT be introduced yet, which reveals are delayed)
+- What format to use (structured headings, bullet points, not prose)
+
+The AI receives the full context package (manifesto, bible, characters, style guide, etc.) alongside your instructions, then produces a structured planning document instead of prose. This is ideal for generating Chapter Objectives, Act Breakdowns, or Scene Design Briefs before writing.
+
+**Outline Mode:**
+For generating multi-chapter structural plans. The scene description becomes outline-generation instructions specifying scope (which chapters), focus (which themes), and format requirements. The AI produces a structured outline with chapter titles, POV characters, locations, beats, and theme advancement.
+
+**Workflow Example -- Chapter 1 Design Brief:**
+
+1. Go to Write page
+2. Select a chapter (or create a placeholder)
+3. Create a scene titled "Chapter 1 Design Brief"
+4. Switch mode to **Design Brief**
+5. In the Scene Description, paste your brief-generation instructions (what emotional purpose, what relationships, what themes, what must NOT appear yet, etc.)
+6. Optionally set **Context Tags** to limit injection to Book 1-relevant entities only
+7. Click **Generate Brief**
+8. The AI produces a structured Design Brief document in the editor
+9. Switch mode back to **Scene** when ready to write actual prose
+
+**Important:** The generation mode is stored in the scene's `context_data` metadata so you can always see which mode produced a given output.
+
+**Mode Selection Persistence:**
+The mode toggle is session-level. It resets to Scene when the page reloads. This prevents accidental brief generation when you intend to write prose.
+
+**Token Budget Note:**
+Design Brief and Outline modes benefit from larger `max_tokens` output settings since structured documents tend to be longer than individual scenes. Consider temporarily increasing max_tokens in Settings when generating briefs or outlines.
+
 ### Voice Chat
 
 An interactive voice assistant for discussing your story. Uses browser speech recognition to capture your voice and browser TTS to speak responses.
@@ -858,7 +907,8 @@ Additionally, the following are always injected outside the priority system:
 - Style Guide (project-specific writing instructions)
 - Active Style Rules (9 available rules as strict directives)
 - Prohibited Words (blocklist)
-- Scene Description (what to write)
+- Scene Description (user instructions -- labeled dynamically based on generation mode)
+- Generation Mode Instruction (final directive that tells the AI what to produce: prose, design brief, or outline)
 
 > **Note:** The Franchise Manifesto is injected WITHIN the priority system at the highest priority (13), not outside it. This means it competes for token budget like other context sections -- but because it has the highest priority, it is always included first and in full before anything else.
 

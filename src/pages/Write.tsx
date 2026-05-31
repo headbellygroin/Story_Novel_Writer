@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
-import { generateScene } from '../services/aiService';
+import { generateScene, GenerationMode } from '../services/aiService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
 import { formatInfraSlidersForPrompt } from '../lib/infrastructureSliders';
 import { getAcceptedArcEventsForCharacter, computeEvolvedSliders } from '../services/arcAnalysisService';
@@ -30,6 +30,7 @@ export default function Write() {
   const [settings, setSettings] = useState<GenerationSettings | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'scenes' | 'context' | 'brief' | 'image'>('scenes');
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('scene');
 
   useEffect(() => {
     if (currentProjectId && currentOutlineId) {
@@ -288,6 +289,7 @@ export default function Write() {
 
       const content = await generateScene({
         sceneDescription: scene.description,
+        generationMode,
         context: {
           franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
@@ -317,6 +319,7 @@ export default function Write() {
           content,
           ai_prompt: scene.description,
           context_data: {
+            generationMode,
             outline: outline?.data?.synopsis,
             chapter: chapter.data?.summary,
             characters: characters.map((c: Record<string, string>) => c.name),
@@ -666,12 +669,44 @@ export default function Write() {
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setGenerationMode('scene')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        generationMode === 'scene'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      Scene
+                    </button>
+                    <button
+                      onClick={() => setGenerationMode('design_brief')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        generationMode === 'design_brief'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      Design Brief
+                    </button>
+                    <button
+                      onClick={() => setGenerationMode('outline')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        generationMode === 'outline'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      Outline
+                    </button>
+                  </div>
                   <button
                     onClick={() => generateSceneContent(selectedScene.id)}
                     disabled={generating || !settings}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                   >
-                    {generating ? 'Generating...' : 'Generate with AI'}
+                    {generating ? 'Generating...' : generationMode === 'scene' ? 'Generate Scene' : generationMode === 'design_brief' ? 'Generate Brief' : 'Generate Outline'}
                   </button>
                   <button
                     onClick={() => deleteScene(selectedScene.id)}
