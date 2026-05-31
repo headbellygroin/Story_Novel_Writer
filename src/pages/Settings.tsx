@@ -68,7 +68,7 @@ function PresetEditor({
   saving,
 }: {
   mode: { key: string; label: string; description: string };
-  preset: { id?: string; task_mode: string; label: string; model_name: string; api_endpoint: string; context_length: number; max_tokens: number; temperature: number; top_p?: number | null; top_k?: number | null; repetition_penalty?: number | null; presence_penalty?: number | null; frequency_penalty?: number | null; is_active: boolean };
+  preset: { id?: string; task_mode: string; label: string; model_name: string; api_endpoint: string; context_length: number; max_tokens: number; temperature: number; top_p?: number | null; top_k?: number | null; repetition_penalty?: number | null; presence_penalty?: number | null; frequency_penalty?: number | null; notes: string; is_active: boolean };
   onSave: (p: typeof preset) => void;
   onCancel: () => void;
   saving: boolean;
@@ -95,7 +95,7 @@ function PresetEditor({
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Model Name</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Model Name / ID</label>
           <input
             type="text"
             value={form.model_name}
@@ -116,7 +116,7 @@ function PresetEditor({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Context Length</label>
           <input
@@ -127,7 +127,7 @@ function PresetEditor({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Max Tokens</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Max Tokens (output)</label>
           <input
             type="number"
             value={form.max_tokens}
@@ -147,8 +147,35 @@ function PresetEditor({
             className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
           />
         </div>
+      </div>
+
+      <div className="grid grid-cols-5 gap-3 mb-3">
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Rep. Penalty</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Top P</label>
+          <input
+            type="number"
+            step="0.05"
+            min="0"
+            max="1"
+            value={form.top_p ?? ''}
+            onChange={(e) => setForm({ ...form, top_p: e.target.value ? parseFloat(e.target.value) : null })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="0.9"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Top K</label>
+          <input
+            type="number"
+            min="0"
+            value={form.top_k ?? ''}
+            onChange={(e) => setForm({ ...form, top_k: e.target.value ? parseInt(e.target.value) : null })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Rep. Pen.</label>
           <input
             type="number"
             step="0.05"
@@ -157,19 +184,58 @@ function PresetEditor({
             value={form.repetition_penalty ?? ''}
             onChange={(e) => setForm({ ...form, repetition_penalty: e.target.value ? parseFloat(e.target.value) : null })}
             className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
-            placeholder="1.15"
+            placeholder="1.05"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Pres. Pen.</label>
+          <input
+            type="number"
+            step="0.05"
+            min="0"
+            max="2"
+            value={form.presence_penalty ?? ''}
+            onChange={(e) => setForm({ ...form, presence_penalty: e.target.value ? parseFloat(e.target.value) : null })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="0"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Freq. Pen.</label>
+          <input
+            type="number"
+            step="0.05"
+            min="0"
+            max="2"
+            value={form.frequency_penalty ?? ''}
+            onChange={(e) => setForm({ ...form, frequency_penalty: e.target.value ? parseFloat(e.target.value) : null })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="0"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 mb-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">API Endpoint (leave blank to use default)</label>
+          <input
+            type="text"
+            value={form.api_endpoint}
+            onChange={(e) => setForm({ ...form, api_endpoint: e.target.value })}
+            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
+            placeholder="http://localhost:1234/v1/chat/completions"
           />
         </div>
       </div>
 
       <div className="mb-3">
-        <label className="block text-xs font-medium text-slate-600 mb-1">API Endpoint (leave blank to use default)</label>
+        <label className="block text-xs font-medium text-slate-600 mb-1">Notes / Reminder</label>
         <input
           type="text"
-          value={form.api_endpoint}
-          onChange={(e) => setForm({ ...form, api_endpoint: e.target.value })}
-          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-teal-400"
-          placeholder="http://localhost:1234/v1/chat/completions"
+          value={form.notes}
+          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
+          placeholder="Why this model for this task..."
         />
       </div>
 
@@ -252,17 +318,19 @@ export default function Settings() {
     repetition_penalty?: number | null;
     presence_penalty?: number | null;
     frequency_penalty?: number | null;
+    notes: string;
     is_active: boolean;
   }
 
   const TASK_MODES = [
-    { key: 'design_brief', label: 'Design Brief / Planning', description: 'Design Briefs, Lore Audits, Context Tags, Arc Planning' },
-    { key: 'outline', label: 'Outline', description: 'Book, Chapter, and Scene Outlines' },
-    { key: 'scene', label: 'Scene Writing', description: 'Scene Generation, Dialogue, Character Interactions' },
-    { key: 'rewrite', label: 'Rewrite / Editing', description: 'Editing Passes, Rewrites, Polish' },
-    { key: 'brainstorm', label: 'Brainstorm', description: 'Quick Creative, NPC Names, Locations, Songs' },
-    { key: 'vision', label: 'Vision / Image Analysis', description: 'Character Art, Cover, Scene Image Review' },
-    { key: 'utility', label: 'Utility', description: 'Summaries, Metadata, JSON, Formatting' },
+    { key: 'design_brief', label: 'Design Brief', description: 'Chapter/scene design briefs, heavy planning documents' },
+    { key: 'tag_recommendation', label: 'Tag Recommendation', description: 'Automatic context tag recommendation after briefs' },
+    { key: 'outline', label: 'Outline', description: 'Book, chapter, and scene outlines, franchise planning' },
+    { key: 'scene', label: 'Scene Writing', description: 'First-pass scene drafting with focused context' },
+    { key: 'rewrite', label: 'Rewrite / Polish', description: 'Scene rewrites, dialogue polish, final prose pass' },
+    { key: 'utility', label: 'Fast Utility', description: 'Summaries, metadata, JSON, formatting, prompt cleanup' },
+    { key: 'vision', label: 'Vision / Image Prompting', description: 'Character art review, cover review, visual consistency' },
+    { key: 'vision_quick', label: 'Quick Vision / Captioning', description: 'Fast image captions and quick visual checks' },
   ] as const;
 
   const [presets, setPresets] = useState<ModelPreset[]>([]);
@@ -356,6 +424,7 @@ export default function Settings() {
         repetition_penalty: preset.repetition_penalty ?? null,
         presence_penalty: preset.presence_penalty ?? null,
         frequency_penalty: preset.frequency_penalty ?? null,
+        notes: preset.notes || '',
         is_active: preset.is_active,
         updated_at: new Date().toISOString(),
       };
@@ -394,13 +463,14 @@ export default function Settings() {
     if (!currentProjectId) return;
     const endpoint = (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
     const defaults: ModelPreset[] = [
-      { task_mode: 'design_brief', label: 'Hermes 34B (Planning)', model_name: 'nous-hermes-2-yi-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 1200, temperature: 0.55, is_active: true },
-      { task_mode: 'outline', label: 'Hermes 34B (Outline)', model_name: 'nous-hermes-2-yi-34b', api_endpoint: endpoint, context_length: 8192, max_tokens: 1200, temperature: 0.55, is_active: true },
-      { task_mode: 'scene', label: 'Midnight Miqu 70B (Writing)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32768, max_tokens: 4000, temperature: 0.85, is_active: true },
-      { task_mode: 'rewrite', label: 'Midnight Miqu 70B (Editing)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32768, max_tokens: 4000, temperature: 0.8, is_active: true },
-      { task_mode: 'brainstorm', label: 'MythoMax 13B (Creative)', model_name: 'mythomax-12-13b', api_endpoint: endpoint, context_length: 4096, max_tokens: 800, temperature: 0.9, is_active: true },
-      { task_mode: 'vision', label: 'LLaVA 34B (Vision)', model_name: 'llava-v1.6-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 1000, temperature: 0.3, is_active: true },
-      { task_mode: 'utility', label: 'Mistral 7B (Utility)', model_name: 'mistral-7b-instruct-v0.2', api_endpoint: endpoint, context_length: 4096, max_tokens: 800, temperature: 0.3, is_active: true },
+      { task_mode: 'design_brief', label: 'Meta Llama (Design Brief)', model_name: 'meta-llama', api_endpoint: endpoint, context_length: 128000, max_tokens: 2000, temperature: 0.35, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Large context needed: manifesto + bible + characters + locations + reveals', is_active: true },
+      { task_mode: 'tag_recommendation', label: 'Mistral 7B (Tags)', model_name: 'mistral-7b-instruct-v0.2.gguf', api_endpoint: endpoint, context_length: 32768, max_tokens: 1500, temperature: 0.1, top_p: 0.85, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Brief + entity list needs more than 4096; no prose quality needed', is_active: true },
+      { task_mode: 'outline', label: 'Meta Llama (Outline)', model_name: 'meta-llama', api_endpoint: endpoint, context_length: 128000, max_tokens: 3000, temperature: 0.4, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Large context + strong reasoning for structural planning', is_active: true },
+      { task_mode: 'scene', label: 'Nous Hermes 34B (Scene)', model_name: 'nous-hermes-2-yi-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 2000, temperature: 0.75, top_p: 0.92, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Context already focused by tags; fits in 4096 after brief+tags', is_active: true },
+      { task_mode: 'rewrite', label: 'Midnight Miqu 70B (Polish)', model_name: 'midnight-miqu-70b-v1.5', api_endpoint: endpoint, context_length: 32400, max_tokens: 3000, temperature: 0.8, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Best prose quality for rewrites and emotional depth', is_active: true },
+      { task_mode: 'utility', label: 'Mistral 7B (Utility)', model_name: 'mistral-7b-instruct-v0.2.gguf', api_endpoint: endpoint, context_length: 32768, max_tokens: 1000, temperature: 0.3, top_p: 0.85, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast lightweight worker for summaries/metadata/JSON', is_active: true },
+      { task_mode: 'vision', label: 'LLaVA 34B (Vision)', model_name: 'llava-v1.6-34b', api_endpoint: endpoint, context_length: 4096, max_tokens: 1000, temperature: 0.2, top_p: 0.9, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Strongest vision model for detailed art/cover review', is_active: true },
+      { task_mode: 'vision_quick', label: 'LLaVA 7B (Quick Vision)', model_name: 'llava-v1.6-mistral-7b', api_endpoint: endpoint, context_length: 4096, max_tokens: 500, temperature: 0.2, top_p: 0.9, top_k: 0, repetition_penalty: 1.0, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast captioning and quick visual checks', is_active: true },
     ];
 
     Promise.all(defaults.map(d => savePreset(d)));
@@ -766,6 +836,7 @@ export default function Settings() {
                     context_length: 4096,
                     max_tokens: 1200,
                     temperature: 0.6,
+                    notes: '',
                     is_active: true,
                   };
 
@@ -821,9 +892,27 @@ export default function Settings() {
                         <span className="ml-1 font-mono">{preset!.temperature}</span>
                       </div>
                     </div>
+                    {preset!.notes && (
+                      <p className="mt-1 text-xs text-slate-400 italic">{preset!.notes}</p>
+                    )}
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {presets.length > 0 && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Recommended Workflow</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
+                <span>1. Design Brief</span><span className="font-mono text-slate-500">Meta Llama (128K ctx)</span>
+                <span>2. Tag Recommendation</span><span className="font-mono text-slate-500">Mistral 7B (32K ctx)</span>
+                <span>3. Outline</span><span className="font-mono text-slate-500">Meta Llama (128K ctx)</span>
+                <span>4. Scene Writing</span><span className="font-mono text-slate-500">Nous Hermes 34B (4K ctx)</span>
+                <span>5. Rewrite / Polish</span><span className="font-mono text-slate-500">Midnight Miqu 70B (32K ctx)</span>
+                <span>6. Utility</span><span className="font-mono text-slate-500">Mistral 7B (32K ctx)</span>
+                <span>7. Vision</span><span className="font-mono text-slate-500">LLaVA 34B (4K ctx)</span>
+              </div>
             </div>
           )}
         </Section>

@@ -173,6 +173,7 @@ export default function Write() {
         console.log(`[Story Forge] No preset for "${generationMode}", using default settings: ${settings.model_name}`);
       }
 
+
       const [
         outline,
         chapter,
@@ -407,7 +408,14 @@ export default function Write() {
       if (generationMode === 'design_brief' && content && selectedChapterId) {
         triggerTagRecommendation(content, chapter.data?.summary || '', sceneId);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error generating scene:', error);
+      const msg = error?.message || 'Unknown error';
+      if (msg.includes('Context window exceeded')) {
+        alert(msg);
+      } else {
+        alert(`Generation failed: ${msg}\n\nCheck that the correct model is loaded in LM Studio.`);
+      }
     } finally {
       setGenerating(false);
     }
@@ -622,6 +630,20 @@ export default function Write() {
 
     setRecommendingTags(true);
     try {
+      // Load tag_recommendation preset for auto-routing
+      const presetRes = await supabase
+        .from('model_presets')
+        .select('*')
+        .eq('project_id', currentProjectId)
+        .eq('task_mode', 'tag_recommendation')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      const tagPreset = presetRes.data;
+      if (tagPreset) {
+        console.log(`[Story Forge] Auto-routing: tag_recommendation -> ${tagPreset.model_name} (ctx: ${tagPreset.context_length})`);
+      }
+
       const [chars, places, things, techs, bible] = await Promise.all([
         supabase.from('characters').select('id, name').eq('project_id', currentProjectId),
         supabase.from('places').select('id, name').eq('project_id', currentProjectId),
@@ -638,11 +660,27 @@ export default function Write() {
         ...(bible.data || []).map(b => ({ id: b.id, name: `${b.subject} (${b.category})`, type: 'story_bible_entries' as const })),
       ];
 
+      // Use tag_recommendation preset if available, otherwise fall back to default settings
+      const effectiveSettings = tagPreset
+        ? {
+            ...settings,
+            model_name: tagPreset.model_name,
+            api_endpoint: tagPreset.api_endpoint || settings.api_endpoint,
+            context_length: tagPreset.context_length,
+            max_tokens: tagPreset.max_tokens,
+            temperature: tagPreset.temperature,
+            ...(tagPreset.top_p != null ? { top_p: tagPreset.top_p } : {}),
+            ...(tagPreset.top_k != null ? { top_k: tagPreset.top_k } : {}),
+            ...(tagPreset.repetition_penalty != null ? { repetition_penalty: tagPreset.repetition_penalty } : {}),
+            style_rules: (settings.style_rules as Record<string, boolean>) || undefined,
+          }
+        : { ...settings, style_rules: (settings.style_rules as Record<string, boolean>) || undefined };
+
       const recommendations = await recommendContextTags(
         briefContent,
         chapterSummary,
         candidates,
-        { ...settings, style_rules: (settings.style_rules as Record<string, boolean>) || undefined },
+        effectiveSettings,
       );
 
       if (recommendations.length > 0) {

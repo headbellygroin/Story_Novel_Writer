@@ -139,6 +139,15 @@ ${sceneDescription}
 
 ${modeInstruction}`;
 
+  // Safety check: estimate prompt tokens and validate against context window
+  const estimatedPromptTokens = Math.ceil(fullPrompt.length / 3.5);
+  const totalEstimated = estimatedPromptTokens + reservedForOutput;
+  if (totalEstimated > contextLength) {
+    throw new Error(
+      `Context window exceeded: prompt is ~${estimatedPromptTokens.toLocaleString()} tokens + ${reservedForOutput.toLocaleString()} max output = ~${totalEstimated.toLocaleString()} tokens, but model context is ${contextLength.toLocaleString()} tokens. Reduce context tags or use a larger-context preset for this task.`
+    );
+  }
+
   const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
 
   const baseBody: Record<string, unknown> = {
