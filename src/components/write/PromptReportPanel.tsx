@@ -153,6 +153,34 @@ export default function PromptReportPanel({ report, contextMode, worldRichness, 
             </div>
           )}
 
+          {/* Relevance Scoring Audit */}
+          {report.relevanceAudit && report.relevanceAudit.length > 0 && (
+            <div className="bg-sky-50 rounded-md p-2 border border-sky-200">
+              <div className="text-xs font-medium text-sky-800 mb-1.5">Relevance Scoring</div>
+              <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                {report.relevanceAudit.map(r => {
+                  const tierColors: Record<string, string> = {
+                    hard_include: 'bg-green-100 text-green-800',
+                    high: 'bg-teal-50 text-teal-700',
+                    medium: 'bg-sky-50 text-sky-700',
+                    low: 'bg-amber-50 text-amber-700',
+                    background: 'bg-slate-100 text-slate-400',
+                  };
+                  return (
+                    <div key={r.name} className={`flex items-center justify-between text-xs px-1.5 py-0.5 rounded ${
+                      r.included ? (tierColors[r.tier] || 'bg-slate-50') : 'bg-red-50 text-red-400 line-through'
+                    }`}>
+                      <span className="font-medium truncate max-w-[120px]">{r.name}</span>
+                      <span className="font-mono text-[10px] opacity-75 flex-shrink-0 ml-2">
+                        {r.tier.replace('_', ' ')} ({r.score}) — {r.reason}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Frame Breakdown - Hidden Context */}
           {report.frameBreakdown && (
             <div className="bg-amber-50/50 rounded-md p-2 border border-amber-200">

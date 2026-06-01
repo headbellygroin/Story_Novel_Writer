@@ -21,6 +21,81 @@ type Scene = Database['public']['Tables']['scenes']['Row'];
 type Chapter = Database['public']['Tables']['chapters']['Row'];
 type GenerationSettings = Database['public']['Tables']['generation_settings']['Row'];
 
+type RelevanceTier = 'hard_include' | 'high' | 'medium' | 'low' | 'background';
+
+interface RelevanceScore {
+  entity: any;
+  tier: RelevanceTier;
+  score: number;
+  reason: string;
+}
+
+function scoreCharacterRelevance(
+  character: any,
+  sceneDescription: string,
+  chapterSummary: string,
+  recentSceneText: string,
+  sceneSummaryText: string,
+): RelevanceScore {
+  const name = (character.name || '').toLowerCase();
+  const sceneDesc = sceneDescription.toLowerCase();
+  const chapSum = chapterSummary.toLowerCase();
+  const recentText = recentSceneText.toLowerCase();
+  const summaryText = sceneSummaryText.toLowerCase();
+
+  // Hard include: explicitly named in scene description
+  if (name.length > 2 && sceneDesc.includes(name)) {
+    return { entity: character, tier: 'hard_include', score: 100, reason: 'Named in scene request' };
+  }
+
+  // High: named in chapter summary or scene summaries
+  if (name.length > 2 && chapSum.includes(name)) {
+    return { entity: character, tier: 'high', score: 75, reason: 'Named in chapter summary' };
+  }
+  if (name.length > 2 && summaryText.includes(name)) {
+    return { entity: character, tier: 'high', score: 70, reason: 'Named in scene summaries' };
+  }
+
+  // Medium: core cast roles
+  const role = (character.role || '').toLowerCase();
+  const coreRoles = ['protagonist', 'antagonist', 'pov'];
+  if (coreRoles.some(r => role.includes(r))) {
+    return { entity: character, tier: 'medium', score: 50, reason: `Core role: ${character.role}` };
+  }
+
+  // Low: mentioned in recent scene content
+  if (name.length > 2 && recentText.includes(name)) {
+    return { entity: character, tier: 'low', score: 25, reason: 'Named in recent scene' };
+  }
+
+  // Background: merely visible
+  return { entity: character, tier: 'background', score: 0, reason: 'Visible but not relevant' };
+}
+
+function filterByRelevance(
+  scores: RelevanceScore[],
+  maxBackground: number = 0,
+): { included: RelevanceScore[]; excluded: RelevanceScore[] } {
+  const included: RelevanceScore[] = [];
+  const excluded: RelevanceScore[] = [];
+
+  for (const s of scores) {
+    if (s.tier === 'background') {
+      excluded.push(s);
+    } else {
+      included.push(s);
+    }
+  }
+
+  // If nothing scored above background, include top 3 by role as fallback
+  if (included.length === 0 && excluded.length > 0) {
+    const fallback = excluded.splice(0, Math.min(maxBackground, excluded.length));
+    included.push(...fallback.map(s => ({ ...s, reason: s.reason + ' (fallback)' })));
+  }
+
+  return { included, excluded };
+}
+
 export default function Write() {
   const { currentProjectId, currentOutlineId } = useStore();
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -277,41 +352,47 @@ export default function Write() {
         things = allThings;
         technologies = allTechs;
       } else {
-        // Relevance-driven filtering: use scene description + chapter summary as signals
-        const relevanceText = [
-          scene.description || '',
-          chapter.data?.summary || '',
-          scene.content || '',
-        ].join(' ').toLowerCase();
+        // Relevance scoring: score each visible character against scene signals
+        const sceneSummaryText = (summariesRes.data || [])
+          .filter((s: any) => s.scenes && s.scenes.chapter_id === scene.chapter_id && s.scenes.order_index < scene.order_index)
+          .map((s: any) => s.summary || '').join(' ');
+        const recentSceneText = scenes
+          .filter(s => s.order_index < scene.order_index && s.content)
+          .slice(-2)
+          .map(s => s.content || '').join(' ');
 
-        // Characters: POV + named in brief/chapter + main roles (from visible pool only)
-        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        const relevantChars = visibleCharacters.filter((c: any) => {
-          const role = (c.role || '').toLowerCase();
-          if (mainRoles.some(r => role.includes(r))) return true;
-          const name = (c.name || '').toLowerCase();
-          if (name.length > 2 && relevanceText.includes(name)) return true;
+        const charScores = visibleCharacters.map((c: any) =>
+          scoreCharacterRelevance(c, scene.description || '', chapter.data?.summary || '', recentSceneText, sceneSummaryText)
+        );
+        const { included: includedChars } = filterByRelevance(charScores, 3);
+        characters = includedChars.map(s => s.entity);
+
+        // Places: score similarly
+        const sceneDesc = (scene.description || '').toLowerCase();
+        const chapSum = (chapter.data?.summary || '').toLowerCase();
+        places = allPlaces.filter((p: any) => {
+          const name = (p.name || '').toLowerCase();
+          if (name.length > 2 && sceneDesc.includes(name)) return true;
+          if (name.length > 2 && chapSum.includes(name)) return true;
           return false;
         });
-        characters = relevantChars;
+        if (places.length === 0) places = allPlaces.slice(0, 3);
 
-        // Places: preserve generously -- worldbuilding context is core
-        places = allPlaces;
-
-        // Things/Tech: include if name-referenced, otherwise limit
+        // Things/Tech: include if name-referenced
+        const fullRelevanceText = [sceneDesc, chapSum, sceneSummaryText.toLowerCase()].join(' ');
         things = allThings.filter((t: any) => {
           const name = (t.name || '').toLowerCase();
-          return name.length > 2 && relevanceText.includes(name);
+          return name.length > 2 && fullRelevanceText.includes(name);
         });
-        if (things.length === 0) things = allThings.slice(0, 3);
+        if (things.length === 0) things = allThings.slice(0, 2);
 
         technologies = allTechs.filter((t: any) => {
           const name = (t.name || '').toLowerCase();
-          return name.length > 2 && relevanceText.includes(name);
+          return name.length > 2 && fullRelevanceText.includes(name);
         });
-        if (technologies.length === 0) technologies = allTechs.slice(0, 3);
+        if (technologies.length === 0) technologies = allTechs.slice(0, 2);
 
-        console.log(`[Story Forge] Visibility: ${visibleCharacters.length}/${allCharacters.length} chars visible (book ${currentBook}, ch ${currentChapterNum}). Relevance: ${characters.length} selected, ${places.length} places, ${things.length} things, ${technologies.length} tech`);
+        console.log(`[Story Forge] Visibility: ${visibleCharacters.length}/${allCharacters.length} chars visible. Relevance: ${characters.length} chars, ${places.length} places, ${things.length} things, ${technologies.length} tech`);
       }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
@@ -605,6 +686,7 @@ export default function Write() {
       let places: any[];
       let things: any[];
       let technologies: any[];
+      let relevanceData: { scores: RelevanceScore[]; included: RelevanceScore[] } | null = null;
 
       if (hasContextTags) {
         characters = visibleCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
@@ -617,29 +699,45 @@ export default function Write() {
         things = allThings;
         technologies = allTechs;
       } else {
-        const relevanceText = [
-          scene.description || '',
-          chapter.data?.summary || '',
-        ].join(' ').toLowerCase();
-        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        characters = visibleCharacters.filter((c: any) => {
-          const role = (c.role || '').toLowerCase();
-          if (mainRoles.some(r => role.includes(r))) return true;
-          const name = (c.name || '').toLowerCase();
-          if (name.length > 2 && relevanceText.includes(name)) return true;
+        // Relevance scoring (mirrors generation logic)
+        const sceneSummaryText = (summariesRes.data || [])
+          .filter((s: any) => s.scenes && s.scenes.chapter_id === scene.chapter_id && s.scenes.order_index < scene.order_index)
+          .map((s: any) => s.summary || '').join(' ');
+        const recentSceneText = scenes
+          .filter(s => s.order_index < scene.order_index && s.content)
+          .slice(-2)
+          .map(s => s.content || '').join(' ');
+
+        const charScores = visibleCharacters.map((c: any) =>
+          scoreCharacterRelevance(c, scene.description || '', chapter.data?.summary || '', recentSceneText, sceneSummaryText)
+        );
+        const { included: includedChars } = filterByRelevance(charScores, 3);
+        characters = includedChars.map(s => s.entity);
+
+        // Store relevance scores for report (attached later)
+        relevanceData = { scores: charScores, included: includedChars };
+
+        const sceneDesc = (scene.description || '').toLowerCase();
+        const chapSum = (chapter.data?.summary || '').toLowerCase();
+        places = allPlaces.filter((p: any) => {
+          const name = (p.name || '').toLowerCase();
+          if (name.length > 2 && sceneDesc.includes(name)) return true;
+          if (name.length > 2 && chapSum.includes(name)) return true;
           return false;
         });
-        places = allPlaces;
+        if (places.length === 0) places = allPlaces.slice(0, 3);
+
+        const fullRelevanceText = [sceneDesc, chapSum, sceneSummaryText.toLowerCase()].join(' ');
         things = allThings.filter((t: any) => {
           const name = (t.name || '').toLowerCase();
-          return name.length > 2 && relevanceText.includes(name);
+          return name.length > 2 && fullRelevanceText.includes(name);
         });
-        if (things.length === 0) things = allThings.slice(0, 3);
+        if (things.length === 0) things = allThings.slice(0, 2);
         technologies = allTechs.filter((t: any) => {
           const name = (t.name || '').toLowerCase();
-          return name.length > 2 && relevanceText.includes(name);
+          return name.length > 2 && fullRelevanceText.includes(name);
         });
-        if (technologies.length === 0) technologies = allTechs.slice(0, 3);
+        if (technologies.length === 0) technologies = allTechs.slice(0, 2);
       }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
@@ -829,6 +927,20 @@ export default function Write() {
         currentChapter: currentChapterNum,
         decisions,
       };
+
+      // Populate relevance audit from scoring pass
+      if (relevanceData) {
+        const includedSet = new Set(relevanceData.included.map(s => s.entity.id));
+        report.relevanceAudit = relevanceData.scores
+          .sort((a, b) => b.score - a.score)
+          .map(s => ({
+            name: s.entity.name,
+            tier: s.tier,
+            score: s.score,
+            reason: s.reason,
+            included: includedSet.has(s.entity.id),
+          }));
+      }
 
       setPromptReport(report);
     } catch (error) {

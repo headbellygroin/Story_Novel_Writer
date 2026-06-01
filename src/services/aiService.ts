@@ -88,6 +88,13 @@ export interface PromptAssemblyReport {
       reason: string;
     }>;
   };
+  relevanceAudit?: Array<{
+    name: string;
+    tier: string;
+    score: number;
+    reason: string;
+    included: boolean;
+  }>;
   frameTokens: number;
   totalPromptTokens: number;
   maxBudget: number;
