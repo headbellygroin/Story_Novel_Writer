@@ -8,10 +8,14 @@ export default function Home() {
           <h1 className="text-5xl font-bold text-slate-900 mb-2">
             Story Forge
           </h1>
-          <p className="text-lg text-slate-500 mb-4">
+          <p className="text-lg text-slate-500 mb-3">
             AI-Powered Novel Writing & Production Studio
           </p>
-          <p className="text-xl text-slate-600 mb-8 max-w-2xl mx-auto">
+          <p className="text-lg italic text-slate-700 mb-6 max-w-2xl mx-auto">
+            Story Forge is an AI-assisted series development studio that turns a story idea
+            into a complete writing blueprint before a single chapter is written.
+          </p>
+          <p className="text-base text-slate-600 mb-8 max-w-2xl mx-auto">
             Write with uncensored local models, generate illustrations, create audiobook narration,
             and produce YouTube-ready litRPG content -- all from one workspace.
           </p>
