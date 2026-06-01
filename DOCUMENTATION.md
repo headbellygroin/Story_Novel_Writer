@@ -5,18 +5,20 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Hardware & Model Configuration](#hardware--model-configuration)
-3. [Services & Settings](#services--settings)
-4. [Writing Tools](#writing-tools)
-5. [World & Characters](#world--characters)
-6. [Consistency & Quality Checks](#consistency--quality-checks)
-7. [Production Pipeline](#production-pipeline)
-8. [Audiobook](#audiobook)
-9. [Export](#export)
-10. [Files & Storage](#files--storage)
-11. [End-to-End Workflow](#end-to-end-workflow)
-12. [Context Assembly Architecture](#context-assembly-architecture)
-13. [Relevance Scoring](#relevance-scoring-entity-selection-layer)
+2. [Prerequisites](#prerequisites)
+3. [The Expected Workflow: World-Building First](#the-expected-workflow-world-building-first)
+4. [Hardware & Model Configuration](#hardware--model-configuration)
+5. [Services & Settings](#services--settings)
+6. [Writing Tools](#writing-tools)
+7. [World & Characters](#world--characters)
+8. [Consistency & Quality Checks](#consistency--quality-checks)
+9. [Production Pipeline](#production-pipeline)
+10. [Audiobook](#audiobook)
+11. [Export](#export)
+12. [Files & Storage](#files--storage)
+13. [End-to-End Workflow](#end-to-end-workflow)
+14. [Context Assembly Architecture](#context-assembly-architecture)
+15. [Relevance Scoring](#relevance-scoring-entity-selection-layer)
 
 ---
 
@@ -25,6 +27,33 @@
 Story Forge is a self-hosted AI novel writing and production studio. It connects to two services running on your AI machine -- LM Studio for text generation and ComfyUI for all media generation -- and uses a Supabase database to store your project data. Nothing is sent to any third-party AI cloud.
 
 The application covers the full authoring lifecycle: brainstorming, world-building, outlining, scene-by-scene writing with AI assistance, consistency checking, and then a full production pipeline that turns finished chapters into audiobook-style video content suitable for YouTube upload.
+
+### Prerequisites
+
+Story Forge assumes two services are running on your AI machine before you open the app:
+
+1. **LM Studio** -- must be running with your writing model (and optionally the vision model) loaded. Without LM Studio, no text generation works: no writing, no planning, no analysis.
+2. **ComfyUI** -- must be running for any media generation: scene images, animation, TTS audio, lip-sync video. If you only need text features (writing, planning, consistency checks), ComfyUI is not required.
+
+Both services must be reachable at the endpoints configured on the Settings page. If either is unreachable, features that depend on it will fail with a connection error.
+
+### The Expected Workflow: World-Building First
+
+Story Forge produces its best results when the author has done upfront world-building. The AI writing tools are context-driven -- the more world data you feed them, the richer and more consistent the output.
+
+**Before you start writing scenes, build your world:**
+
+1. **Create a Project** -- give it a name, genre, and description.
+2. **Write your Franchise Manifesto** -- the non-negotiable truths of your series (themes, tone rules, character philosophy).
+3. **Populate the World Library** -- add characters with personalities, backgrounds, and relationships. Add places, things, and technologies with descriptions. Generate reference images for key entities using ComfyUI.
+4. **Talk to the AI** -- use Voice Chat or the Dossier to brainstorm with the AI. Bounce ideas, test directions, get feedback on story structure.
+5. **Fill the Story Bible** -- capture critical facts, rules, and lore that the AI must respect during generation.
+6. **Run the Series Wizard** -- once you have characters, places, and a general direction, use Quick Start to generate your series backbone in one run.
+
+**Why this order matters:**
+Every generation request in Story Forge pulls context from your world data. Characters, places, story bible facts, the manifesto -- all of this gets injected into the AI prompt. If those are empty, the AI has nothing to work with and produces generic output. The more complete your world, the more specific, consistent, and on-brand the AI's writing becomes.
+
+The tools are designed for this flow: world-build first (write entries, generate images, chat with the AI for ideas), then plan (Series Wizard, Outline), then write (scene-by-scene with full context injection).
 
 ### Architecture: CPU vs GPU Split
 
@@ -204,13 +233,19 @@ Answer 3 questions, press one button, and the AI generates your complete series 
 2. What kind of story? (genre/tone -- e.g. "Blue-collar space opera", "Found family adventure")
 3. What must happen by the end? (series endpoint -- e.g. "Benjamin discovers the truth about the Naughts")
 
-Pressing "Build My Series" chains 4 generation steps automatically:
+Pressing "Build My Series" chains 6 generation steps automatically:
 - Series Map -- high-level arc for all books (theme, beginning/ending state, major events, character growth, world changes per book)
 - Book 1 Major Events -- turning points (opening, inciting incident, first turning point, midpoint, major reversal, climax, resolution)
 - Book 1 Outline -- detailed structural outline with act breaks
 - Book 1 Chapter List -- 20-30 chapters with POV, location, events, and tone
+- Book 1 Chapter Briefs -- detailed planning for the first 5 chapters (scene-by-scene breakdown, character goals, dialogue beats)
+- Book 1 Scene Breakdown -- individual scene cards for Chapter 1 (POV, location, conflict, transitions)
 
-Each section appears progressively as it generates. A progress bar shows which step is running. When all 4 complete, review the output inline -- each section has a "Regenerate" button to redo just that section without losing the others. "Save All to Project" stores everything: the series map and events go to Story Bible entries (category: series_planning), the book outline creates an Outline record.
+Each section appears progressively as it generates. A progress bar shows which step is running (1 of 6). When all 6 complete, you have two options:
+- **Save All to Project** -- stores everything to the database (series map and events to Story Bible, outline to Outlines, briefs and scenes to Story Bible)
+- **Edit in Step-by-Step Mode** -- transfers all Quick Start output into the Advanced panel so you can regenerate individual steps, add author notes, and fine-tune specific chapters without starting from scratch
+
+Each section also has a "Regenerate" button to redo just that section without losing the others.
 
 **Step-by-Step (advanced / mid-revision)**
 Full manual control over each of 6 steps with individual generation, custom user notes per step, and book/chapter selectors for iterating on books 2, 3, etc. The 6 steps are:
@@ -229,12 +264,14 @@ Each step feeds the output from all previous steps as context for the next. You 
 - Book Outlines: Outline records (same as manually-created outlines on the Outline page)
 
 **Workflow recommendation:**
-1. Use Quick Start to generate the full Book 1 skeleton
-2. Review each section -- regenerate anything that doesn't fit
-3. Save All to Project
-4. Switch to Step-by-Step mode for Books 2-7 (using the series map from Quick Start as foundation)
-5. Once chapter list is finalized, use Chapter Briefs and Scene Breakdown to plan individual chapters
-6. Move to the Write page to generate prose scene by scene
+1. Build your world first (characters, places, manifesto, story bible)
+2. Use Quick Start to generate the full Book 1 skeleton (all 6 steps in one run)
+3. Review each section -- regenerate anything that doesn't fit
+4. Click "Edit in Step-by-Step Mode" to fine-tune individual steps with author notes
+5. Save All to Project once satisfied
+6. Switch to Step-by-Step mode for Books 2-7 (using the series map from Quick Start as foundation)
+7. Once chapter list is finalized, use Chapter Briefs and Scene Breakdown to plan individual chapters
+8. Move to the Write page to generate prose scene by scene
 
 ### Outline
 
