@@ -361,7 +361,7 @@ const SECTION_BUDGETS: Record<GenerationMode, Record<string, number>> = {
   scene: {
     characters: 3000,
     bible: 2000,
-    places: 1000,
+    places: 3000,
     tech: 1000,
     things: 1000,
     style: 1500,
@@ -377,7 +377,7 @@ const SECTION_BUDGETS: Record<GenerationMode, Record<string, number>> = {
   design_brief: {
     characters: 2000,
     bible: 1500,
-    places: 800,
+    places: 2500,
     tech: 800,
     things: 800,
     style: 1000,
@@ -393,7 +393,7 @@ const SECTION_BUDGETS: Record<GenerationMode, Record<string, number>> = {
   outline: {
     characters: 2000,
     bible: 1500,
-    places: 800,
+    places: 2500,
     tech: 800,
     things: 800,
     style: 1000,

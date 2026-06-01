@@ -209,6 +209,7 @@ export default function Write() {
         prohibitedWordsRes,
         manifestoRes,
         chapterTagsRes,
+        revealTimelineRes,
       ] = await Promise.all([
         currentOutlineId ? supabase.from('outlines').select('*').eq('id', currentOutlineId).maybeSingle() : null,
         supabase.from('chapters').select('*').eq('id', scene.chapter_id).maybeSingle(),
@@ -228,6 +229,7 @@ export default function Write() {
         supabase.from('prohibited_words').select('word').eq('project_id', currentProjectId),
         supabase.from('franchise_manifesto').select('content').eq('project_id', currentProjectId).maybeSingle(),
         supabase.from('chapter_context_tags').select('*').eq('chapter_id', scene.chapter_id),
+        supabase.from('reveal_timeline').select('entity_id, book_number').eq('project_id', currentProjectId),
       ]);
 
       const prohibitedWords = (prohibitedWordsRes.data || []).map((w: { word: string }) => w.word);
@@ -238,7 +240,7 @@ export default function Write() {
       const sceneContextTags = contextTagsRes.data || [];
       const chapterContextTags = chapterTagsRes.data || [];
 
-      // Smart Context Assembly: scene tags > chapter tags > auto-limit
+      // Smart Context Assembly: scene tags > chapter tags > relevance-driven auto-select
       const contextTags = sceneContextTags.length > 0 ? sceneContextTags : chapterContextTags;
       const hasContextTags = contextTags.length > 0;
       const taggedIds = new Set(contextTags.map(t => t.entity_id));
@@ -258,26 +260,42 @@ export default function Write() {
         places = allPlaces;
         things = allThings;
         technologies = allTechs;
-      } else if (generationMode === 'design_brief' || generationMode === 'outline') {
-        // Design Brief / Outline: tight limits to keep context small
-        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        characters = [...mainChars, ...otherChars.slice(0, 5)].slice(0, 6);
-        places = allPlaces.slice(0, 3);
-        things = allThings.slice(0, 3);
-        technologies = allTechs.slice(0, 3);
-        console.log(`[Story Forge] Design brief context: auto-limiting (${characters.length} chars, ${places.length} places, ${things.length} things, ${technologies.length} tech)`);
       } else {
-        // Scene writing: moderate limits
+        // Relevance-driven filtering: use scene description + chapter summary as signals
+        const relevanceText = [
+          scene.description || '',
+          chapter.data?.summary || '',
+          scene.content || '',
+        ].join(' ').toLowerCase();
+
+        // Characters: POV + named in brief/chapter + main roles
         const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        characters = [...mainChars, ...otherChars.slice(0, 5)];
-        places = allPlaces.slice(0, 8);
-        things = allThings.slice(0, 5);
-        technologies = allTechs.slice(0, 5);
-        console.log(`[Story Forge] Smart context: no tags found, auto-limiting entities (${characters.length} chars, ${places.length} places, ${things.length} things, ${technologies.length} tech)`);
+        const relevantChars = allCharacters.filter((c: any) => {
+          const role = (c.role || '').toLowerCase();
+          if (mainRoles.some(r => role.includes(r))) return true;
+          const name = (c.name || '').toLowerCase();
+          if (name.length > 2 && relevanceText.includes(name)) return true;
+          return false;
+        });
+        characters = relevantChars;
+
+        // Places: preserve generously -- worldbuilding context is core
+        places = allPlaces;
+
+        // Things/Tech: include if name-referenced, otherwise limit
+        things = allThings.filter((t: any) => {
+          const name = (t.name || '').toLowerCase();
+          return name.length > 2 && relevanceText.includes(name);
+        });
+        if (things.length === 0) things = allThings.slice(0, 3);
+
+        technologies = allTechs.filter((t: any) => {
+          const name = (t.name || '').toLowerCase();
+          return name.length > 2 && relevanceText.includes(name);
+        });
+        if (technologies.length === 0) technologies = allTechs.slice(0, 3);
+
+        console.log(`[Story Forge] Relevance filter: ${characters.length}/${allCharacters.length} chars, ${places.length} places (all preserved), ${things.length}/${allThings.length} things, ${technologies.length}/${allTechs.length} tech`);
       }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
@@ -300,7 +318,30 @@ export default function Write() {
       } else if (generationMode === 'deep_analysis') {
         filteredBibleFacts = storyBibleFacts;
       } else {
-        filteredBibleFacts = storyBibleFacts.filter((f: any) => f.importance === 'critical' || f.importance === 'high');
+        // Relevance-driven bible filtering
+        const futureRevealEntityIds = new Set(
+          (revealTimelineRes.data || [])
+            .filter((r: any) => r.book_number > 1)
+            .map((r: any) => r.entity_id)
+        );
+        const excludedCategories = ['future_plot', 'mystery', 'hidden', 'revelation', 'secret', 'spoiler'];
+        const bibleRelevanceText = [
+          scene.description || '',
+          chapter.data?.summary || '',
+          ...characters.map((c: any) => c.name || ''),
+          ...places.map((p: any) => p.name || ''),
+        ].join(' ').toLowerCase();
+
+        filteredBibleFacts = storyBibleFacts.filter((f: any, i: number) => {
+          const entry = (bibleRes.data || [])[i];
+          if (f.importance === 'critical') return true;
+          if (futureRevealEntityIds.has(entry.id)) return false;
+          if (excludedCategories.some(cat => (f.category || '').toLowerCase().includes(cat))) return false;
+          if (f.importance === 'high') return true;
+          const subject = (f.subject || '').toLowerCase();
+          if (subject.length > 2 && bibleRelevanceText.includes(subject)) return true;
+          return false;
+        });
       }
 
       const styleAnchors = (styleRes.data || []).map((a: Record<string, string>) => ({
@@ -492,6 +533,7 @@ export default function Write() {
         prohibitedWordsRes,
         manifestoRes,
         chapterTagsRes,
+        revealTimelineRes2,
       ] = await Promise.all([
         currentOutlineId ? supabase.from('outlines').select('*').eq('id', currentOutlineId).maybeSingle() : null,
         supabase.from('chapters').select('*').eq('id', scene.chapter_id).maybeSingle(),
@@ -511,6 +553,7 @@ export default function Write() {
         supabase.from('prohibited_words').select('word').eq('project_id', currentProjectId),
         supabase.from('franchise_manifesto').select('content').eq('project_id', currentProjectId).maybeSingle(),
         supabase.from('chapter_context_tags').select('*').eq('chapter_id', scene.chapter_id),
+        supabase.from('reveal_timeline').select('entity_id, book_number').eq('project_id', currentProjectId),
       ]);
 
       const prohibitedWords = (prohibitedWordsRes.data || []).map((w: { word: string }) => w.word);
@@ -541,22 +584,30 @@ export default function Write() {
         places = allPlaces;
         things = allThings;
         technologies = allTechs;
-      } else if (generationMode === 'design_brief' || generationMode === 'outline') {
-        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        characters = [...mainChars, ...otherChars.slice(0, 5)].slice(0, 6);
-        places = allPlaces.slice(0, 3);
-        things = allThings.slice(0, 3);
-        technologies = allTechs.slice(0, 3);
       } else {
+        const relevanceText = [
+          scene.description || '',
+          chapter.data?.summary || '',
+        ].join(' ').toLowerCase();
         const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
-        characters = [...mainChars, ...otherChars.slice(0, 5)];
-        places = allPlaces.slice(0, 8);
-        things = allThings.slice(0, 5);
-        technologies = allTechs.slice(0, 5);
+        characters = allCharacters.filter((c: any) => {
+          const role = (c.role || '').toLowerCase();
+          if (mainRoles.some(r => role.includes(r))) return true;
+          const name = (c.name || '').toLowerCase();
+          if (name.length > 2 && relevanceText.includes(name)) return true;
+          return false;
+        });
+        places = allPlaces;
+        things = allThings.filter((t: any) => {
+          const name = (t.name || '').toLowerCase();
+          return name.length > 2 && relevanceText.includes(name);
+        });
+        if (things.length === 0) things = allThings.slice(0, 3);
+        technologies = allTechs.filter((t: any) => {
+          const name = (t.name || '').toLowerCase();
+          return name.length > 2 && relevanceText.includes(name);
+        });
+        if (technologies.length === 0) technologies = allTechs.slice(0, 3);
       }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
@@ -579,7 +630,29 @@ export default function Write() {
       } else if (generationMode === 'deep_analysis') {
         filteredBibleFacts = storyBibleFacts;
       } else {
-        filteredBibleFacts = storyBibleFacts.filter((f: any) => f.importance === 'critical' || f.importance === 'high');
+        const futureRevealEntityIds = new Set(
+          (revealTimelineRes2.data || [])
+            .filter((r: any) => r.book_number > 1)
+            .map((r: any) => r.entity_id)
+        );
+        const excludedCategories = ['future_plot', 'mystery', 'hidden', 'revelation', 'secret', 'spoiler'];
+        const bibleRelevanceText = [
+          scene.description || '',
+          chapter.data?.summary || '',
+          ...characters.map((c: any) => c.name || ''),
+          ...places.map((p: any) => p.name || ''),
+        ].join(' ').toLowerCase();
+
+        filteredBibleFacts = storyBibleFacts.filter((f: any, i: number) => {
+          const entry = (bibleRes.data || [])[i];
+          if (f.importance === 'critical') return true;
+          if (futureRevealEntityIds.has(entry.id)) return false;
+          if (excludedCategories.some(cat => (f.category || '').toLowerCase().includes(cat))) return false;
+          if (f.importance === 'high') return true;
+          const subject = (f.subject || '').toLowerCase();
+          if (subject.length > 2 && bibleRelevanceText.includes(subject)) return true;
+          return false;
+        });
       }
 
       const styleAnchors = (styleRes.data || []).map((a: Record<string, string>) => ({
