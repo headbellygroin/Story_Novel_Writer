@@ -445,7 +445,7 @@ const SECTION_LABELS: Record<string, string> = {
   previous: 'Previous Scenes (Full)',
 };
 
-function buildSections(context: GenerateSceneRequest['context'], contextMode: ContextMode): ContextSection[] {
+function buildSections(context: GenerateSceneRequest['context'], contextMode: ContextMode, generationMode: GenerationMode = 'scene'): ContextSection[] {
   const sections: ContextSection[] = [];
 
   if (context.franchiseManifesto) {
@@ -470,12 +470,30 @@ function buildSections(context: GenerateSceneRequest['context'], contextMode: Co
         const rank: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
         return (rank[b.importance] || 0) - (rank[a.importance] || 0);
       });
-      const facts = sorted
-        .map(f => {
-          const tag = f.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
-          return `[${f.importance.toUpperCase()}] ${f.subject}${tag}: ${f.fact}`;
-        })
-        .join('\n');
+
+      let facts: string;
+      const useCompressed = generationMode !== 'deep_analysis' && contextMode !== 'full';
+
+      if (useCompressed) {
+        // Group facts by subject into compact paragraphs
+        const grouped = new Map<string, string[]>();
+        for (const f of sorted) {
+          const key = f.subject || 'General';
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key)!.push(f.fact);
+        }
+        facts = Array.from(grouped.entries())
+          .map(([subject, entries]) => `${subject}: ${entries.join(' ')}`)
+          .join('\n');
+      } else {
+        facts = sorted
+          .map(f => {
+            const tag = f.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+            return `[${f.importance.toUpperCase()}] ${f.subject}${tag}: ${f.fact}`;
+          })
+          .join('\n');
+      }
+
       sections.push({
         key: 'bible',
         label: SECTION_LABELS.bible,
@@ -533,20 +551,25 @@ function buildSections(context: GenerateSceneRequest['context'], contextMode: Co
 
   if (context.characters && context.characters.length > 0) {
     const activeChars = context.characters.filter(c => c.canon_status !== 'deprecated');
+    const useCompressed = generationMode !== 'deep_analysis' && contextMode !== 'full';
+
     const charInfo = activeChars.map(c => {
-      const statusTag = c.canon_status === 'experimental' ? ' [EXPERIMENTAL - may not be canon]' : '';
+      const statusTag = c.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+
+      if (useCompressed) {
+        // Compressed scene summary: name, role, core trait, dialogue hint
+        let summary = `- ${c.name} (${c.role})${statusTag}: ${(c.personality || '').split('.')[0].trim() || c.personality}`;
+        if (c.dialogue_style) summary += `. Voice: ${c.dialogue_style.split('.')[0].trim()}`;
+        return summary;
+      }
+
+      // Full profile for deep_analysis or full context mode
       let info = `- ${c.name} (${c.role})${statusTag}: ${c.personality}\n  Background: ${c.background}`;
       if (c.dialogue_style) info += `\n  Dialogue Style: ${c.dialogue_style}`;
-      if (contextMode !== 'minimal') {
-        if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
-        if (c.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${c.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
-      }
+      if (c.personality_sliders_text) info += `\n  Personality Profile:\n${c.personality_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+      if (c.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${c.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       if (c.image_description) info += `\n  Visual: ${c.image_description}`;
-      if (contextMode === 'full' && c.dossier?.trim()) info += `\n  Character Dossier:\n${c.dossier.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
-      if (contextMode === 'relevant' && c.dossier?.trim()) {
-        const dossierLines = c.dossier.split('\n').slice(0, 10);
-        info += `\n  Character Dossier (summary):\n${dossierLines.map((l: string) => `    ${l}`).join('\n')}`;
-      }
+      if (c.dossier?.trim()) info += `\n  Character Dossier:\n${c.dossier.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
       return info;
     }).join('\n');
     if (charInfo) sections.push({ key: 'characters', label: SECTION_LABELS.characters, content: `=== CHARACTERS IN THIS SCENE ===\n${charInfo}`, priority: 4 });
@@ -628,7 +651,7 @@ function buildSections(context: GenerateSceneRequest['context'], contextMode: Co
 }
 
 function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number, contextMode: ContextMode = 'full', generationMode: GenerationMode = 'scene'): string {
-  const sections = buildSections(context, contextMode);
+  const sections = buildSections(context, contextMode, generationMode);
   sections.sort((a, b) => b.priority - a.priority);
 
   const budgets = SECTION_BUDGETS[generationMode];
@@ -683,7 +706,7 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
   const frameText = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}\n\n${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}`;
   const frameTokens = estimateTokens(frameText);
 
-  const sections = buildSections(context, contextMode);
+  const sections = buildSections(context, contextMode, generationMode);
   sections.sort((a, b) => b.priority - a.priority);
 
   const budgets = SECTION_BUDGETS[generationMode];
