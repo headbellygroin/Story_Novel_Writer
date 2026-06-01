@@ -75,6 +75,10 @@ export interface PromptAssemblyReport {
     sceneDescription: number;
     modeInstructions: number;
   };
+  visibilityAudit?: {
+    visible: string[];
+    hidden: string[];
+  };
   frameTokens: number;
   totalPromptTokens: number;
   maxBudget: number;

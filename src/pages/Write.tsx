@@ -248,7 +248,7 @@ export default function Write() {
 
       // Character Visibility Gate: filter out characters not yet introduced
       const currentBook = 1; // Default book number (outline = book)
-      const currentChapter = chapter.data?.order_index ?? 0;
+      const currentChapterNum = (chapter.data?.order_index ?? 0) + 1; // 1-based for user-facing comparison
       const visibleCharacters = generationMode === 'deep_analysis'
         ? allCharacters
         : allCharacters.filter((c: any) => {
@@ -256,7 +256,7 @@ export default function Write() {
             if (bookIntro > currentBook) return false;
             if (bookIntro < currentBook) return true;
             const chapterIntro = c.chapter_introduced;
-            if (chapterIntro != null && chapterIntro > currentChapter) return false;
+            if (chapterIntro != null && chapterIntro > currentChapterNum) return false;
             return true;
           });
 
@@ -310,7 +310,7 @@ export default function Write() {
         });
         if (technologies.length === 0) technologies = allTechs.slice(0, 3);
 
-        console.log(`[Story Forge] Visibility: ${visibleCharacters.length}/${allCharacters.length} chars visible (book ${currentBook}, ch ${currentChapter}). Relevance: ${characters.length} selected, ${places.length} places, ${things.length} things, ${technologies.length} tech`);
+        console.log(`[Story Forge] Visibility: ${visibleCharacters.length}/${allCharacters.length} chars visible (book ${currentBook}, ch ${currentChapterNum}). Relevance: ${characters.length} selected, ${places.length} places, ${things.length} things, ${technologies.length} tech`);
       }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
@@ -587,7 +587,7 @@ export default function Write() {
 
       // Character Visibility Gate
       const currentBook = 1;
-      const currentChapter = chapter.data?.order_index ?? 0;
+      const currentChapterNum = (chapter.data?.order_index ?? 0) + 1; // 1-based
       const visibleCharacters = generationMode === 'deep_analysis'
         ? allCharacters
         : allCharacters.filter((c: any) => {
@@ -595,7 +595,7 @@ export default function Write() {
             if (bookIntro > currentBook) return false;
             if (bookIntro < currentBook) return true;
             const chapterIntro = c.chapter_introduced;
-            if (chapterIntro != null && chapterIntro > currentChapter) return false;
+            if (chapterIntro != null && chapterIntro > currentChapterNum) return false;
             return true;
           });
 
@@ -797,6 +797,13 @@ export default function Write() {
           style_rules: (settings.style_rules as Record<string, boolean>) || undefined,
         },
       });
+
+      // Add visibility audit to report
+      const hiddenCharacters = allCharacters.filter((c: any) => !visibleCharacters.includes(c));
+      report.visibilityAudit = {
+        visible: visibleCharacters.map((c: any) => c.name),
+        hidden: hiddenCharacters.map((c: any) => c.name),
+      };
 
       setPromptReport(report);
     } catch (error) {
@@ -1160,6 +1167,7 @@ export default function Write() {
                       projectId={currentProjectId}
                       chapterTitle={chapters.find(c => c.id === selectedChapterId)?.title || ''}
                       chapterSummary={chapters.find(c => c.id === selectedChapterId)?.summary || ''}
+                      chapterOrderIndex={chapters.find(c => c.id === selectedChapterId)?.order_index ?? 0}
                     />
                     <EditingPassPanel
                       sceneId={selectedScene.id}

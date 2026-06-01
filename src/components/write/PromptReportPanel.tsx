@@ -110,6 +110,25 @@ export default function PromptReportPanel({ report, contextMode, worldRichness, 
             </div>
           )}
 
+          {/* Character Visibility Audit */}
+          {report.visibilityAudit && (report.visibilityAudit.visible.length > 0 || report.visibilityAudit.hidden.length > 0) && (
+            <div className="bg-slate-50 rounded-md p-2 border border-slate-200">
+              <div className="text-xs font-medium text-slate-700 mb-1.5">Character Visibility</div>
+              {report.visibilityAudit.visible.length > 0 && (
+                <div className="mb-1">
+                  <span className="text-xs text-teal-600 font-medium">Included: </span>
+                  <span className="text-xs text-slate-600">{report.visibilityAudit.visible.join(', ')}</span>
+                </div>
+              )}
+              {report.visibilityAudit.hidden.length > 0 && (
+                <div>
+                  <span className="text-xs text-red-500 font-medium">Hidden: </span>
+                  <span className="text-xs text-slate-400">{report.visibilityAudit.hidden.join(', ')}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Frame Breakdown - Hidden Context */}
           {report.frameBreakdown && (
             <div className="bg-amber-50/50 rounded-md p-2 border border-amber-200">

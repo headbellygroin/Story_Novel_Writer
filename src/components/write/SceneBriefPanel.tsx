@@ -8,6 +8,7 @@ interface SceneBriefPanelProps {
   projectId: string;
   chapterTitle: string;
   chapterSummary: string;
+  chapterOrderIndex: number;
 }
 
 interface SceneBrief {
@@ -38,7 +39,7 @@ const BRIEF_FIELDS = [
   { key: 'other_notes', label: 'Other Notes' },
 ] as const;
 
-export default function SceneBriefPanel({ chapterId, projectId, chapterTitle, chapterSummary }: SceneBriefPanelProps) {
+export default function SceneBriefPanel({ chapterId, projectId, chapterTitle, chapterSummary, chapterOrderIndex }: SceneBriefPanelProps) {
   const [brief, setBrief] = useState<SceneBrief | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -74,7 +75,7 @@ export default function SceneBriefPanel({ chapterId, projectId, chapterTitle, ch
       const [settingsRes, outlineRes, charsRes, placesRes, thingsRes, techsRes, projectRes] = await Promise.all([
         supabase.from('generation_settings').select('*').eq('project_id', projectId).maybeSingle(),
         supabase.from('outlines').select('synopsis').eq('project_id', projectId).limit(1),
-        supabase.from('characters').select('name, role, personality, background, description, dialogue_style, personality_sliders, dossier').eq('project_id', projectId),
+        supabase.from('characters').select('name, role, personality, background, description, dialogue_style, personality_sliders, dossier, book_introduced, chapter_introduced').eq('project_id', projectId),
         supabase.from('places').select('name, type, description').eq('project_id', projectId),
         supabase.from('things').select('name, type, description').eq('project_id', projectId),
         supabase.from('technologies').select('name, type, description').eq('project_id', projectId),
@@ -86,7 +87,16 @@ export default function SceneBriefPanel({ chapterId, projectId, chapterTitle, ch
         return;
       }
 
-      const characters = (charsRes.data || [])
+      const currentChapterNum = chapterOrderIndex + 1; // 1-based
+      const visibleChars = (charsRes.data || []).filter((c: any) => {
+        const bookIntro = c.book_introduced ?? 1;
+        if (bookIntro > 1) return false;
+        const chapterIntro = c.chapter_introduced;
+        if (chapterIntro != null && chapterIntro > currentChapterNum) return false;
+        return true;
+      });
+
+      const characters = visibleChars
         .map((c: Record<string, string>) => `- ${c.name} (${c.role}): ${c.personality}\n  Background: ${c.background}${c.dialogue_style ? `\n  Dialogue: ${c.dialogue_style}` : ''}`)
         .join('\n');
 
