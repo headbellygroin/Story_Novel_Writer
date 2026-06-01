@@ -159,11 +159,14 @@ export default function SeriesWizard() {
     const genreText = genre || 'epic genre fiction';
     const endText = endGoal || 'the protagonist achieves their ultimate goal';
 
+    const canonRule = world.trim()
+      ? `\n\n=== STRICT CANON RULE ===\nYou MUST use ONLY the characters, places, things, and technologies listed above. Do NOT invent new characters, locations, or world elements. Do NOT hallucinate motivations, backstories, or relationships that are not established in the world data. If the world data is sparse, keep your output proportionally focused on what IS established. Expand only where the existing data logically implies structure.\n`
+      : '';
+
     try {
       // Step 1: Series Map
       setQuickStep(1);
-      const seriesPrompt = `${world}
-
+      const seriesPrompt = `${world}${canonRule}
 === TASK: SERIES MAP ===
 Create a ${bookCount}-book series roadmap.
 Genre/Tone: ${genreText}
@@ -195,8 +198,7 @@ Focus only on the overall series structure.`;
 
       // Step 2: Book 1 Major Events
       setQuickStep(2);
-      const eventsPrompt = `${world}
-
+      const eventsPrompt = `${world}${canonRule}
 === SERIES MAP (APPROVED) ===
 ${seriesMap}
 
@@ -230,8 +232,7 @@ Do not generate chapters.`;
 
       // Step 3: Book 1 Outline
       setQuickStep(3);
-      const outlinePrompt = `${world}
-
+      const outlinePrompt = `${world}${canonRule}
 === SERIES MAP ===
 ${seriesMap}
 
@@ -266,8 +267,7 @@ Do not generate chapter lists yet.`;
 
       // Step 4: Chapter List
       setQuickStep(4);
-      const chapterPrompt = `${world}
-
+      const chapterPrompt = `${world}${canonRule}
 === BOOK 1 OUTLINE ===
 ${bookOutline}
 
@@ -302,8 +302,7 @@ One paragraph per chapter. No scene breakdowns.`;
 
       // Step 5: Chapter Briefs (first 5 chapters)
       setQuickStep(5);
-      const briefsPrompt = `${world}
-
+      const briefsPrompt = `${world}${canonRule}
 === CHAPTER LIST ===
 ${chapterList}
 
@@ -335,8 +334,7 @@ These briefs should be detailed enough that a writer could produce the chapter f
 
       // Step 6: Scene Breakdown (Chapter 1)
       setQuickStep(6);
-      const scenesPrompt = `${world}
-
+      const scenesPrompt = `${world}${canonRule}
 === CHAPTER BRIEF (CHAPTER 1) ===
 ${chapterBriefs}
 
@@ -870,19 +868,20 @@ function QuickStartPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-800 mb-1.5">What kind of story is this?</label>
-          <input
-            type="text"
+          <label className="block text-sm font-medium text-slate-800 mb-1.5">Describe your story</label>
+          <p className="text-xs text-slate-500 mb-2">Genre, tone, characters, premise -- write naturally. One thought per line works well.</p>
+          <textarea
             value={genre}
             onChange={e => setGenre(e.target.value)}
-            placeholder="e.g. Blue-collar space opera, Found family adventure, Military fantasy..."
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+            placeholder={"Blue-collar space opera.\n\nFound family.\n\nIndependent cargo crew.\n\nThe crew travels the galaxy taking jobs while gradually uncovering forgotten history."}
+            rows={5}
+            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-slate-400"
           />
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {['Blue-collar space opera', 'Found family adventure', 'Military fantasy', 'Mystery thriller', 'Epic fantasy', 'Sci-fi noir'].map(preset => (
+            {['Blue-collar space opera', 'Found family', 'Military fantasy', 'Mystery thriller', 'Epic fantasy', 'Sci-fi noir', 'Slow-burn exploration'].map(preset => (
               <button
                 key={preset}
-                onClick={() => setGenre(preset)}
+                onClick={() => setGenre(genre ? `${genre}\n\n${preset}.` : `${preset}.`)}
                 className="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
               >
                 {preset}
@@ -891,13 +890,14 @@ function QuickStartPanel({
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-800 mb-1.5">What must happen by the end of the series?</label>
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
+          <label className="block text-sm font-semibold text-slate-900 mb-1">Series End State</label>
+          <p className="text-xs text-slate-500 mb-3">What must be true by the final chapter? This is the most important input -- it gives the AI a destination to build toward.</p>
           <textarea
             value={endGoal}
             onChange={e => setEndGoal(e.target.value)}
-            placeholder="e.g. Benjamin discovers the truth about the Naughts and must choose between duty and family."
-            rows={3}
+            placeholder={"Benjamin and the crew discover the truth behind the Naughts, the forgotten technology, and their place in galactic history. The crew must ultimately decide what to do with knowledge that could reshape civilization."}
+            rows={5}
             className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -1436,3 +1436,5 @@ function AdvancedPanel({
     </div>
   );
 }
+
+export default SeriesWizard
