@@ -61,11 +61,18 @@ export default function Write() {
       .eq('project_id', currentProjectId)
       .eq('task_mode', generationMode)
       .eq('is_active', true)
+      .limit(1)
       .maybeSingle()
       .then(({ data }) => {
         setActivePresetLabel(data ? `${data.label} (${data.model_name})` : null);
       });
   }, [currentProjectId, generationMode]);
+
+  useEffect(() => {
+    if (selectedSceneId && settings && currentProjectId) {
+      refreshPromptReport();
+    }
+  }, [selectedSceneId, contextMode, generationMode]);
 
   async function loadData() {
     if (!currentProjectId || !currentOutlineId) return;
