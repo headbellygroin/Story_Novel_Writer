@@ -4,6 +4,37 @@ Story Forge is an AI-powered novel writing and production studio. Writers create
 
 ---
 
+## Prerequisites
+
+Story Forge assumes two services are already running on your AI machine:
+
+1. **LM Studio** -- must be running with your writing model loaded (and optionally the vision model). Without LM Studio, no text generation works: no writing, no planning, no analysis, no voice chat.
+2. **ComfyUI** -- must be running for any media generation: scene images, animation, TTS audio, lip-sync video. If you only need text features (writing, planning, consistency checks), ComfyUI is not required.
+
+Both services must be reachable at the endpoints configured on the Settings page. If either is unreachable, features that depend on it will fail with a connection error.
+
+---
+
+## The Expected Workflow: World-Building First
+
+Story Forge produces its best results when the author has done upfront world-building. The AI writing tools are context-driven -- the more world data you feed them, the richer and more consistent the output becomes.
+
+**Before you start writing scenes, build your world:**
+
+1. **Create a Project** -- give it a name, genre, and description.
+2. **Write your Franchise Manifesto** -- the non-negotiable truths of your series (themes, tone rules, character philosophy).
+3. **Populate the World Library** -- add characters with personalities, backgrounds, and relationships. Add places, things, and technologies with descriptions. Generate reference images for key entities using ComfyUI.
+4. **Talk to the AI** -- use Voice Chat or the Dossier to brainstorm with the AI. Bounce ideas, test directions, get feedback on story structure.
+5. **Fill the Story Bible** -- capture critical facts, rules, and lore that the AI must respect during generation.
+6. **Run the Series Wizard** -- once you have characters, places, and a general direction, use Quick Start to generate your series backbone in one run.
+
+**Why this order matters:**
+Every generation request in Story Forge pulls context from your world data. Characters, places, story bible facts, the manifesto -- all of this gets injected into the AI prompt. If those are empty, the AI has nothing to work with and produces generic output. The more complete your world, the more specific, consistent, and on-brand the AI's writing becomes.
+
+The tools are designed for this flow: world-build first (write entries, generate images, chat with the AI for ideas), then plan (Series Wizard, Outline), then write (scene-by-scene with full context injection).
+
+---
+
 ## Core Architecture
 
 - **Frontend:** React + TypeScript + Tailwind CSS (Vite)
@@ -91,6 +122,36 @@ Core Role, Function/Occupation, Public Appearance, Internal Appearance, Protagon
 ---
 
 ## Outline & Structure
+
+### Series Planning Wizard
+
+The Series Wizard generates your complete story backbone so you can start with structure rather than staring at a blank page.
+
+**Quick Start Mode (recommended for new projects):**
+Answer 3 questions, press one button, and the AI generates your full series structure in a single automated run:
+
+1. How many books? (default: 7)
+2. What kind of story? (genre/tone)
+3. What must happen by the end? (series endpoint)
+
+Pressing "Build My Series" chains 6 generation steps automatically:
+- Step 1: Series Map -- high-level arc for all books
+- Step 2: Book 1 Major Events -- turning points (inciting incident, midpoint, climax, etc.)
+- Step 3: Book 1 Outline -- detailed structural outline with act breaks
+- Step 4: Book 1 Chapter List -- 20-30 chapters with POV, location, events, tone
+- Step 5: Book 1 Chapter Briefs -- detailed planning for first 5 chapters (scene-by-scene breakdown)
+- Step 6: Book 1 Scene Breakdown -- individual scene cards for Chapter 1
+
+Each section appears progressively as it generates. Each has a Regenerate button. When all 6 complete:
+- "Save All to Project" stores everything to the database
+- "Edit in Step-by-Step Mode" transfers all output into the Advanced panel for fine-tuning
+
+**Step-by-Step Mode (advanced / mid-revision):**
+Full manual control over each of the 6 steps. Add custom author notes per step, select which book/chapter to generate for, review and save individually. Use this to plan Books 2-7 after Quick Start builds Book 1, or to regenerate individual steps with specific guidance.
+
+The Quick Start results feed directly into Step-by-Step mode -- the power user gets full control without losing the initial generation.
+
+### Outlines
 
 - Multiple outlines per project
 - Outline fields: Title, Synopsis, Act Structure, Themes, Notes
@@ -192,6 +253,25 @@ Core Role, Function/Occupation, Public Appearance, Internal Appearance, Protagon
 - Filter by book/act
 - Color-coded by reveal method
 - Strategic pacing tool for plot disclosure
+
+---
+
+## Franchise Manifesto
+
+- Single highest-authority guidance document per project
+- Stores immutable truths about your series that must never drift or contradict
+- Written as plain text: rules, truths, philosophical anchors, tone guidelines
+- Injected at Priority 13 (highest priority in the context assembly system)
+- Appears in AI prompts under "ABSOLUTE RULES - OVERRIDE ALL OTHER GUIDANCE"
+- Always included in full before any other context section
+- Guidance hierarchy: Manifesto > System Prompt > Style Guide > Story Bible > Characters > Outline > Scene
+
+**What to put here:**
+- Core themes that define the series
+- Tone rules that must never change
+- Character treatment rules
+- Reader experience goals
+- Any truth that, if contradicted, would break the story
 
 ---
 
@@ -353,7 +433,9 @@ A 10-stage automated production pipeline with review gates at each step:
 
 ## Key Design Principles
 
+- **World-building first:** The app is designed around the assumption that authors build their world (characters, places, manifesto, story bible) before using the writing tools. Rich world data produces rich AI output; empty world data produces generic output.
 - **Context-first generation:** AI always sees the full relevant project state
+- **Quick Start to Power User:** The Quick Start wizard removes writer's block by generating a full backbone from 3 inputs. The results feed into the advanced editor for fine-tuning, so casual users get momentum and power users get control.
 - **Review gates:** Human approval required at every production stage
 - **Non-destructive:** Backups, canon statuses, and version tracking prevent data loss
 - **Local-first:** Runs against local models for privacy and uncensored output
