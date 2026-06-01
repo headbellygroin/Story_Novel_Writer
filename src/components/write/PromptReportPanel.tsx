@@ -111,9 +111,14 @@ export default function PromptReportPanel({ report, contextMode, worldRichness, 
           )}
 
           {/* Character Visibility Audit */}
-          {report.visibilityAudit && (report.visibilityAudit.visible.length > 0 || report.visibilityAudit.hidden.length > 0) && (
+          {report.visibilityAudit && (
             <div className="bg-slate-50 rounded-md p-2 border border-slate-200">
-              <div className="text-xs font-medium text-slate-700 mb-1.5">Character Visibility</div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-slate-700">Character Visibility</span>
+                <span className="text-xs font-mono text-slate-500">
+                  Book {report.visibilityAudit.currentBook} / Ch {report.visibilityAudit.currentChapter}
+                </span>
+              </div>
               {report.visibilityAudit.visible.length > 0 && (
                 <div className="mb-1">
                   <span className="text-xs text-teal-600 font-medium">Included: </span>
@@ -121,10 +126,29 @@ export default function PromptReportPanel({ report, contextMode, worldRichness, 
                 </div>
               )}
               {report.visibilityAudit.hidden.length > 0 && (
-                <div>
-                  <span className="text-xs text-red-500 font-medium">Hidden: </span>
+                <div className="mb-2">
+                  <span className="text-xs text-red-500 font-medium">Excluded: </span>
                   <span className="text-xs text-slate-400">{report.visibilityAudit.hidden.join(', ')}</span>
                 </div>
+              )}
+              {report.visibilityAudit.decisions && report.visibilityAudit.decisions.length > 0 && (
+                <details className="mt-1">
+                  <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700">Visibility Decisions</summary>
+                  <div className="mt-1.5 space-y-0.5 max-h-40 overflow-y-auto">
+                    {report.visibilityAudit.decisions.map(d => (
+                      <div key={d.name} className={`flex items-center justify-between text-xs px-1.5 py-0.5 rounded ${
+                        d.decision === 'included' ? 'bg-teal-50' : 'bg-red-50'
+                      }`}>
+                        <span className={d.decision === 'included' ? 'text-teal-700' : 'text-red-600'}>
+                          {d.name}
+                        </span>
+                        <span className="font-mono text-slate-400 text-[10px]">
+                          B{d.bookIntroduced}{d.chapterIntroduced != null ? `/C${d.chapterIntroduced}` : ''} — {d.reason}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
             </div>
           )}

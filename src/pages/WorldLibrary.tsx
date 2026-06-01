@@ -335,6 +335,16 @@ export default function WorldLibrary() {
     try {
       const payload = { ...formData, project_id: currentProjectId, updated_at: new Date().toISOString() };
 
+      // Coerce integer fields for character visibility
+      if (activeTab === 'characters') {
+        const bookVal = payload.book_introduced;
+        payload.book_introduced = (bookVal && bookVal !== '') ? parseInt(String(bookVal), 10) || 1 : 1;
+        const chapVal = payload.chapter_introduced;
+        payload.chapter_introduced = (chapVal && chapVal !== '') ? parseInt(String(chapVal), 10) || null : null;
+        const sceneVal = payload.scene_introduced;
+        payload.scene_introduced = (sceneVal && sceneVal !== '') ? parseInt(String(sceneVal), 10) || null : null;
+      }
+
       if (editingId) {
         const { error } = await supabase
           .from(activeTab)

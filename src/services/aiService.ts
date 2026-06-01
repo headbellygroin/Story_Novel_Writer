@@ -78,6 +78,15 @@ export interface PromptAssemblyReport {
   visibilityAudit?: {
     visible: string[];
     hidden: string[];
+    currentBook: number;
+    currentChapter: number;
+    decisions: Array<{
+      name: string;
+      bookIntroduced: number;
+      chapterIntroduced: number | null;
+      decision: 'included' | 'excluded';
+      reason: string;
+    }>;
   };
   frameTokens: number;
   totalPromptTokens: number;

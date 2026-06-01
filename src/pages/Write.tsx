@@ -252,11 +252,11 @@ export default function Write() {
       const visibleCharacters = generationMode === 'deep_analysis'
         ? allCharacters
         : allCharacters.filter((c: any) => {
-            const bookIntro = c.book_introduced ?? 1;
+            const bookIntro = Number(c.book_introduced) || 1;
             if (bookIntro > currentBook) return false;
             if (bookIntro < currentBook) return true;
-            const chapterIntro = c.chapter_introduced;
-            if (chapterIntro != null && chapterIntro > currentChapterNum) return false;
+            const chapterIntro = c.chapter_introduced != null ? Number(c.chapter_introduced) : null;
+            if (chapterIntro != null && !isNaN(chapterIntro) && chapterIntro > currentChapterNum) return false;
             return true;
           });
 
@@ -591,11 +591,11 @@ export default function Write() {
       const visibleCharacters = generationMode === 'deep_analysis'
         ? allCharacters
         : allCharacters.filter((c: any) => {
-            const bookIntro = c.book_introduced ?? 1;
+            const bookIntro = Number(c.book_introduced) || 1;
             if (bookIntro > currentBook) return false;
             if (bookIntro < currentBook) return true;
-            const chapterIntro = c.chapter_introduced;
-            if (chapterIntro != null && chapterIntro > currentChapterNum) return false;
+            const chapterIntro = c.chapter_introduced != null ? Number(c.chapter_introduced) : null;
+            if (chapterIntro != null && !isNaN(chapterIntro) && chapterIntro > currentChapterNum) return false;
             return true;
           });
 
@@ -800,9 +800,31 @@ export default function Write() {
 
       // Add visibility audit to report
       const hiddenCharacters = allCharacters.filter((c: any) => !visibleCharacters.includes(c));
+      const decisions = allCharacters.map((c: any) => {
+        const bookIntro = Number(c.book_introduced) || 1;
+        const chapterIntro = c.chapter_introduced != null ? Number(c.chapter_introduced) : null;
+        const isVisible = visibleCharacters.includes(c);
+        let reason = 'Available';
+        if (!isVisible) {
+          if (bookIntro > currentBook) reason = `Book ${bookIntro} > current book ${currentBook}`;
+          else if (chapterIntro != null && chapterIntro > currentChapterNum) reason = `Chapter ${chapterIntro} > current chapter ${currentChapterNum}`;
+          else reason = 'Filtered by mode/tags';
+        }
+        return {
+          name: c.name,
+          bookIntroduced: bookIntro,
+          chapterIntroduced: chapterIntro,
+          decision: isVisible ? 'included' as const : 'excluded' as const,
+          reason,
+        };
+      });
+
       report.visibilityAudit = {
         visible: visibleCharacters.map((c: any) => c.name),
         hidden: hiddenCharacters.map((c: any) => c.name),
+        currentBook,
+        currentChapter: currentChapterNum,
+        decisions,
       };
 
       setPromptReport(report);

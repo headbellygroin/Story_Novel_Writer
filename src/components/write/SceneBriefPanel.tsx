@@ -89,10 +89,10 @@ export default function SceneBriefPanel({ chapterId, projectId, chapterTitle, ch
 
       const currentChapterNum = chapterOrderIndex + 1; // 1-based
       const visibleChars = (charsRes.data || []).filter((c: any) => {
-        const bookIntro = c.book_introduced ?? 1;
+        const bookIntro = Number(c.book_introduced) || 1;
         if (bookIntro > 1) return false;
-        const chapterIntro = c.chapter_introduced;
-        if (chapterIntro != null && chapterIntro > currentChapterNum) return false;
+        const chapterIntro = c.chapter_introduced != null ? Number(c.chapter_introduced) : null;
+        if (chapterIntro != null && !isNaN(chapterIntro) && chapterIntro > currentChapterNum) return false;
         return true;
       });
 
