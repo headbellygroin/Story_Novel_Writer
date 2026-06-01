@@ -48,7 +48,7 @@ export interface SceneSummaryData {
   key_facts: string[];
 }
 
-export type GenerationMode = 'scene' | 'design_brief' | 'outline';
+export type GenerationMode = 'scene' | 'design_brief' | 'outline' | 'deep_analysis';
 export type ContextMode = 'minimal' | 'relevant' | 'full';
 
 export interface PromptAssemblyReport {
@@ -69,6 +69,7 @@ const GENERATION_MODE_INSTRUCTIONS: Record<GenerationMode, string> = {
   scene: `Write this scene with vivid detail, engaging dialogue, and strong character voice. Focus on showing rather than telling.`,
   design_brief: `Generate a structured Design Brief document based on the above context and instructions. Do NOT write prose, dialogue, or scenes. Output ONLY the structured planning document with clear section headings. Focus on emotional purpose, character goals, theme goals, worldbuilding goals, reveal restrictions, and ending beats. The brief should be detailed enough that multiple writers could independently produce a recognizable chapter from it.`,
   outline: `Generate a structured chapter-by-chapter outline based on the above context and instructions. Do NOT write prose, dialogue, or scenes. For each chapter provide: title, POV character, location, emotional arc, plot beats, theme advancement, and key relationship moments. Focus on how each chapter serves the book's core question and advances character relationships.`,
+  deep_analysis: `Perform a thorough analytical review of the provided material. Identify inconsistencies, continuity errors, unresolved plot threads, character behavior contradictions, timeline issues, and lore conflicts. Provide a structured report with specific citations and severity ratings. Focus on factual accuracy within the story world, not stylistic preferences.`,
 };
 
 export interface GenerateSceneRequest {

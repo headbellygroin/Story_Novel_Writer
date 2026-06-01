@@ -69,6 +69,16 @@ export default function Write() {
   }, [currentProjectId, generationMode]);
 
   useEffect(() => {
+    const smartDefaults: Record<GenerationMode, ContextMode> = {
+      scene: 'relevant',
+      design_brief: 'relevant',
+      outline: 'relevant',
+      deep_analysis: 'full',
+    };
+    setContextMode(smartDefaults[generationMode]);
+  }, [generationMode]);
+
+  useEffect(() => {
     if (selectedSceneId && settings && currentProjectId) {
       refreshPromptReport();
     }
@@ -1080,7 +1090,7 @@ export default function Write() {
                           : 'text-slate-500 hover:text-slate-700'
                       }`}
                     >
-                      Design Brief
+                      Brief
                     </button>
                     <button
                       onClick={() => setGenerationMode('outline')}
@@ -1092,13 +1102,24 @@ export default function Write() {
                     >
                       Outline
                     </button>
+                    <button
+                      onClick={() => setGenerationMode('deep_analysis')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        generationMode === 'deep_analysis'
+                          ? 'bg-amber-100 text-amber-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      title="Deep Analysis (Meta Llama 128K) - slow but thorough"
+                    >
+                      Analysis
+                    </button>
                   </div>
                   <button
                     onClick={() => generateSceneContent(selectedScene.id)}
                     disabled={generating || !settings}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                   >
-                    {generating ? 'Generating...' : generationMode === 'scene' ? 'Generate Scene' : generationMode === 'design_brief' ? 'Generate Brief' : 'Generate Outline'}
+                    {generating ? 'Generating...' : generationMode === 'scene' ? 'Generate Scene' : generationMode === 'design_brief' ? 'Generate Brief' : generationMode === 'deep_analysis' ? 'Run Analysis' : 'Generate Outline'}
                   </button>
                   <button
                     onClick={() => deleteScene(selectedScene.id)}
