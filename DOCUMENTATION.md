@@ -242,8 +242,17 @@ Pressing "Build My Series" chains 6 generation steps automatically:
 - Book 1 Scene Breakdown -- individual scene cards for Chapter 1 (POV, location, conflict, transitions)
 
 Each section appears progressively as it generates. A progress bar shows which step is running (1 of 6). When all 6 complete, you have two options:
-- **Save All to Project** -- stores everything to the database (series map and events to Story Bible, outline to Outlines, briefs and scenes to Story Bible)
+- **Save All to Project** -- stores everything to the database (series map and events to Story Bible, outline to Outlines, briefs and scenes to Story Bible). Additionally auto-creates Book 1 > Chapter 1 > Scene 1 with starter prose so you can immediately navigate to the Write page and test TTS, image generation, or the full production pipeline without writing anything first.
 - **Edit in Step-by-Step Mode** -- transfers all Quick Start output into the Advanced panel so you can regenerate individual steps, add author notes, and fine-tune specific chapters without starting from scratch
+
+**Series At A Glance:**
+When all 6 steps complete, a dark-themed summary dashboard appears above the save buttons showing:
+- Series structure grid (all books with parsed themes from generated output)
+- Statistics (books planned, Book 1 chapter count, estimated total chapters, estimated word count)
+- Characters mentioned (names parsed from generated series map and chapter list)
+- Primary themes (extracted from series map and outline)
+
+This gives the author a bird's-eye view of what was generated before committing to saving.
 
 Each section also has a "Regenerate" button to redo just that section without losing the others.
 
@@ -262,6 +271,7 @@ Each step feeds the output from all previous steps as context for the next. You 
 **Where results are stored:**
 - Series Map, Major Events, Chapter Lists, Briefs, Scene Breakdowns: Story Bible entries with category `series_planning`
 - Book Outlines: Outline records (same as manually-created outlines on the Outline page)
+- Book 1 Chapter 1 Scene 1: Auto-created scene with starter prose (enables immediate testing of Write, TTS, and Pipeline without manual scene creation)
 
 **Workflow recommendation:**
 1. Build your world first (characters, places, manifesto, story bible)

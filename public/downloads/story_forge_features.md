@@ -143,7 +143,12 @@ Pressing "Build My Series" chains 6 generation steps automatically:
 - Step 6: Book 1 Scene Breakdown -- individual scene cards for Chapter 1
 
 Each section appears progressively as it generates. Each has a Regenerate button. When all 6 complete:
-- "Save All to Project" stores everything to the database
+- **Series At A Glance** summary dashboard appears (dark themed):
+  - Series structure grid showing all books with parsed themes
+  - Statistics: books planned, Book 1 chapter count, estimated total chapters, estimated word count
+  - Characters mentioned (extracted from generated output)
+  - Primary themes (parsed from series map and outline)
+- "Save All to Project" stores everything to the database AND creates Book 1 > Chapter 1 > Scene 1 with starter prose so you can immediately test Write, TTS, and Pipeline features
 - "Edit in Step-by-Step Mode" transfers all output into the Advanced panel for fine-tuning
 
 **Step-by-Step Mode (advanced / mid-revision):**
@@ -436,6 +441,8 @@ A 10-stage automated production pipeline with review gates at each step:
 - **World-building first:** The app is designed around the assumption that authors build their world (characters, places, manifesto, story bible) before using the writing tools. Rich world data produces rich AI output; empty world data produces generic output.
 - **Context-first generation:** AI always sees the full relevant project state
 - **Quick Start to Power User:** The Quick Start wizard removes writer's block by generating a full backbone from 3 inputs. The results feed into the advanced editor for fine-tuning, so casual users get momentum and power users get control.
+- **Series At A Glance:** After Quick Start completes, a bird's-eye summary shows the full scope of the generated series (book list, chapter count, word estimate, characters, themes) before the author commits.
+- **Immediate testability:** Saving Quick Start output auto-creates a Chapter 1 Scene 1 with starter prose, so the user can test TTS, Pipeline, and Write features without any additional setup.
 - **Review gates:** Human approval required at every production stage
 - **Non-destructive:** Backups, canon statuses, and version tracking prevent data loss
 - **Local-first:** Runs against local models for privacy and uncensored output
