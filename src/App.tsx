@@ -20,6 +20,7 @@ import Audiobook from './pages/Audiobook';
 import Pipeline from './pages/Pipeline';
 import SetupGuide from './pages/SetupGuide';
 import RevealTimeline from './pages/RevealTimeline';
+import SeriesWizard from './pages/SeriesWizard';
 
 export default function App() {
   return (
@@ -175,6 +176,14 @@ export default function App() {
           element={
             <Layout>
               <SetupGuide />
+            </Layout>
+          }
+        />
+        <Route
+          path="/series-wizard"
+          element={
+            <Layout>
+              <SeriesWizard />
             </Layout>
           }
         />

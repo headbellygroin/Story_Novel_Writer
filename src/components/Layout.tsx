@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { path: '/manifesto', label: 'Manifesto' },
   { path: '/dossier', label: 'Dossier' },
   { path: '/world', label: 'World' },
+  { path: '/series-wizard', label: 'Wizard' },
   { path: '/outline', label: 'Outline' },
   { path: '/write', label: 'Write' },
   { path: '/story-bible', label: 'Story Bible' },
