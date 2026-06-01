@@ -626,13 +626,15 @@ export default function Settings() {
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
 
         {/* ------------------------------------------------------------------ */}
-        {/* LM Studio / Writing AI                                              */}
+        {/* Fallback AI Configuration                                           */}
         {/* ------------------------------------------------------------------ */}
         <div className="mb-2">
-          <h2 className="text-lg font-semibold text-slate-900 mb-1">Writing AI (LM Studio)</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-1">Fallback AI Configuration</h2>
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+            Used only when a task does not have an Auto-Routing preset configured. The active workflow should use Model Presets exclusively.
+          </p>
           <p className="text-sm text-slate-500 mb-4">
-            LM Studio is assumed to be running on your AI machine with a model loaded and the local server enabled on port 1234.
-            Enter the full endpoint URL below. Both <code className="bg-slate-100 px-1 rounded">/v1/chat/completions</code> (recommended) and <code className="bg-slate-100 px-1 rounded">/v1/completions</code> (legacy) are supported — format is detected automatically.
+            LM Studio endpoint and model settings. Both <code className="bg-slate-100 px-1 rounded">/v1/chat/completions</code> (recommended) and <code className="bg-slate-100 px-1 rounded">/v1/completions</code> (legacy) are supported.
           </p>
 
           <div className="space-y-4">
@@ -1605,7 +1607,7 @@ export default function Settings() {
         <h2 className="text-sm font-semibold text-slate-700 mb-3">Quick Reference — What Goes Where</h2>
         <div className="space-y-3 text-xs text-slate-600">
           <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-1.5">
-            <span className="font-semibold text-slate-800 col-span-2 border-b border-slate-200 pb-1 mb-1">Writing AI (LM Studio)</span>
+            <span className="font-semibold text-slate-800 col-span-2 border-b border-slate-200 pb-1 mb-1">Fallback AI Configuration</span>
             <span className="font-medium text-slate-700">API Endpoint (Local):</span>
             <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">http://localhost:1234/v1/chat/completions</code>
             <span className="font-medium text-slate-700">Remote / Tailscale:</span>

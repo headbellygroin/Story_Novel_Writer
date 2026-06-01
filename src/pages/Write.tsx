@@ -170,11 +170,12 @@ export default function Write() {
       if (activePreset) {
         console.log(`[Story Forge] Auto-routing: ${generationMode} -> ${activePreset.model_name} (ctx: ${activePreset.context_length}, max: ${activePreset.max_tokens}, temp: ${activePreset.temperature})`);
       } else {
-        alert(`No model preset found for "${generationMode}". Go to Settings → Model Presets and click "Load Default Presets" to configure auto-routing.`);
-        setGenerating(false);
-        return;
+        const proceed = confirm(`WARNING: No Auto-Routing preset found for "${generationMode}". Falling back to global settings (${settings.model_name}, ctx: ${settings.context_length || 4096}). This may produce suboptimal results.\n\nGo to Settings → Model Presets → "Load Default Presets" to fix this.\n\nContinue with fallback settings?`);
+        if (!proceed) {
+          setGenerating(false);
+          return;
+        }
       }
-
 
       const [
         outline,
@@ -645,9 +646,11 @@ export default function Write() {
       if (tagPreset) {
         console.log(`[Story Forge] Auto-routing: tag_recommendation -> ${tagPreset.model_name} (ctx: ${tagPreset.context_length})`);
       } else {
-        alert(`No model preset found for "tag_recommendation". Go to Settings → Model Presets and click "Load Default Presets".`);
-        setRecommendingTags(false);
-        return;
+        const proceed = confirm(`WARNING: No Auto-Routing preset found for "tag_recommendation". Falling back to global settings.\n\nGo to Settings → Model Presets → "Load Default Presets" to fix this.\n\nContinue with fallback settings?`);
+        if (!proceed) {
+          setRecommendingTags(false);
+          return;
+        }
       }
 
       const [chars, places, things, techs, bible] = await Promise.all([
