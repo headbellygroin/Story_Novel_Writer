@@ -1213,6 +1213,8 @@ function getFieldsForType(type: EntityType) {
         { key: 'background', label: 'Background', type: 'textarea', placeholder: 'Their backstory...', rows: 4 },
         { key: 'goals', label: 'Goals', type: 'textarea', placeholder: 'What they want...', rows: 2 },
         { key: 'dialogue_style', label: 'Dialogue Style', type: 'textarea', placeholder: 'How they speak -- vocabulary, cadence, tics, accent, favorite phrases...', rows: 3 },
+        { key: 'book_introduced', label: 'Book Introduced', type: 'text', placeholder: '1 (default — available immediately)' },
+        { key: 'chapter_introduced', label: 'Chapter Introduced', type: 'text', placeholder: 'Chapter number (leave blank = available from book start)' },
         { key: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Additional notes...', rows: 2 },
       ];
     case 'places':

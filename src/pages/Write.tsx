@@ -245,13 +245,27 @@ export default function Write() {
       const hasContextTags = contextTags.length > 0;
       const taggedIds = new Set(contextTags.map(t => t.entity_id));
 
+      // Character Visibility Gate: filter out characters not yet introduced
+      const currentBook = 1; // Default book number (outline = book)
+      const currentChapter = chapter.data?.order_index ?? 0;
+      const visibleCharacters = generationMode === 'deep_analysis'
+        ? allCharacters
+        : allCharacters.filter((c: any) => {
+            const bookIntro = c.book_introduced ?? 1;
+            if (bookIntro > currentBook) return false;
+            if (bookIntro < currentBook) return true;
+            const chapterIntro = c.chapter_introduced;
+            if (chapterIntro != null && chapterIntro > currentChapter) return false;
+            return true;
+          });
+
       let characters: any[];
       let places: any[];
       let things: any[];
       let technologies: any[];
 
       if (hasContextTags) {
-        characters = allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
+        characters = visibleCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
         places = allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id));
         things = allThings.filter((t: Record<string, string>) => taggedIds.has(t.id));
         technologies = allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id));
@@ -268,9 +282,9 @@ export default function Write() {
           scene.content || '',
         ].join(' ').toLowerCase();
 
-        // Characters: POV + named in brief/chapter + main roles
+        // Characters: POV + named in brief/chapter + main roles (from visible pool only)
         const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        const relevantChars = allCharacters.filter((c: any) => {
+        const relevantChars = visibleCharacters.filter((c: any) => {
           const role = (c.role || '').toLowerCase();
           if (mainRoles.some(r => role.includes(r))) return true;
           const name = (c.name || '').toLowerCase();
@@ -295,7 +309,7 @@ export default function Write() {
         });
         if (technologies.length === 0) technologies = allTechs.slice(0, 3);
 
-        console.log(`[Story Forge] Relevance filter: ${characters.length}/${allCharacters.length} chars, ${places.length} places (all preserved), ${things.length}/${allThings.length} things, ${technologies.length}/${allTechs.length} tech`);
+        console.log(`[Story Forge] Visibility: ${visibleCharacters.length}/${allCharacters.length} chars visible (book ${currentBook}, ch ${currentChapter}). Relevance: ${characters.length} selected, ${places.length} places, ${things.length} things, ${technologies.length} tech`);
       }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
@@ -569,13 +583,27 @@ export default function Write() {
       const hasContextTags = contextTags.length > 0;
       const taggedIds = new Set(contextTags.map(t => t.entity_id));
 
+      // Character Visibility Gate
+      const currentBook = 1;
+      const currentChapter = chapter.data?.order_index ?? 0;
+      const visibleCharacters = generationMode === 'deep_analysis'
+        ? allCharacters
+        : allCharacters.filter((c: any) => {
+            const bookIntro = c.book_introduced ?? 1;
+            if (bookIntro > currentBook) return false;
+            if (bookIntro < currentBook) return true;
+            const chapterIntro = c.chapter_introduced;
+            if (chapterIntro != null && chapterIntro > currentChapter) return false;
+            return true;
+          });
+
       let characters: any[];
       let places: any[];
       let things: any[];
       let technologies: any[];
 
       if (hasContextTags) {
-        characters = allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
+        characters = visibleCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
         places = allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id));
         things = allThings.filter((t: Record<string, string>) => taggedIds.has(t.id));
         technologies = allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id));
@@ -590,7 +618,7 @@ export default function Write() {
           chapter.data?.summary || '',
         ].join(' ').toLowerCase();
         const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
-        characters = allCharacters.filter((c: any) => {
+        characters = visibleCharacters.filter((c: any) => {
           const role = (c.role || '').toLowerCase();
           if (mainRoles.some(r => role.includes(r))) return true;
           const name = (c.name || '').toLowerCase();
