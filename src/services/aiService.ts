@@ -112,7 +112,7 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
   const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full' } = request;
 
   const contextLength = settings.context_length || 4096;
-  const reservedForOutput = settings.max_tokens;
+  let reservedForOutput = settings.max_tokens;
   const reservedForPromptFrame = 300;
   const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
 
@@ -143,16 +143,21 @@ ${modeInstruction}`;
   const estimatedPromptTokens = Math.ceil(fullPrompt.length / 3.5);
   const totalEstimated = estimatedPromptTokens + reservedForOutput;
   if (totalEstimated > contextLength) {
-    throw new Error(
-      `Context window exceeded: prompt is ~${estimatedPromptTokens.toLocaleString()} tokens + ${reservedForOutput.toLocaleString()} max output = ~${totalEstimated.toLocaleString()} tokens, but model context is ${contextLength.toLocaleString()} tokens. Reduce context tags or use a larger-context preset for this task.`
-    );
+    const available = contextLength - estimatedPromptTokens - 100; // 100 token safety margin
+    if (available < 200) {
+      throw new Error(
+        `Context window exceeded: prompt is ~${estimatedPromptTokens.toLocaleString()} tokens but model context is only ${contextLength.toLocaleString()} tokens. Remove some context tags or use a larger-context preset.`
+      );
+    }
+    reservedForOutput = available;
+    console.warn(`[Story Forge] Auto-reduced max_tokens from ${settings.max_tokens} to ${reservedForOutput} to fit context window (${contextLength})`);
   }
 
   const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
 
   const baseBody: Record<string, unknown> = {
     temperature: settings.temperature,
-    max_tokens: settings.max_tokens,
+    max_tokens: reservedForOutput,
   };
 
   if (settings.model_name) baseBody.model = settings.model_name;

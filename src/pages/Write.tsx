@@ -164,6 +164,7 @@ export default function Write() {
         .eq('project_id', currentProjectId)
         .eq('task_mode', generationMode)
         .eq('is_active', true)
+        .limit(1)
         .maybeSingle();
 
       const activePreset = presetRes.data;
@@ -640,6 +641,7 @@ export default function Write() {
         .eq('project_id', currentProjectId)
         .eq('task_mode', 'tag_recommendation')
         .eq('is_active', true)
+        .limit(1)
         .maybeSingle();
 
       const tagPreset = presetRes.data;

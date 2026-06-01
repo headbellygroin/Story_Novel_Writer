@@ -460,7 +460,7 @@ export default function Settings() {
     }
   }
 
-  function initializeDefaultPresets() {
+  async function initializeDefaultPresets() {
     if (!currentProjectId) return;
     const endpoint = (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
     const defaults: ModelPreset[] = [
@@ -475,7 +475,10 @@ export default function Settings() {
       { task_mode: 'vision_quick', label: 'LLaVA 7B (Quick Caption)', model_name: 'llava-v1.6-mistral-7b', api_endpoint: endpoint, context_length: 4096, max_tokens: 800, temperature: 0.2, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast image captioning, alt text generation, image tagging, metadata extraction, quick visual checks. Use instead of LLaVA 34B when detailed analysis is not required.', is_active: true },
     ];
 
-    Promise.all(defaults.map(d => savePreset(d)));
+    // Clear existing presets for this project, then insert fresh
+    await supabase.from('model_presets').delete().eq('project_id', currentProjectId);
+    setPresets([]);
+    await Promise.all(defaults.map(d => savePreset(d)));
   }
 
   // ---------------------------------------------------------------------------
