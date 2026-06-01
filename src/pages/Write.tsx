@@ -238,23 +238,37 @@ export default function Write() {
       const sceneContextTags = contextTagsRes.data || [];
       const chapterContextTags = chapterTagsRes.data || [];
 
+      // Smart Context Assembly: scene tags > chapter tags > auto-limit
       const contextTags = sceneContextTags.length > 0 ? sceneContextTags : chapterContextTags;
       const hasContextTags = contextTags.length > 0;
-
       const taggedIds = new Set(contextTags.map(t => t.entity_id));
 
-      const characters = hasContextTags
-        ? allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id))
-        : allCharacters;
-      const places = hasContextTags
-        ? allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id))
-        : allPlaces;
-      const things = hasContextTags
-        ? allThings.filter((t: Record<string, string>) => taggedIds.has(t.id))
-        : allThings;
-      const technologies = hasContextTags
-        ? allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id))
-        : allTechs;
+      let characters: any[];
+      let places: any[];
+      let things: any[];
+      let technologies: any[];
+
+      if (hasContextTags) {
+        characters = allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
+        places = allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id));
+        things = allThings.filter((t: Record<string, string>) => taggedIds.has(t.id));
+        technologies = allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id));
+      } else if (generationMode === 'deep_analysis') {
+        characters = allCharacters;
+        places = allPlaces;
+        things = allThings;
+        technologies = allTechs;
+      } else {
+        // Smart fallback: limit untagged entities to reduce context pressure
+        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
+        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        characters = [...mainChars, ...otherChars.slice(0, 5)];
+        places = allPlaces.slice(0, 8);
+        things = allThings.slice(0, 5);
+        technologies = allTechs.slice(0, 5);
+        console.log(`[Story Forge] Smart context: no tags found, auto-limiting entities (${characters.length} chars, ${places.length} places, ${things.length} things, ${technologies.length} tech)`);
+      }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
         subject: b.subject,
@@ -267,12 +281,17 @@ export default function Write() {
       const taggedBibleIds = contextTags
         .filter(t => t.entity_type === 'story_bible_entries')
         .map(t => t.entity_id);
-      const filteredBibleFacts = hasContextTags && taggedBibleIds.length > 0
-        ? storyBibleFacts.filter((_: Record<string, string>, i: number) => {
-            const entry = (bibleRes.data || [])[i];
-            return taggedBibleIds.includes(entry.id);
-          })
-        : storyBibleFacts;
+      let filteredBibleFacts: typeof storyBibleFacts;
+      if (hasContextTags && taggedBibleIds.length > 0) {
+        filteredBibleFacts = storyBibleFacts.filter((_: Record<string, string>, i: number) => {
+          const entry = (bibleRes.data || [])[i];
+          return taggedBibleIds.includes(entry.id);
+        });
+      } else if (generationMode === 'deep_analysis') {
+        filteredBibleFacts = storyBibleFacts;
+      } else {
+        filteredBibleFacts = storyBibleFacts.filter((f: any) => f.importance === 'critical' || f.importance === 'high');
+      }
 
       const styleAnchors = (styleRes.data || []).map((a: Record<string, string>) => ({
         label: a.label,
@@ -492,23 +511,35 @@ export default function Write() {
       const sceneContextTags = contextTagsRes.data || [];
       const chapterContextTags = chapterTagsRes.data || [];
 
+      // Smart Context Assembly (mirrors generation logic)
       const contextTags = sceneContextTags.length > 0 ? sceneContextTags : chapterContextTags;
       const hasContextTags = contextTags.length > 0;
-
       const taggedIds = new Set(contextTags.map(t => t.entity_id));
 
-      const characters = hasContextTags
-        ? allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id))
-        : allCharacters;
-      const places = hasContextTags
-        ? allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id))
-        : allPlaces;
-      const things = hasContextTags
-        ? allThings.filter((t: Record<string, string>) => taggedIds.has(t.id))
-        : allThings;
-      const technologies = hasContextTags
-        ? allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id))
-        : allTechs;
+      let characters: any[];
+      let places: any[];
+      let things: any[];
+      let technologies: any[];
+
+      if (hasContextTags) {
+        characters = allCharacters.filter((c: Record<string, string>) => taggedIds.has(c.id));
+        places = allPlaces.filter((p: Record<string, string>) => taggedIds.has(p.id));
+        things = allThings.filter((t: Record<string, string>) => taggedIds.has(t.id));
+        technologies = allTechs.filter((t: Record<string, string>) => taggedIds.has(t.id));
+      } else if (generationMode === 'deep_analysis') {
+        characters = allCharacters;
+        places = allPlaces;
+        things = allThings;
+        technologies = allTechs;
+      } else {
+        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
+        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        characters = [...mainChars, ...otherChars.slice(0, 5)];
+        places = allPlaces.slice(0, 8);
+        things = allThings.slice(0, 5);
+        technologies = allTechs.slice(0, 5);
+      }
 
       const storyBibleFacts = (bibleRes.data || []).map((b: Record<string, string>) => ({
         subject: b.subject,
@@ -521,12 +552,17 @@ export default function Write() {
       const taggedBibleIds = contextTags
         .filter(t => t.entity_type === 'story_bible_entries')
         .map(t => t.entity_id);
-      const filteredBibleFacts = hasContextTags && taggedBibleIds.length > 0
-        ? storyBibleFacts.filter((_: Record<string, string>, i: number) => {
-            const entry = (bibleRes.data || [])[i];
-            return taggedBibleIds.includes(entry.id);
-          })
-        : storyBibleFacts;
+      let filteredBibleFacts: typeof storyBibleFacts;
+      if (hasContextTags && taggedBibleIds.length > 0) {
+        filteredBibleFacts = storyBibleFacts.filter((_: Record<string, string>, i: number) => {
+          const entry = (bibleRes.data || [])[i];
+          return taggedBibleIds.includes(entry.id);
+        });
+      } else if (generationMode === 'deep_analysis') {
+        filteredBibleFacts = storyBibleFacts;
+      } else {
+        filteredBibleFacts = storyBibleFacts.filter((f: any) => f.importance === 'critical' || f.importance === 'high');
+      }
 
       const styleAnchors = (styleRes.data || []).map((a: Record<string, string>) => ({
         label: a.label,

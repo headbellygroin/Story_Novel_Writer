@@ -115,9 +115,11 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
   const contextLength = settings.context_length || 4096;
   let reservedForOutput = settings.max_tokens;
   const reservedForPromptFrame = 300;
-  const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
+  // Safety: cap context usage at 85% of window to prevent overflow
+  const safeContextBudget = Math.floor(contextLength * 0.85);
+  const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
-  const contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
+  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -128,10 +130,10 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
     ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
     : '';
 
-  const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : 'Outline Instructions';
+  const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : generationMode === 'deep_analysis' ? 'Analysis Instructions' : 'Outline Instructions';
   const modeInstruction = GENERATION_MODE_INSTRUCTIONS[generationMode];
 
-  const fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
+  let fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
 
@@ -140,14 +142,34 @@ ${sceneDescription}
 
 ${modeInstruction}`;
 
-  // Safety check: estimate prompt tokens and validate against context window
-  const estimatedPromptTokens = Math.ceil(fullPrompt.length / 3.5);
-  const totalEstimated = estimatedPromptTokens + reservedForOutput;
+  // Context window safety: if prompt exceeds 85%, progressively reduce
+  let estimatedPromptTokens = estimateTokens(fullPrompt);
+  let totalEstimated = estimatedPromptTokens + reservedForOutput;
+
+  if (totalEstimated > safeContextBudget) {
+    // Try with reduced context budget (strip to 70%)
+    const reducedBudget = Math.floor(contextLength * 0.70) - reservedForOutput - reservedForPromptFrame;
+    if (reducedBudget > 500) {
+      console.warn(`[Story Forge] Context safety: prompt exceeded 85% threshold (${estimatedPromptTokens} tokens). Reducing context scope.`);
+      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal');
+      fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
+
+${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
+
+${modeLabel}:
+${sceneDescription}
+
+${modeInstruction}`;
+      estimatedPromptTokens = estimateTokens(fullPrompt);
+      totalEstimated = estimatedPromptTokens + reservedForOutput;
+    }
+  }
+
   if (totalEstimated > contextLength) {
-    const available = contextLength - estimatedPromptTokens - 100; // 100 token safety margin
+    const available = contextLength - estimatedPromptTokens - 100;
     if (available < 200) {
       throw new Error(
-        `Context window exceeded: prompt is ~${estimatedPromptTokens.toLocaleString()} tokens but model context is only ${contextLength.toLocaleString()} tokens. Remove some context tags or use a larger-context preset.`
+        `Context window exceeded: prompt is ~${estimatedPromptTokens.toLocaleString()} tokens but model context is only ${contextLength.toLocaleString()} tokens. Try adding context tags to limit included entities.`
       );
     }
     reservedForOutput = available;
@@ -210,9 +232,10 @@ export async function generateSceneStreaming(
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
   const reservedForPromptFrame = 300;
-  const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
+  const safeContextBudget = Math.floor(contextLength * 0.85);
+  const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
-  const contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
+  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -223,10 +246,10 @@ export async function generateSceneStreaming(
     ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
     : '';
 
-  const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : 'Outline Instructions';
+  const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : generationMode === 'deep_analysis' ? 'Analysis Instructions' : 'Outline Instructions';
   const modeInstruction = GENERATION_MODE_INSTRUCTIONS[generationMode];
 
-  const fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
+  let fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
 
@@ -234,6 +257,24 @@ ${modeLabel}:
 ${sceneDescription}
 
 ${modeInstruction}`;
+
+  // Context window safety: if prompt exceeds 85%, progressively reduce
+  let estimatedPromptTokens = estimateTokens(fullPrompt);
+  if (estimatedPromptTokens + reservedForOutput > safeContextBudget) {
+    const reducedBudget = Math.floor(contextLength * 0.70) - reservedForOutput - reservedForPromptFrame;
+    if (reducedBudget > 500) {
+      console.warn(`[Story Forge] Streaming: context safety triggered, reducing scope.`);
+      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal');
+      fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
+
+${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
+
+${modeLabel}:
+${sceneDescription}
+
+${modeInstruction}`;
+    }
+  }
 
   const isChatEndpoint = settings.api_endpoint.includes('/chat/completions');
 
