@@ -810,6 +810,14 @@ export default function Settings() {
 
           {presets.length > 0 && (
             <div className="space-y-3">
+              <div className="flex justify-end mb-2">
+                <button
+                  onClick={initializeDefaultPresets}
+                  className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200 border border-slate-300 transition-colors"
+                >
+                  Reset All to Defaults
+                </button>
+              </div>
               {TASK_MODES.map(mode => {
                 const preset = presets.find(p => p.task_mode === mode.key);
                 const isEditing = editingPreset === mode.key;
