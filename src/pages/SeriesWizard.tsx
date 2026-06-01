@@ -33,6 +33,9 @@ export default function SeriesWizard() {
   const [bookCount, setBookCount] = useState(7);
   const [genre, setGenre] = useState('');
   const [endGoal, setEndGoal] = useState('');
+  const [planningStyle, setPlanningStyle] = useState<'discovery' | 'balanced' | 'architect'>('balanced');
+  const [reviewFirst, setReviewFirst] = useState(true);
+  const [planApproved, setPlanApproved] = useState(false);
   const [quickRunning, setQuickRunning] = useState(false);
   const [quickStep, setQuickStep] = useState(0);
   const [quickOutput, setQuickOutput] = useState<WizardOutput>({
@@ -153,11 +156,25 @@ export default function SeriesWizard() {
     setQuickRunning(true);
     setError('');
     abortRef.current = false;
-    setQuickOutput({ seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' });
+
+    // If reviewFirst and we haven't approved yet, only generate step 1
+    const onlySeriesMap = reviewFirst && !planApproved;
+
+    if (!onlySeriesMap) {
+      setQuickOutput({ seriesMap: quickOutput.seriesMap || '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' });
+    } else {
+      setQuickOutput({ seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' });
+    }
 
     const world = buildWorldSummary();
     const genreText = genre || 'epic genre fiction';
     const endText = endGoal || 'the protagonist achieves their ultimate goal';
+
+    const planningGuidance = planningStyle === 'discovery'
+      ? '\nPlanning Style: DISCOVERY WRITING. Keep plans loose and suggestive. Leave room for surprise and organic development. Fewer rigid plot points, more thematic direction and character motivation.\n'
+      : planningStyle === 'architect'
+      ? '\nPlanning Style: ARCHITECT WRITING. Plan meticulously. Strong foreshadowing, tight causality, interconnected plot threads. Every element should serve a structural purpose. Heavy planning with clear cause-and-effect chains.\n'
+      : '\nPlanning Style: BALANCED. Mix structured planning with room for organic development.\n';
 
     const canonRule = world.trim()
       ? `\n\n=== STRICT CANON RULE ===\nYou MUST use ONLY the characters, places, things, and technologies listed above. Do NOT invent new characters, locations, or world elements. Do NOT hallucinate motivations, backstories, or relationships that are not established in the world data. If the world data is sparse, keep your output proportionally focused on what IS established. Expand only where the existing data logically implies structure.\n`
@@ -165,8 +182,9 @@ export default function SeriesWizard() {
 
     try {
       // Step 1: Series Map
-      setQuickStep(1);
-      const seriesPrompt = `${world}${canonRule}
+      if (!quickOutput.seriesMap) {
+        setQuickStep(1);
+        const seriesPrompt = `${world}${canonRule}${planningGuidance}
 === TASK: SERIES MAP ===
 Create a ${bookCount}-book series roadmap.
 Genre/Tone: ${genreText}
@@ -184,21 +202,31 @@ Do not create chapter outlines.
 Do not create scene outlines.
 Focus only on the overall series structure.`;
 
-      const seriesMap = await generateScene({
-        sceneDescription: seriesPrompt,
-        generationMode: 'outline',
-        contextMode: 'minimal',
-        worldRichness: 'minimal',
-        planningMode: 'creative',
-        context: {},
-        settings,
-      });
-      if (abortRef.current) return;
-      setQuickOutput(prev => ({ ...prev, seriesMap }));
+        const seriesMap = await generateScene({
+          sceneDescription: seriesPrompt,
+          generationMode: 'outline',
+          contextMode: 'minimal',
+          worldRichness: 'minimal',
+          planningMode: 'creative',
+          context: {},
+          settings,
+        });
+        if (abortRef.current) return;
+        setQuickOutput(prev => ({ ...prev, seriesMap }));
+
+        // If review-first mode, stop here and wait for approval
+        if (onlySeriesMap) {
+          setQuickStep(0);
+          setQuickRunning(false);
+          return;
+        }
+      }
+
+      const seriesMap = quickOutput.seriesMap || '';
 
       // Step 2: Book 1 Major Events
       setQuickStep(2);
-      const eventsPrompt = `${world}${canonRule}
+      const eventsPrompt = `${world}${canonRule}${planningGuidance}
 === SERIES MAP (APPROVED) ===
 ${seriesMap}
 
@@ -232,7 +260,7 @@ Do not generate chapters.`;
 
       // Step 3: Book 1 Outline
       setQuickStep(3);
-      const outlinePrompt = `${world}${canonRule}
+      const outlinePrompt = `${world}${canonRule}${planningGuidance}
 === SERIES MAP ===
 ${seriesMap}
 
@@ -267,7 +295,7 @@ Do not generate chapter lists yet.`;
 
       // Step 4: Chapter List
       setQuickStep(4);
-      const chapterPrompt = `${world}${canonRule}
+      const chapterPrompt = `${world}${canonRule}${planningGuidance}
 === BOOK 1 OUTLINE ===
 ${bookOutline}
 
@@ -302,7 +330,7 @@ One paragraph per chapter. No scene breakdowns.`;
 
       // Step 5: Chapter Briefs (first 5 chapters)
       setQuickStep(5);
-      const briefsPrompt = `${world}${canonRule}
+      const briefsPrompt = `${world}${canonRule}${planningGuidance}
 === CHAPTER LIST ===
 ${chapterList}
 
@@ -334,7 +362,7 @@ These briefs should be detailed enough that a writer could produce the chapter f
 
       // Step 6: Scene Breakdown (Chapter 1)
       setQuickStep(6);
-      const scenesPrompt = `${world}${canonRule}
+      const scenesPrompt = `${world}${canonRule}${planningGuidance}
 === CHAPTER BRIEF (CHAPTER 1) ===
 ${chapterBriefs}
 
@@ -375,6 +403,11 @@ Generate individual scene cards for Chapter 1. For each scene provide:
   function handleAbort() {
     abortRef.current = true;
     setQuickRunning(false);
+  }
+
+  function handleApprovePlan() {
+    setPlanApproved(true);
+    runQuickStart();
   }
 
   function handleSwitchToAdvanced() {
@@ -780,6 +813,12 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
             setGenre={setGenre}
             endGoal={endGoal}
             setEndGoal={setEndGoal}
+            planningStyle={planningStyle}
+            setPlanningStyle={setPlanningStyle}
+            reviewFirst={reviewFirst}
+            setReviewFirst={setReviewFirst}
+            planApproved={planApproved}
+            onApprovePlan={handleApprovePlan}
             running={quickRunning}
             step={quickStep}
             output={quickOutput}
@@ -823,6 +862,8 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
 
 function QuickStartPanel({
   bookCount, setBookCount, genre, setGenre, endGoal, setEndGoal,
+  planningStyle, setPlanningStyle, reviewFirst, setReviewFirst,
+  planApproved, onApprovePlan,
   running, step, output, error, settings, saving,
   onRun, onAbort, onSaveAll, onRegenerate, onSwitchToAdvanced, projectData,
 }: {
@@ -832,6 +873,12 @@ function QuickStartPanel({
   setGenre: (s: string) => void;
   endGoal: string;
   setEndGoal: (s: string) => void;
+  planningStyle: 'discovery' | 'balanced' | 'architect';
+  setPlanningStyle: (s: 'discovery' | 'balanced' | 'architect') => void;
+  reviewFirst: boolean;
+  setReviewFirst: (b: boolean) => void;
+  planApproved: boolean;
+  onApprovePlan: () => void;
   running: boolean;
   step: number;
   output: WizardOutput;
@@ -853,18 +900,45 @@ function QuickStartPanel({
       {/* Intake Form */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
         <div>
-          <label className="block text-sm font-medium text-slate-800 mb-1.5">How many books in the series?</label>
-          <div className="flex items-center gap-3">
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={bookCount}
-              onChange={e => setBookCount(Number(e.target.value) || 7)}
-              className="w-20 border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            <span className="text-xs text-slate-500">Default: 7</span>
+          <label className="block text-sm font-medium text-slate-800 mb-2">Books in Series</label>
+          <div className="grid grid-cols-5 gap-2">
+            {[
+              { value: 1, label: 'Standalone', sub: '1 book' },
+              { value: 3, label: 'Trilogy', sub: '3 books' },
+              { value: 5, label: 'Saga', sub: '5 books' },
+              { value: 7, label: 'Epic Series', sub: '7 books' },
+              { value: 0, label: 'Custom', sub: '' },
+            ].map(opt => (
+              <button
+                key={opt.label}
+                onClick={() => {
+                  if (opt.value === 0) return;
+                  setBookCount(opt.value);
+                }}
+                className={`flex flex-col items-center px-2 py-2.5 rounded-lg border text-center transition-all ${
+                  (opt.value === 0 ? ![1, 3, 5, 7].includes(bookCount) : bookCount === opt.value)
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                }`}
+              >
+                <span className="text-xs font-semibold">{opt.label}</span>
+                {opt.sub && <span className="text-[10px] opacity-70 mt-0.5">{opt.sub}</span>}
+              </button>
+            ))}
           </div>
+          {![1, 3, 5, 7].includes(bookCount) && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={bookCount}
+                onChange={e => setBookCount(Number(e.target.value) || 1)}
+                className="w-20 border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              <span className="text-xs text-slate-500">books</span>
+            </div>
+          )}
         </div>
 
         <div>
@@ -890,8 +964,32 @@ function QuickStartPanel({
           </div>
         </div>
 
+        <div>
+          <label className="block text-sm font-medium text-slate-800 mb-2">Planning Style</label>
+          <div className="grid grid-cols-3 gap-3">
+            {([
+              { value: 'discovery', label: 'Discovery', desc: 'Loose plans, room for surprises' },
+              { value: 'balanced', label: 'Balanced', desc: 'Structured with creative freedom' },
+              { value: 'architect', label: 'Architect', desc: 'Tight causality, heavy foreshadowing' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setPlanningStyle(opt.value)}
+                className={`flex flex-col items-start px-3 py-3 rounded-lg border text-left transition-all ${
+                  planningStyle === opt.value
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                }`}
+              >
+                <span className="text-sm font-semibold">{opt.label}</span>
+                <span className={`text-xs mt-0.5 ${planningStyle === opt.value ? 'text-slate-300' : 'text-slate-500'}`}>{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
-          <label className="block text-sm font-semibold text-slate-900 mb-1">Series End State</label>
+          <label className="block text-sm font-semibold text-slate-900 mb-1">How does the story end?</label>
           <p className="text-xs text-slate-500 mb-3">What must be true by the final chapter? This is the most important input -- it gives the AI a destination to build toward.</p>
           <textarea
             value={endGoal}
@@ -913,6 +1011,22 @@ function QuickStartPanel({
           <span className="px-2 py-0.5 bg-slate-200 rounded">{projectData.storyBible.length} bible entries</span>
           {projectData.manifesto && <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded">Manifesto loaded</span>}
         </div>
+      </div>
+
+      {/* Build Options */}
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={reviewFirst}
+            onChange={e => setReviewFirst(e.target.checked)}
+            className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+          />
+          <span className="text-sm text-slate-700">Show proposed plan first</span>
+        </label>
+        <span className="text-xs text-slate-500">
+          {reviewFirst ? 'Generates Series Map, then pauses for your approval before continuing' : 'Runs all 6 steps without stopping'}
+        </span>
       </div>
 
       {/* Build Button */}
@@ -956,6 +1070,32 @@ function QuickStartPanel({
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* Plan Approval Checkpoint */}
+      {reviewFirst && output.seriesMap && !planApproved && !running && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-amber-900">Series Map Ready for Review</h3>
+            <p className="text-xs text-amber-700 mt-1">
+              Review the Series Map below. Once approved, the wizard will generate Major Events, Book Outlines, Chapter Lists, Briefs, and Scene Breakdowns. This can take 20-30 minutes for a full series.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onApprovePlan}
+              className="px-5 py-2.5 bg-amber-700 text-white rounded-lg text-sm font-semibold hover:bg-amber-800 transition-colors"
+            >
+              Accept Series Plan -- Continue Generation
+            </button>
+            <button
+              onClick={() => onRegenerate('seriesMap')}
+              className="px-4 py-2 bg-white text-amber-700 border border-amber-300 rounded-lg text-sm font-medium hover:bg-amber-100 transition-colors"
+            >
+              Regenerate Plan
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Output Sections */}
@@ -1051,6 +1191,10 @@ function SeriesAtAGlance({ output, bookCount, genre }: {
   const characters = parseCharacters(output.seriesMap, output.chapterList);
   const themes = parseThemes(output.seriesMap, output.bookOutline);
   const chapterCount = countChapters(output.chapterList);
+  const primaryCharacter = characters.length > 0 ? characters[0] : null;
+  const primaryTheme = themes.length > 0 ? themes[0] : null;
+
+  const completedSteps = [output.seriesMap, output.majorEvents, output.bookOutline, output.chapterList, output.chapterBriefs, output.scenes].filter(Boolean).length;
 
   return (
     <div className="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
@@ -1059,16 +1203,49 @@ function SeriesAtAGlance({ output, bookCount, genre }: {
         onClick={() => setExpanded(!expanded)}
       >
         <div>
-          <h2 className="text-base font-semibold text-white">Series At A Glance</h2>
+          <h2 className="text-base font-semibold text-white">Series Dashboard</h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            {bookCount} books | {genre || 'Genre fiction'} | ~{chapterCount * bookCount} estimated total chapters
+            {bookCount} {bookCount === 1 ? 'book' : 'books'} | {genre || 'Genre fiction'} | ~{chapterCount * bookCount} estimated total chapters
           </p>
         </div>
-        <span className="text-slate-400 text-sm">{expanded ? '\u25B2' : '\u25BC'}</span>
+        <div className="flex items-center gap-3">
+          <span className={`px-2 py-0.5 text-xs rounded font-medium ${completedSteps === 6 ? 'bg-green-900/50 text-green-300 border border-green-700' : 'bg-amber-900/50 text-amber-300 border border-amber-700'}`}>
+            {completedSteps === 6 ? 'Backbone Complete' : `${completedSteps}/6 Steps`}
+          </span>
+          <span className="text-slate-400 text-sm">{expanded ? '\u25B2' : '\u25BC'}</span>
+        </div>
       </div>
 
       {expanded && (
         <div className="px-5 pb-5 space-y-5">
+          {/* Key Summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {primaryTheme && (
+              <div className="bg-slate-800/60 rounded-md px-3 py-2.5 border border-slate-700">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Primary Theme</div>
+                <div className="text-sm text-white font-medium line-clamp-1">{primaryTheme}</div>
+              </div>
+            )}
+            {primaryCharacter && (
+              <div className="bg-slate-800/60 rounded-md px-3 py-2.5 border border-slate-700">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Primary Character</div>
+                <div className="text-sm text-white font-medium line-clamp-1">{primaryCharacter}</div>
+              </div>
+            )}
+            <div className="bg-slate-800/60 rounded-md px-3 py-2.5 border border-slate-700">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Est. Word Count</div>
+              <div className="text-sm text-white font-medium">{formatWordCount(chapterCount * bookCount * 4000)}</div>
+            </div>
+          </div>
+
+          {/* Stats Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard label="Books Planned" value={String(bookCount)} />
+            <StatCard label="Book 1 Chapters" value={String(chapterCount)} />
+            <StatCard label="Total Chapters" value={String(chapterCount * bookCount)} />
+            <StatCard label="Status" value={completedSteps === 6 ? 'Complete' : 'In Progress'} />
+          </div>
+
           {/* Book List */}
           <div>
             <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Series Structure</h3>
@@ -1080,14 +1257,6 @@ function SeriesAtAGlance({ output, bookCount, genre }: {
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Books Planned" value={String(bookCount)} />
-            <StatCard label="Ch 1 Chapters" value={String(chapterCount)} />
-            <StatCard label="Est. Total Chapters" value={String(chapterCount * bookCount)} />
-            <StatCard label="Est. Word Count" value={formatWordCount(chapterCount * bookCount * 4000)} />
           </div>
 
           {/* Characters & Themes */}
@@ -1436,3 +1605,6 @@ function AdvancedPanel({
     </div>
   );
 }
+
+
+export default SeriesWizard
