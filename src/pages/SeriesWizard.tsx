@@ -300,7 +300,73 @@ One paragraph per chapter. No scene breakdowns.`;
       if (abortRef.current) return;
       setQuickOutput(prev => ({ ...prev, chapterList }));
 
+      // Step 5: Chapter Briefs (first 5 chapters)
       setQuickStep(5);
+      const briefsPrompt = `${world}
+
+=== CHAPTER LIST ===
+${chapterList}
+
+=== BOOK OUTLINE ===
+${bookOutline}
+
+=== TASK: CHAPTER BRIEFS (BOOK 1, CHAPTERS 1-5) ===
+Generate detailed chapter briefs for chapters 1 through 5. For each chapter:
+- Opening state
+- Scene-by-scene breakdown (3-5 scenes per chapter)
+- Character goals and obstacles
+- Key dialogue beats or reveals
+- Closing state / cliffhanger
+- Theme advancement
+
+These briefs should be detailed enough that a writer could produce the chapter from them.`;
+
+      const chapterBriefs = await generateScene({
+        sceneDescription: briefsPrompt,
+        generationMode: 'outline',
+        contextMode: 'minimal',
+        worldRichness: 'minimal',
+        planningMode: 'creative',
+        context: {},
+        settings,
+      });
+      if (abortRef.current) return;
+      setQuickOutput(prev => ({ ...prev, chapterBriefs }));
+
+      // Step 6: Scene Breakdown (Chapter 1)
+      setQuickStep(6);
+      const scenesPrompt = `${world}
+
+=== CHAPTER BRIEF (CHAPTER 1) ===
+${chapterBriefs}
+
+=== TASK: SCENE BREAKDOWN (CHAPTER 1) ===
+Generate individual scene cards for Chapter 1. For each scene provide:
+- Scene title
+- POV character
+- Location
+- Characters present
+- Opening beat
+- Core conflict/tension
+- Key dialogue moments
+- Closing beat / transition
+- Estimated word count`;
+
+      const scenes = await generateScene({
+        sceneDescription: scenesPrompt,
+        generationMode: 'outline',
+        contextMode: 'minimal',
+        worldRichness: 'minimal',
+        planningMode: 'creative',
+        context: {},
+        settings,
+      });
+      if (abortRef.current) return;
+      setQuickOutput(prev => ({ ...prev, scenes }));
+
+      // Feed results into advanced mode
+      setOutput({ seriesMap, majorEvents, bookOutline, chapterList, chapterBriefs, scenes });
+      setQuickStep(7);
     } catch (err: any) {
       setError(err.message || 'Generation failed');
     } finally {
@@ -311,6 +377,11 @@ One paragraph per chapter. No scene breakdowns.`;
   function handleAbort() {
     abortRef.current = true;
     setQuickRunning(false);
+  }
+
+  function handleSwitchToAdvanced() {
+    setOutput({ ...quickOutput });
+    setMode('advanced');
   }
 
   async function handleQuickSaveAll() {
@@ -329,6 +400,12 @@ One paragraph per chapter. No scene breakdowns.`;
       }
       if (quickOutput.chapterList) {
         entries.push({ project_id: currentProjectId, category: 'series_planning', subject: 'Book 1 - Chapter List', fact: quickOutput.chapterList, importance: 'high' });
+      }
+      if (quickOutput.chapterBriefs) {
+        entries.push({ project_id: currentProjectId, category: 'series_planning', subject: 'Book 1 - Chapter Briefs (Ch 1-5)', fact: quickOutput.chapterBriefs, importance: 'medium' });
+      }
+      if (quickOutput.scenes) {
+        entries.push({ project_id: currentProjectId, category: 'series_planning', subject: 'Book 1 - Scene Breakdown (Ch 1)', fact: quickOutput.scenes, importance: 'medium' });
       }
 
       if (entries.length > 0) {
@@ -569,6 +646,12 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
         case 'chapterList':
           prompt = `${world}\n\n=== BOOK 1 OUTLINE ===\n${currentOutput.bookOutline}\n\n=== BOOK 1 MAJOR EVENTS ===\n${currentOutput.majorEvents}\n\n=== TASK: CHAPTER LIST FOR BOOK 1 ===\nGenerate chapters for Book 1.\nGenre/Tone: ${genreText}\n\n20-30 chapters. For each: chapter number, working title, POV character, primary location, key events (2-3 bullet points), emotional tone.\n\nOne paragraph per chapter. No scene breakdowns.`;
           break;
+        case 'chapterBriefs':
+          prompt = `${world}\n\n=== CHAPTER LIST ===\n${currentOutput.chapterList}\n\n=== BOOK OUTLINE ===\n${currentOutput.bookOutline}\n\n=== TASK: CHAPTER BRIEFS (BOOK 1, CHAPTERS 1-5) ===\nGenerate detailed chapter briefs for chapters 1 through 5. For each chapter:\n- Opening state\n- Scene-by-scene breakdown (3-5 scenes per chapter)\n- Character goals and obstacles\n- Key dialogue beats or reveals\n- Closing state / cliffhanger\n- Theme advancement`;
+          break;
+        case 'scenes':
+          prompt = `${world}\n\n=== CHAPTER BRIEF (CHAPTER 1) ===\n${currentOutput.chapterBriefs}\n\n=== TASK: SCENE BREAKDOWN (CHAPTER 1) ===\nGenerate individual scene cards for Chapter 1. For each scene provide:\n- Scene title\n- POV character\n- Location\n- Characters present\n- Opening beat\n- Core conflict/tension\n- Key dialogue moments\n- Closing beat / transition\n- Estimated word count`;
+          break;
         default:
           return;
       }
@@ -659,6 +742,7 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
             onAbort={handleAbort}
             onSaveAll={handleQuickSaveAll}
             onRegenerate={handleRegenerateSection}
+            onSwitchToAdvanced={handleSwitchToAdvanced}
             projectData={projectData}
           />
         ) : (
@@ -692,7 +776,7 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
 function QuickStartPanel({
   bookCount, setBookCount, genre, setGenre, endGoal, setEndGoal,
   running, step, output, error, settings, saving,
-  onRun, onAbort, onSaveAll, onRegenerate, projectData,
+  onRun, onAbort, onSaveAll, onRegenerate, onSwitchToAdvanced, projectData,
 }: {
   bookCount: number;
   setBookCount: (n: number) => void;
@@ -710,10 +794,11 @@ function QuickStartPanel({
   onAbort: () => void;
   onSaveAll: () => void;
   onRegenerate: (key: StepKey) => void;
+  onSwitchToAdvanced: () => void;
   projectData: any;
 }) {
-  const hasOutput = output.seriesMap || output.majorEvents || output.bookOutline || output.chapterList;
-  const allDone = output.seriesMap && output.majorEvents && output.bookOutline && output.chapterList;
+  const hasOutput = output.seriesMap || output.majorEvents || output.bookOutline || output.chapterList || output.chapterBriefs || output.scenes;
+  const allDone = output.seriesMap && output.majorEvents && output.bookOutline && output.chapterList && output.chapterBriefs && output.scenes;
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -807,13 +892,13 @@ function QuickStartPanel({
           <div className="flex items-center gap-3 mb-3">
             <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
             <span className="text-sm text-white font-medium">
-              Generating Step {step} of 4: {['', 'Series Map', 'Major Events', 'Book Outline', 'Chapter List'][step]}...
+              Generating Step {step} of 6: {['', 'Series Map', 'Major Events', 'Book Outline', 'Chapter List', 'Chapter Briefs', 'Scene Breakdown'][step]}...
             </span>
           </div>
           <div className="w-full bg-slate-700 rounded-full h-2">
             <div
               className="bg-green-400 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${(step / 4) * 100}%` }}
+              style={{ width: `${(step / 6) * 100}%` }}
             />
           </div>
         </div>
@@ -827,17 +912,25 @@ function QuickStartPanel({
       {hasOutput && (
         <div className="space-y-4">
           {allDone && (
-            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-4">
-              <span className="text-sm font-medium text-green-800">
-                All 4 steps complete. Review below, then save to your project.
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+              <span className="block text-sm font-medium text-green-800">
+                All 6 steps complete. Review below, save to your project, or switch to Step-by-Step to fine-tune.
               </span>
-              <button
-                onClick={onSaveAll}
-                disabled={saving}
-                className="px-4 py-2 bg-green-700 text-white rounded-md text-sm font-medium hover:bg-green-800 disabled:opacity-50 transition-colors"
-              >
-                {saving ? 'Saving...' : 'Save All to Project'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={onSaveAll}
+                  disabled={saving}
+                  className="px-4 py-2 bg-green-700 text-white rounded-md text-sm font-medium hover:bg-green-800 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? 'Saving...' : 'Save All to Project'}
+                </button>
+                <button
+                  onClick={onSwitchToAdvanced}
+                  className="px-4 py-2 bg-slate-700 text-white rounded-md text-sm font-medium hover:bg-slate-600 transition-colors"
+                >
+                  Edit in Step-by-Step Mode
+                </button>
+              </div>
             </div>
           )}
 
@@ -866,6 +959,20 @@ function QuickStartPanel({
             title="Step 4: Book 1 Chapter List"
             stepKey="chapterList"
             content={output.chapterList}
+            running={running}
+            onRegenerate={onRegenerate}
+          />
+          <OutputSection
+            title="Step 5: Chapter Briefs (Ch 1-5)"
+            stepKey="chapterBriefs"
+            content={output.chapterBriefs}
+            running={running}
+            onRegenerate={onRegenerate}
+          />
+          <OutputSection
+            title="Step 6: Scene Breakdown (Ch 1)"
+            stepKey="scenes"
+            content={output.scenes}
             running={running}
             onRegenerate={onRegenerate}
           />
@@ -1112,3 +1219,6 @@ function AdvancedPanel({
     </div>
   );
 }
+
+
+export default SeriesWizard
