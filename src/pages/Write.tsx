@@ -170,7 +170,9 @@ export default function Write() {
       if (activePreset) {
         console.log(`[Story Forge] Auto-routing: ${generationMode} -> ${activePreset.model_name} (ctx: ${activePreset.context_length}, max: ${activePreset.max_tokens}, temp: ${activePreset.temperature})`);
       } else {
-        console.log(`[Story Forge] No preset for "${generationMode}", using default settings: ${settings.model_name}`);
+        alert(`No model preset found for "${generationMode}". Go to Settings → Model Presets and click "Load Default Presets" to configure auto-routing.`);
+        setGenerating(false);
+        return;
       }
 
 
@@ -642,6 +644,10 @@ export default function Write() {
       const tagPreset = presetRes.data;
       if (tagPreset) {
         console.log(`[Story Forge] Auto-routing: tag_recommendation -> ${tagPreset.model_name} (ctx: ${tagPreset.context_length})`);
+      } else {
+        alert(`No model preset found for "tag_recommendation". Go to Settings → Model Presets and click "Load Default Presets".`);
+        setRecommendingTags(false);
+        return;
       }
 
       const [chars, places, things, techs, bible] = await Promise.all([
