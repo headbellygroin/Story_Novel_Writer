@@ -942,12 +942,12 @@ function QuickStartPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-800 mb-1.5">Describe your story</label>
-          <p className="text-xs text-slate-500 mb-2">Genre, tone, characters, premise -- write naturally. One thought per line works well.</p>
+          <label className="block text-sm font-medium text-slate-800 mb-1.5">What is this series REALLY about?</label>
+          <p className="text-xs text-slate-500 mb-2">Not genre tags -- the core truth. What are these people doing, and why does it matter?</p>
           <textarea
             value={genre}
             onChange={e => setGenre(e.target.value)}
-            placeholder={"Blue-collar space opera.\n\nFound family.\n\nIndependent cargo crew.\n\nThe crew travels the galaxy taking jobs while gradually uncovering forgotten history."}
+            placeholder={"A group of ordinary working spacers slowly discover that history has been manipulated and must decide whether dangerous truths belong to everyone.\n\nFound family. Blue-collar tone. The ship is home."}
             rows={5}
             className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-slate-400"
           />
