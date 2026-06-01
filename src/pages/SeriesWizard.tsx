@@ -25,7 +25,7 @@ interface WizardOutput {
 
 type WizardMode = 'quick' | 'advanced';
 
-export default function SeriesWizard() {
+function SeriesWizard() {
   const { currentProjectId } = useStore();
   const [mode, setMode] = useState<WizardMode>('quick');
 
@@ -1113,5 +1113,7 @@ function AdvancedPanel({
   );
 }
 
+
+export default SeriesWizard
 
 export default SeriesWizard
