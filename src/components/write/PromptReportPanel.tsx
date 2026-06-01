@@ -1,17 +1,26 @@
-import { PromptAssemblyReport, ContextMode } from '../../services/aiService';
+import { PromptAssemblyReport, ContextMode, WorldRichness } from '../../services/aiService';
 
 interface Props {
   report: PromptAssemblyReport | null;
   contextMode: ContextMode;
+  worldRichness: WorldRichness;
   onContextModeChange: (mode: ContextMode) => void;
+  onWorldRichnessChange: (richness: WorldRichness) => void;
   onRefresh: () => void;
 }
 
-export default function PromptReportPanel({ report, contextMode, onContextModeChange, onRefresh }: Props) {
+export default function PromptReportPanel({ report, contextMode, worldRichness, onContextModeChange, onWorldRichnessChange, onRefresh }: Props) {
   const modeDescriptions: Record<ContextMode, string> = {
     minimal: 'Only critical facts, tagged entities, no dossiers or sliders',
-    relevant: 'Critical + high importance facts, trimmed dossiers, tagged entities',
+    relevant: 'Critical + high importance facts, compressed summaries',
     full: 'All data included (original behavior)',
+  };
+
+  const richnessDescriptions: Record<WorldRichness, string> = {
+    minimal: 'Reduced locations/objects for tight context windows',
+    balanced: 'Default balance of world detail vs token budget',
+    rich: 'Extra location and environmental context for atmosphere',
+    full: 'Maximum world detail (use with large context windows)',
   };
 
   return (
@@ -46,6 +55,26 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
         <p className="text-xs text-slate-400 mt-1">{modeDescriptions[contextMode]}</p>
       </div>
 
+      <div className="mb-3">
+        <label className="block text-xs font-medium text-slate-600 mb-1">World Richness</label>
+        <div className="grid grid-cols-4 gap-1 bg-slate-100 rounded-md p-0.5">
+          {(['minimal', 'balanced', 'rich', 'full'] as WorldRichness[]).map(level => (
+            <button
+              key={level}
+              onClick={() => onWorldRichnessChange(level)}
+              className={`px-2 py-1.5 text-xs font-medium rounded transition-colors capitalize ${
+                worldRichness === level
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {level}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-slate-400 mt-1">{richnessDescriptions[worldRichness]}</p>
+      </div>
+
       {!report && (
         <p className="text-xs text-slate-400 italic">
           Click Refresh to see prompt token breakdown for the current scene.
@@ -57,6 +86,27 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
           {report.generationMode && (
             <div className="text-xs text-slate-500 bg-slate-50 rounded px-2 py-1 border border-slate-200">
               Mode: <span className="font-medium text-slate-700">{report.generationMode.replace('_', ' ')}</span>
+            </div>
+          )}
+
+          {report.contextMetrics && (
+            <div className="grid grid-cols-2 gap-2 bg-slate-50 rounded-md p-2 border border-slate-200">
+              <div className="text-xs">
+                <span className="text-slate-500">Characters:</span>
+                <span className="ml-1 font-medium text-slate-700">{report.contextMetrics.charactersUsed}</span>
+              </div>
+              <div className="text-xs">
+                <span className="text-slate-500">Locations:</span>
+                <span className="ml-1 font-medium text-slate-700">{report.contextMetrics.locationsUsed}</span>
+              </div>
+              <div className="text-xs">
+                <span className="text-slate-500">Bible Facts:</span>
+                <span className="ml-1 font-medium text-slate-700">{report.contextMetrics.bibleFactsUsed}</span>
+              </div>
+              <div className="text-xs">
+                <span className="text-slate-500">Compression:</span>
+                <span className="ml-1 font-medium text-slate-700">{Math.round(report.contextMetrics.compressionRatio * 100)}%</span>
+              </div>
             </div>
           )}
 

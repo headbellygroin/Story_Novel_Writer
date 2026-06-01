@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
-import { generateScene, GenerationMode, ContextMode, assemblePromptReport, PromptAssemblyReport } from '../services/aiService';
+import { generateScene, GenerationMode, ContextMode, WorldRichness, assemblePromptReport, PromptAssemblyReport } from '../services/aiService';
 import { recommendContextTags, TagRecommendation, EntityCandidate } from '../services/contextRecommendationService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
 import { formatInfraSlidersForPrompt } from '../lib/infrastructureSliders';
@@ -36,6 +36,7 @@ export default function Write() {
   const [sidebarTab, setSidebarTab] = useState<'scenes' | 'context' | 'brief' | 'image' | 'report'>('scenes');
   const [generationMode, setGenerationMode] = useState<GenerationMode>('scene');
   const [contextMode, setContextMode] = useState<ContextMode>('relevant');
+  const [worldRichness, setWorldRichness] = useState<WorldRichness>('balanced');
   const [promptReport, setPromptReport] = useState<PromptAssemblyReport | null>(null);
   const [tagRecommendations, setTagRecommendations] = useState<TagRecommendation[] | null>(null);
   const [recommendingTags, setRecommendingTags] = useState(false);
@@ -447,6 +448,7 @@ export default function Write() {
         sceneDescription: scene.description,
         generationMode,
         contextMode,
+        worldRichness,
         context: {
           franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
@@ -772,6 +774,7 @@ export default function Write() {
         sceneDescription: scene.description,
         generationMode,
         contextMode,
+        worldRichness,
         context: {
           franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
@@ -1193,8 +1196,13 @@ export default function Write() {
                   <PromptReportPanel
                     report={promptReport}
                     contextMode={contextMode}
+                    worldRichness={worldRichness}
                     onContextModeChange={(mode) => {
                       setContextMode(mode);
+                      setPromptReport(null);
+                    }}
+                    onWorldRichnessChange={(richness) => {
+                      setWorldRichness(richness);
                       setPromptReport(null);
                     }}
                     onRefresh={refreshPromptReport}

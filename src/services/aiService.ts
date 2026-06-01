@@ -50,6 +50,7 @@ export interface SceneSummaryData {
 
 export type GenerationMode = 'scene' | 'design_brief' | 'outline' | 'deep_analysis';
 export type ContextMode = 'minimal' | 'relevant' | 'full';
+export type WorldRichness = 'minimal' | 'balanced' | 'rich' | 'full';
 
 export interface PromptAssemblyReport {
   sections: Array<{
@@ -60,6 +61,12 @@ export interface PromptAssemblyReport {
     included: boolean;
     truncated: boolean;
   }>;
+  contextMetrics: {
+    charactersUsed: number;
+    locationsUsed: number;
+    bibleFactsUsed: number;
+    compressionRatio: number;
+  };
   frameTokens: number;
   totalPromptTokens: number;
   maxBudget: number;
@@ -78,6 +85,7 @@ export interface GenerateSceneRequest {
   sceneDescription: string;
   generationMode?: GenerationMode;
   contextMode?: ContextMode;
+  worldRichness?: WorldRichness;
   context: {
     franchiseManifesto?: string;
     characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; infrastructure_sliders_text?: string; dossier?: string; canon_status?: string }>;
@@ -112,7 +120,7 @@ function truncateToTokenBudget(text: string, maxTokens: number): string {
 }
 
 export async function generateScene(request: GenerateSceneRequest): Promise<string> {
-  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full' } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full', worldRichness = 'balanced' } = request;
 
   const contextLength = settings.context_length || 4096;
   let reservedForOutput = settings.max_tokens;
@@ -121,7 +129,7 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
   const safeContextBudget = Math.floor(contextLength * 0.85);
   const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
-  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode, generationMode);
+  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode, generationMode, worldRichness);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -153,7 +161,7 @@ ${modeInstruction}`;
     const reducedBudget = Math.floor(contextLength * 0.70) - reservedForOutput - reservedForPromptFrame;
     if (reducedBudget > 500) {
       console.warn(`[Story Forge] Context safety: prompt exceeded 85% threshold (${estimatedPromptTokens} tokens). Reducing context scope.`);
-      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal', generationMode);
+      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal', generationMode, worldRichness);
       fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
@@ -229,7 +237,7 @@ export async function generateSceneStreaming(
   request: GenerateSceneRequest,
   onChunk: (text: string) => void,
 ): Promise<string> {
-  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full' } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full', worldRichness = 'balanced' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
@@ -237,7 +245,7 @@ export async function generateSceneStreaming(
   const safeContextBudget = Math.floor(contextLength * 0.85);
   const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
-  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode, generationMode);
+  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode, generationMode, worldRichness);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -266,7 +274,7 @@ ${modeInstruction}`;
     const reducedBudget = Math.floor(contextLength * 0.70) - reservedForOutput - reservedForPromptFrame;
     if (reducedBudget > 500) {
       console.warn(`[Story Forge] Streaming: context safety triggered, reducing scope.`);
-      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal', generationMode);
+      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal', generationMode, worldRichness);
       fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
@@ -424,6 +432,22 @@ const SECTION_BUDGETS: Record<GenerationMode, Record<string, number>> = {
   },
 };
 
+const WORLD_RICHNESS_MULTIPLIERS: Record<WorldRichness, Record<string, number>> = {
+  minimal: { places: 0.4, things: 0.4, tech: 0.4 },
+  balanced: { places: 1.0, things: 1.0, tech: 1.0 },
+  rich: { places: 1.6, things: 1.3, tech: 1.3 },
+  full: { places: 2.0, things: 1.5, tech: 1.5 },
+};
+
+function getAdjustedBudgets(mode: GenerationMode, richness: WorldRichness = 'balanced'): Record<string, number> {
+  const base = { ...SECTION_BUDGETS[mode] };
+  const multipliers = WORLD_RICHNESS_MULTIPLIERS[richness];
+  for (const key of Object.keys(multipliers)) {
+    if (base[key]) base[key] = Math.round(base[key] * multipliers[key]);
+  }
+  return base;
+}
+
 export function getSectionBudgets(mode: GenerationMode): Record<string, number> {
   return SECTION_BUDGETS[mode];
 }
@@ -577,14 +601,37 @@ function buildSections(context: GenerateSceneRequest['context'], contextMode: Co
 
   if (context.places && context.places.length > 0) {
     const activePlaces = context.places.filter(p => p.canon_status !== 'deprecated');
-    const placeInfo = activePlaces.map(p => {
-      const statusTag = p.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
-      const emergentTag = p.emergent_character ? ' [EMERGENT CHARACTER]' : '';
-      let info = `- ${p.name} (${p.type})${statusTag}${emergentTag}: ${p.description}`;
-      if (p.image_description) info += `\n  Visual: ${p.image_description}`;
-      if (p.emergent_character && p.infrastructure_sliders_text && contextMode !== 'minimal') info += `\n  Infrastructure Traits:\n${p.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
-      return info;
-    }).join('\n');
+    const useCompressedPlaces = generationMode !== 'deep_analysis' && contextMode !== 'full';
+
+    let placeInfo: string;
+    if (useCompressedPlaces) {
+      // Hierarchical compression: group by type, first sentence of description
+      const grouped = new Map<string, typeof activePlaces>();
+      for (const p of activePlaces) {
+        const type = p.type || 'Location';
+        if (!grouped.has(type)) grouped.set(type, []);
+        grouped.get(type)!.push(p);
+      }
+      placeInfo = Array.from(grouped.entries())
+        .map(([type, places]) => {
+          const items = places.map(p => {
+            const desc = (p.description || '').split('.')[0].trim();
+            const emergentTag = p.emergent_character ? ' [EMERGENT]' : '';
+            return `  - ${p.name}${emergentTag}: ${desc}`;
+          }).join('\n');
+          return `${type}:\n${items}`;
+        })
+        .join('\n');
+    } else {
+      placeInfo = activePlaces.map(p => {
+        const statusTag = p.canon_status === 'experimental' ? ' [EXPERIMENTAL]' : '';
+        const emergentTag = p.emergent_character ? ' [EMERGENT CHARACTER]' : '';
+        let info = `- ${p.name} (${p.type})${statusTag}${emergentTag}: ${p.description}`;
+        if (p.image_description) info += `\n  Visual: ${p.image_description}`;
+        if (p.emergent_character && p.infrastructure_sliders_text) info += `\n  Infrastructure Traits:\n${p.infrastructure_sliders_text.split('\n').map((l: string) => `    ${l}`).join('\n')}`;
+        return info;
+      }).join('\n');
+    }
     if (placeInfo) sections.push({ key: 'places', label: SECTION_LABELS.places, content: `=== SETTING ===\n${placeInfo}`, priority: 3 });
   }
 
@@ -650,11 +697,11 @@ function buildSections(context: GenerateSceneRequest['context'], contextMode: Co
   return sections;
 }
 
-function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number, contextMode: ContextMode = 'full', generationMode: GenerationMode = 'scene'): string {
+function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number, contextMode: ContextMode = 'full', generationMode: GenerationMode = 'scene', worldRichness: WorldRichness = 'balanced'): string {
   const sections = buildSections(context, contextMode, generationMode);
   sections.sort((a, b) => b.priority - a.priority);
 
-  const budgets = SECTION_BUDGETS[generationMode];
+  const budgets = getAdjustedBudgets(generationMode, worldRichness);
   const result: string[] = [];
   let usedTokens = 0;
 
@@ -687,7 +734,7 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
 }
 
 export function assemblePromptReport(request: GenerateSceneRequest): PromptAssemblyReport {
-  const { context, settings, contextMode = 'full', generationMode = 'scene' } = request;
+  const { context, settings, contextMode = 'full', generationMode = 'scene', worldRichness = 'balanced' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
@@ -709,7 +756,7 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
   const sections = buildSections(context, contextMode, generationMode);
   sections.sort((a, b) => b.priority - a.priority);
 
-  const budgets = SECTION_BUDGETS[generationMode];
+  const budgets = getAdjustedBudgets(generationMode, worldRichness);
   const reportSections: PromptAssemblyReport['sections'] = [];
   let usedTokens = 0;
 
@@ -756,8 +803,22 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
     }
   }
 
+  // Context quality metrics
+  const charactersUsed = context.characters?.filter(c => c.canon_status !== 'deprecated').length ?? 0;
+  const locationsUsed = context.places?.filter(p => p.canon_status !== 'deprecated').length ?? 0;
+  const bibleFactsUsed = context.storyBibleFacts?.filter(f => f.canon_status !== 'deprecated').length ?? 0;
+  const totalContextTokens = frameTokens + usedTokens;
+  const fullContextEstimate = sections.reduce((sum, s) => sum + estimateTokens(s.content), 0) + frameTokens;
+  const compressionRatio = fullContextEstimate > 0 ? totalContextTokens / fullContextEstimate : 1;
+
   return {
     sections: reportSections,
+    contextMetrics: {
+      charactersUsed,
+      locationsUsed,
+      bibleFactsUsed,
+      compressionRatio,
+    },
     frameTokens,
     totalPromptTokens: frameTokens + usedTokens,
     maxBudget: availableForContext,
