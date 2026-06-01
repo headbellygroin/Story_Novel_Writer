@@ -1,6 +1,8 @@
 # Story Forge - Complete Feature Reference
 
-Story Forge is an AI-powered novel writing and production studio. Writers create stories locally with uncensored models, generate illustrations, produce audiobook narration, and assemble YouTube-ready litRPG content from one unified workspace.
+Story Forge is an AI-assisted series development studio that turns a story idea into a complete writing blueprint before a single chapter is written.
+
+Write with uncensored local models, generate illustrations, create audiobook narration, and produce YouTube-ready litRPG content -- all from one workspace.
 
 ---
 
@@ -70,12 +72,13 @@ Four entity types, each with images, canon status, and an optional "emergent cha
 | Image + Image Description | Visual reference |
 | Canon Status | Draft, Canon, Deprecated, Alternate |
 | Emergent Character | Whether entity has narrative agency |
+| Book/Chapter/Scene Introduced | Controls visibility -- prevents future cast from contaminating early scenes |
 
-**Personality Sliders (10 dimensions, -10 to +10):**
-Stress/Calm, Fear/Courage, Suspicion/Trust, Callous/Empathic, Impulsivity/Self-Control, Dominance/Submission, Pessimism/Optimism, Introversion/Extroversion, Rigidity/Flexibility, Cynicism/Idealism
+**Personality Sliders (15 dimensions, -10 to +10):**
+Stress/Calm, Fear/Courage, Suspicion/Trust, Callous/Empathic, Impulsivity/Self-Control, Dominance/Submission, Pessimism/Optimism, Introversion/Extroversion, Gut/Logic, Detail/Big-Picture, Cautious/Risk Taker, Seriousness/Humor, Deception/Honesty, Stability/Sensitivity, Shame/Self-Worth
 
-**Infrastructure Sliders (6 dimensions, also available on places/things/tech):**
-Redundancy, Adaptability, Efficiency, Survivability, Comfort Prioritization, Repairability
+**Infrastructure Sliders (9 dimensions, also available on places/things/tech):**
+Redundancy, Adaptability, Efficiency, Survivability, Comfort Prioritization, Repairability, Crew Familiarity Drift, Environmental Warmth, Emergency Preservation Bias
 
 **Hero's Journey Tracking (12 stages):**
 Ordinary World, Call to Adventure, Refusal of Call, Meeting the Mentor, Crossing Threshold, Tests/Allies/Enemies, Approach to Innermost Cave, The Ordeal, Reward, Road Back, Resurrection, Return with Elixir
@@ -174,13 +177,23 @@ The Quick Start results feed directly into Step-by-Step mode -- the power user g
 
 ### Sidebar Panels
 1. **Scenes Tab:** Navigate all scenes in chapter
-2. **Context Tags:** Tag scenes with characters, locations, plot references, emotional beats
-3. **Scene Brief:** AI-generated or manual scene planning briefs
-4. **Scene Image:** Generate or upload visual for the scene
+2. **Scene Brief:** 10-field structured brief (POV, function, beats, characters, setting, conflict, tone, symbolism, continuity, notes) -- AI-generated or manual
+3. **Context Tags:** Tag specific entities to include in this scene's AI context (overrides default inclusion)
+4. **Chapter Context Tags:** Persistent tags that apply to all scenes in a chapter
+5. **Scene Summary:** 4-field summary (text, key facts, characters involved, emotional arc) -- used as efficient distant context
+6. **Scene Image:** Generate header image via ComfyUI with auto-generated or manual prompts
+7. **Prompt Report:** Shows the full context package assembled for the last generation
+8. **Recommended Tags:** AI-suggested context tags based on scene content
+9. **Editing Pass:** Two-step revision (improvement plan then implementation)
 
 ### AI Scene Generation
 - Streaming text generation (real-time output)
+- **Three Generation Modes:**
+  - Scene (default) -- produces prose with dialogue and detail
+  - Design Brief -- produces structured planning documents (no prose)
+  - Outline -- produces chapter-level structural plans
 - Full context injected into every prompt:
+  - Franchise Manifesto (highest priority -- absolute rules)
   - All characters (with personality sliders, dossier, dialogue style)
   - All places, things, technologies
   - Previous scenes (full text for recent, summaries for older)
@@ -189,8 +202,11 @@ The Quick Start results feed directly into Step-by-Step mode -- the power user g
   - Story Bible facts (weighted by importance)
   - Active style anchors
   - Prohibited words list
-  - Style rules
+  - Style rules (9 enforceable rules)
   - System prompt and style guide
+  - Scene Brief (structured scene planning)
+  - Context Tags (entity focus filter)
+  - Scene References (explicitly tagged callback scenes)
 
 ### Editing Passes
 - **Improvement Plan:** AI analyzes a scene for pacing, dialogue, emotion, description, character authenticity, plot consistency
@@ -202,11 +218,13 @@ The Quick Start results feed directly into Step-by-Step mode -- the power user g
 ## Story Bible
 
 - Track canonical facts and rules
-- Categories: Character Facts, World Rules, Timeline, Relationships, Plot Points, General
+- Categories: Character Facts, World Rules, Timeline, Relationships, Plot Points, Emotional Anchors, General (plus custom)
 - Importance levels: Critical, High, Medium, Low (color-coded)
 - Canon Status per entry
+- AI Generation Relevant toggle (exclude entries from AI context without deleting them)
 - Search and filter
-- AI references all bible facts during generation
+- AI references all active bible facts during generation
+- Emotional Anchors category specifically for running jokes, found family moments, rituals, and traditions
 
 ---
 
@@ -222,7 +240,7 @@ The Quick Start results feed directly into Step-by-Step mode -- the power user g
 ## Prohibited Words
 
 - Categories: AI-isms, Cliches, Overused, Custom
-- Load default list of 100+ common AI cliches and overused phrases
+- Load default list of ~46 curated entries covering AI-isms, cliches, and overused phrases
 - Add custom words per project
 - AI avoids all listed words in every generation pass
 
@@ -243,10 +261,13 @@ The Quick Start results feed directly into Step-by-Step mode -- the power user g
 - AI-tracked personality slider evolution based on accepted arc events
 - Computes how sliders change across the story
 - References accepted arc events during generation
+- Proposed vs Accepted status for author control
 
 ### Scene References
 - Tag scenes the AI should specifically reference during generation
-- Cross-reference system for scene callouts
+- 6 reference types: Foreshadowing, Callback, Continuity, Character Arc, World Building, Plot Thread
+- Color-coded by type
+- Toggle active/inactive per reference
 
 ---
 
@@ -332,27 +353,21 @@ The Quick Start results feed directly into Step-by-Step mode -- the power user g
 
 ## Production Pipeline (YouTube litRPG)
 
-A 10-stage automated production pipeline with review gates at each step:
+A 5-stage automated production pipeline with review gates at each step:
 
 | Stage | Description |
 |-------|-------------|
-| 1. Analysis | LLM extracts visual moments from chapter text |
-| 2. Image Generation | ComfyUI creates images for each visual moment |
-| 3. Image Review | User approves/rejects/retakes images |
-| 4. Animation | Adds subtle motion to approved images |
-| 5. Animation Review | User approves animations |
-| 6. TTS Generation | Generates audio narration for chapter |
-| 7. TTS Review | User previews and approves audio |
-| 8. Audio Assembly | Combines audio chunks into full chapter |
-| 9. Video Assembly | Exports manifest with timing data for video editors |
-| 10. Lipsync | Generates lip-sync video of character reading (optional) |
+| 1. Analyse & Generate Images | LLM extracts visual moments, then ComfyUI generates images (with per-image prompt editing and regeneration) |
+| 2. Animate Images | Adds subtle motion via LTX 2.3 Text2Video (optional -- skip for stills) |
+| 3. Generate TTS Audio | Kokoro TTS narration with per-chunk editing and regeneration for pronunciation fixes |
+| 4. Audio Assembly & Export | Browser-based WAV assembly + video manifest JSON for external editors |
+| 5. Lip-sync Generation | LTX 2.3 LipSync Portrait -- character face + TTS audio = talking-head video |
 
 - One job at a time (never concurrent)
-- Retry capability for failed stages
-- Manual editing between stages
+- Per-item regeneration without restarting the stage
 - Sequential file naming for assembly
-- Custom ComfyUI workflow support
-- Review gates ensure quality control before final output
+- Stage Indicator shows visual progress (green/pulsing/amber/red)
+- Review gates ensure quality control before proceeding
 
 ---
 
@@ -365,6 +380,14 @@ A 10-stage automated production pipeline with review gates at each step:
 - Context Length, System Prompt, Style Guide
 - Stop Sequences
 - Connection test with status indicator
+
+### Model Presets (Multi-Model Routing)
+- Define separate model configurations per task type
+- Task modes: design_brief, outline, scene, rewrite, brainstorm, vision, utility
+- Each preset: model name, endpoint, context length, max tokens, temperature, sampling params
+- Active preset auto-routes generation to the right model
+- Falls back to default settings when no preset exists
+- Allows running different models for different jobs (e.g., small model for summaries, large for prose)
 
 ### Vision Model
 - Separate model for image analysis
@@ -438,6 +461,7 @@ A 10-stage automated production pipeline with review gates at each step:
 
 ## Key Design Principles
 
+- **Blueprint before prose:** Story Forge is built on the premise that great series come from complete development blueprints. The tools guide authors through world-building, planning, and structural design before a single chapter is written.
 - **World-building first:** The app is designed around the assumption that authors build their world (characters, places, manifesto, story bible) before using the writing tools. Rich world data produces rich AI output; empty world data produces generic output.
 - **Context-first generation:** AI always sees the full relevant project state
 - **Quick Start to Power User:** The Quick Start wizard removes writer's block by generating a full backbone from 3 inputs. The results feed into the advanced editor for fine-tuning, so casual users get momentum and power users get control.

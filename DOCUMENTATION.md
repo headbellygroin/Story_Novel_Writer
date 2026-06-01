@@ -24,7 +24,9 @@
 
 ## Overview
 
-Story Forge is a self-hosted AI novel writing and production studio. It connects to two services running on your AI machine -- LM Studio for text generation and ComfyUI for all media generation -- and uses a Supabase database to store your project data. Nothing is sent to any third-party AI cloud.
+Story Forge is an AI-assisted series development studio that turns a story idea into a complete writing blueprint before a single chapter is written.
+
+It connects to two services running on your AI machine -- LM Studio for text generation and ComfyUI for all media generation -- and uses a Supabase database to store your project data. Nothing is sent to any third-party AI cloud.
 
 The application covers the full authoring lifecycle: brainstorming, world-building, outlining, scene-by-scene writing with AI assistance, consistency checking, and then a full production pipeline that turns finished chapters into audiobook-style video content suitable for YouTube upload.
 
@@ -78,9 +80,10 @@ Handles all four media types: scene images (NetaYume Lumina / Flux workflow), an
 |-------|----------|
 | Planning | Projects, Franchise Manifesto, Dossier, Series Wizard, Outline |
 | World | World Library (Characters, Places, Things, Technologies), Story Bible, Style Anchors, Prohibited Words |
-| Writing | Write (scene editor), Voice Chat |
+| Writing | Write (scene editor with 3 generation modes), Voice Chat |
 | Quality | Consistency Tracking (Story Events, Character States, Character Arc, Scene References), Logic Checks, Reveal Timeline |
 | Production | Pipeline (5 stages: Images, Animation, TTS, Assembly, Lip-sync), Audiobook TTS |
+| Configuration | Settings, Model Presets (multi-model routing), Setup Guide |
 | Output | Export (HTML / Markdown / Text), Save & Load (JSON backup) |
 
 ---
@@ -172,6 +175,24 @@ Beyond the endpoints, Settings lets you tune:
 - **Lip-sync orientation & seed** -- Output orientation and noise seed for lip-sync video generation.
 - **Lip-sync prompt fields** -- Background Setting and Character Description for the LTX 2.3 LipSync workflow.
 - **Voice Chat settings** -- Browser TTS voice, speech rate, and pitch for in-app voice chat.
+
+### Model Presets (Multi-Model Routing)
+
+Define separate model configurations per task type so different AI jobs use the right model automatically:
+
+| Task Mode | Typical Use |
+|-----------|-------------|
+| design_brief | Design Briefs, Context Tag Recommendations, Lore Audits |
+| outline | Book/Chapter/Scene Outlines |
+| scene | Scene Generation, Chapter Writing |
+| rewrite | Editing passes, rewrites |
+| brainstorm | Quick creative generation (NPC names, locations, songs) |
+| vision | Image analysis |
+| utility | Summaries, metadata, JSON generation |
+
+Each preset stores: model name, API endpoint, context length, max tokens, temperature, and sampling parameters. When a preset is active for a task mode, that mode auto-routes to the configured model. Falls back to default generation settings when no preset exists.
+
+This allows running a large model for prose (scene mode) and a smaller, faster model for utility tasks -- without changing settings between operations.
 
 ---
 
@@ -333,6 +354,8 @@ When a character has a filled dossier, the dossier is the primary context for th
 
 2. **Context Tags Panel** -- Tag specific entities (characters, places, things, technologies, story bible entries) to include in this scene's generation context. 5-type tabbed interface. Only tagged items are sent to the AI. Color-coded by entity type.
 
+3. **Chapter Context Tags Panel** -- Persistent tags set at the chapter level that apply to all scenes in that chapter. Scene-level tags override chapter-level tags when present. Useful for outline-driven workflows where the same cast and locations persist across a chapter.
+
 3. **Scene Summary Panel** -- 4-field summary (summary text, key facts, characters involved, emotional arc). Used as efficient distant context for other scenes instead of sending full scene text.
 
 4. **Scene Image Panel** -- Generate a header image for the scene via ComfyUI. Auto-generates a prompt from scene content + world data, or allows manual prompt editing. Displays the generated image inline.
@@ -342,6 +365,10 @@ When a character has a filled dossier, the dossier is the primary context for th
    - Step 2: Implement edits (apply improvements to create refined version)
    - Can apply the edited version back to the main scene content
    - Uses style rules, prohibited words, and previous chapter context
+
+6. **Prompt Report Panel** -- Shows the full assembled context package from the last generation. Displays which sections were included, their token counts, and which were truncated or dropped due to budget limits. Useful for debugging why the AI did or didn't reference specific world data.
+
+7. **Recommended Tags Panel** -- AI-suggested context tags based on scene content. Analyses the scene text and suggests relevant entities (characters, places, things) that should be tagged for context injection. One-click to add suggestions.
 
 > You can also paste pre-written text directly into the editor. The AI generation features are optional -- you can use Story Forge as a structured editor for existing writing and still run the full production pipeline.
 
@@ -450,6 +477,14 @@ The central database for everything that exists in your story's world. Divided i
   15. Shame / Self-Worth
 
   Each slider has descriptive text at 5 levels. Slider values are formatted into the AI prompt to influence how the model writes each character. Sliders evolve over time via Character Arc Events.
+
+- **Character Visibility** -- Controls when a character becomes available for AI context:
+  - `book_introduced` (default: 1) -- which book the character first appears in
+  - `chapter_introduced` (optional) -- which chapter within that book
+  - `scene_introduced` (optional) -- which scene within that chapter
+  - Characters are hidden from generation context until the story reaches their introduction point
+  - Prevents future cast from contaminating early scenes
+  - Deep Analysis / Design Brief modes can override visibility to see all characters for planning
 
 - **Character Dossier** -- Deep character development profile with two generation modes:
   - **Structured Mode** -- Produces organized markdown with ## headers for each section (Core Role, Function/Occupation, Public Appearance, Internal Appearance, Personality Traits, Emotional Function, Relationship With Setting, Key Relationships, Personal Fear, Personal Flaw, Quiet Human Moments, Comedy Dynamics, Symbolic Theme, Character Arc, Relationship To The Wider World, Legacy/Post-Crisis)
