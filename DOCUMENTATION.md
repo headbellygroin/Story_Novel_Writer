@@ -16,6 +16,7 @@
 10. [Files & Storage](#files--storage)
 11. [End-to-End Workflow](#end-to-end-workflow)
 12. [Context Assembly Architecture](#context-assembly-architecture)
+13. [Relevance Scoring](#relevance-scoring-entity-selection-layer)
 
 ---
 
@@ -46,7 +47,7 @@ Handles all four media types: scene images (NetaYume Lumina / Flux workflow), an
 
 | Group | Features |
 |-------|----------|
-| Planning | Projects, Franchise Manifesto, Dossier, Outline |
+| Planning | Projects, Franchise Manifesto, Dossier, Series Wizard, Outline |
 | World | World Library (Characters, Places, Things, Technologies), Story Bible, Style Anchors, Prohibited Words |
 | Writing | Write (scene editor), Voice Chat |
 | Quality | Consistency Tracking (Story Events, Character States, Character Arc, Scene References), Logic Checks, Reveal Timeline |
@@ -189,6 +190,51 @@ The Write page Context tab now shows a "Generation Sources" panel listing all gu
 ### Dossier
 
 The Dossier is your pre-writing planning tool. Paste a free-form brain dump of your story idea and a list of genre tropes you want to include, then click Generate. The AI produces a structured story dossier covering premise, themes, tone, major characters, and key plot beats. Edit and save the result. The dossier is included in downstream AI context so the model understands what kind of story you're writing.
+
+### Series Planning Wizard
+
+The Series Wizard guides you through planning your story structure in the correct order rather than jumping directly into scene writing. It ensures you build the backbone first (series arc, major events, outline) before drilling into chapters and scenes.
+
+**Two Modes:**
+
+**Quick Start (recommended for new projects)**
+Answer 3 questions, press one button, and the AI generates your complete series structure in a single automated run:
+
+1. How many books? (default: 7)
+2. What kind of story? (genre/tone -- e.g. "Blue-collar space opera", "Found family adventure")
+3. What must happen by the end? (series endpoint -- e.g. "Benjamin discovers the truth about the Naughts")
+
+Pressing "Build My Series" chains 4 generation steps automatically:
+- Series Map -- high-level arc for all books (theme, beginning/ending state, major events, character growth, world changes per book)
+- Book 1 Major Events -- turning points (opening, inciting incident, first turning point, midpoint, major reversal, climax, resolution)
+- Book 1 Outline -- detailed structural outline with act breaks
+- Book 1 Chapter List -- 20-30 chapters with POV, location, events, and tone
+
+Each section appears progressively as it generates. A progress bar shows which step is running. When all 4 complete, review the output inline -- each section has a "Regenerate" button to redo just that section without losing the others. "Save All to Project" stores everything: the series map and events go to Story Bible entries (category: series_planning), the book outline creates an Outline record.
+
+**Step-by-Step (advanced / mid-revision)**
+Full manual control over each of 6 steps with individual generation, custom user notes per step, and book/chapter selectors for iterating on books 2, 3, etc. The 6 steps are:
+
+1. Series Map
+2. Major Events (per book)
+3. Book Outline (per book)
+4. Chapter List (per book)
+5. Chapter Briefs (batched 5 chapters at a time)
+6. Scene Breakdown (per chapter)
+
+Each step feeds the output from all previous steps as context for the next. You can select which book/chapter to generate for, add your own notes and constraints, review the output, save it, then proceed.
+
+**Where results are stored:**
+- Series Map, Major Events, Chapter Lists, Briefs, Scene Breakdowns: Story Bible entries with category `series_planning`
+- Book Outlines: Outline records (same as manually-created outlines on the Outline page)
+
+**Workflow recommendation:**
+1. Use Quick Start to generate the full Book 1 skeleton
+2. Review each section -- regenerate anything that doesn't fit
+3. Save All to Project
+4. Switch to Step-by-Step mode for Books 2-7 (using the series map from Quick Start as foundation)
+5. Once chapter list is finalized, use Chapter Briefs and Scene Breakdown to plan individual chapters
+6. Move to the Write page to generate prose scene by scene
 
 ### Outline
 
@@ -812,7 +858,11 @@ Complete walkthrough from a blank project to a finished audiobook video chapter.
 ### 3 -- Planning
 
 1. Open the Dossier page, paste your story brain dump and genre tropes, and generate the dossier.
-2. Build your outline -- create outlines with synopsis/act structure/themes, then add chapters with summaries, key events, POV character (from World Library), and setting (from World Library).
+2. Open the Series Wizard (Wizard tab). Use Quick Start: answer the 3 questions (book count, genre, series endpoint) and press "Build My Series". The AI generates your series map, Book 1 events, Book 1 outline, and chapter list in one automated run.
+3. Review each section -- use Regenerate on any that don't fit your vision.
+4. Save All to Project. The series map and events go to Story Bible; the outline creates a proper Outline record.
+5. For subsequent books, switch to Step-by-Step mode and generate events/outline/chapters per book.
+6. On the Outline page, add chapters with summaries, key events, POV character (from World Library), and setting (from World Library) -- or use the wizard-generated chapter list as a starting point.
 
 ### 4 -- Writing
 
@@ -927,6 +977,40 @@ When no context tags are set, entities with `generation_relevant = false` are ex
 
 **Dossier Ownership:**
 When a character has a filled dossier, only the dossier (plus dialogue style and sliders) is injected. The raw personality, background, and goals fields are NOT also sent -- the dossier already contains this information in richer form. Characters without a dossier fall back to individual fields.
+
+### Relevance Scoring (Entity Selection Layer)
+
+When no Context Tags are set on a scene, Story Forge uses a relevance scoring system to determine which characters to include in AI context. This prevents the entire world database from flooding every prompt -- only scene-relevant entities are injected.
+
+**Scoring signals (checked in priority order):**
+
+| Score | Tier | Signal |
+|-------|------|--------|
+| 100 | Hard Include | Character named in scene description/request |
+| 95 | Hard Include | Character listed in `characters_involved` from prior scene summaries in same chapter |
+| 75 | High | Character named in chapter summary |
+| 50 | Medium | Character named in prior scene summaries text |
+| 25 | Low | Character named in recent scene content (last 2 scenes) |
+| 0 | Background | Merely visible in the world -- not scene-relevant |
+
+**Key design decision:** Character role alone (protagonist, antagonist, POV) does NOT guarantee inclusion. A character must be referenced by name in at least one contextual signal to score above background. This ensures that "Morning on the Docks" includes Benjamin, the crew, and the ship -- but not Admiral Rowan or the Compliance Director unless they are tagged, named in the scene request, or mentioned in recent scene summaries.
+
+**Budget allocation:**
+- Hard Include and High: always included
+- Medium and Low: included if present
+- Background: excluded (unless nothing else scores, in which case top 3 are included as fallback)
+
+**Practical effect:**
+- Smaller prompts (fewer irrelevant character sheets consuming token budget)
+- Higher quality generation (AI focuses on characters actually in the scene)
+- Less world database noise (distant characters stay distant)
+- Entity selection is relevance-driven rather than existence-driven
+
+**How to control it:**
+- Use Context Tags for explicit manual control (overrides scoring entirely)
+- Use `characters_involved` in Scene Summaries to register who appeared in prior scenes
+- Use the scene description to name characters who should appear
+- Use chapter summaries to flag recurring characters for a chapter
 
 ### Token Budget Calculation
 
