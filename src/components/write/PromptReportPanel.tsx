@@ -110,19 +110,34 @@ export default function PromptReportPanel({ report, contextMode, worldRichness, 
             </div>
           )}
 
-          <div className="bg-slate-50 rounded-md p-2 border border-slate-200">
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-600 font-medium">Frame (System + Style)</span>
-              <span className="font-mono text-slate-700">{report.frameTokens.toLocaleString()}</span>
+          {/* Frame Breakdown - Hidden Context */}
+          {report.frameBreakdown && (
+            <div className="bg-amber-50/50 rounded-md p-2 border border-amber-200">
+              <div className="text-xs font-medium text-amber-800 mb-1.5">Frame (Hidden Context)</div>
+              <div className="space-y-0.5">
+                {[
+                  { label: 'System Prompt', tokens: report.frameBreakdown.systemPrompt },
+                  { label: 'Style Guide', tokens: report.frameBreakdown.styleGuide },
+                  { label: 'Style Rules', tokens: report.frameBreakdown.styleRules },
+                  { label: 'Prohibited Words', tokens: report.frameBreakdown.prohibitedWords },
+                  { label: 'Scene Brief', tokens: report.frameBreakdown.sceneDescription },
+                  { label: 'Mode Instructions', tokens: report.frameBreakdown.modeInstructions },
+                ].filter(item => item.tokens > 0).map(item => (
+                  <div key={item.label} className="flex justify-between text-xs">
+                    <span className="text-amber-700">{item.label}</span>
+                    <span className="font-mono text-amber-800">{item.tokens.toLocaleString()}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-xs font-medium pt-1 border-t border-amber-200 mt-1">
+                  <span className="text-amber-800">Frame Total</span>
+                  <span className="font-mono text-amber-900">{report.frameTokens.toLocaleString()}</span>
+                </div>
+              </div>
             </div>
-            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-slate-400 rounded-full"
-                style={{ width: `${Math.min(100, (report.frameTokens / (report.maxBudget + report.frameTokens)) * 100)}%` }}
-              />
-            </div>
-          </div>
+          )}
 
+          {/* Visible Context Sections */}
+          <div className="text-xs font-medium text-slate-600 mt-2">Visible Context</div>
           <div className="space-y-1">
             {report.sections.map((section) => {
               const totalBudget = report.maxBudget + report.frameTokens;
@@ -175,28 +190,37 @@ export default function PromptReportPanel({ report, contextMode, worldRichness, 
             })}
           </div>
 
-          <div className="border-t border-slate-200 pt-2 mt-2">
-            <div className="flex justify-between text-xs font-semibold">
-              <span className="text-slate-800">Total Prompt Tokens</span>
-              <span className="font-mono text-slate-900">{report.totalPromptTokens.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-xs mt-1">
-              <span className="text-slate-500">Context Budget (85% safe)</span>
+          {/* Final Total */}
+          <div className="border-t border-slate-200 pt-2 mt-2 space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Visible Context</span>
               <span className="font-mono text-slate-600">
-                {(report.totalPromptTokens - report.frameTokens).toLocaleString()} / {report.maxBudget.toLocaleString()}
+                {(report.totalPromptTokens - report.frameTokens).toLocaleString()}
               </span>
             </div>
-            <div className="h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-500">Hidden Frame</span>
+              <span className="font-mono text-slate-600">{report.frameTokens.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-xs font-semibold pt-1.5 border-t border-slate-300">
+              <span className="text-slate-900">Final Prompt Sent</span>
+              <span className="font-mono text-slate-900">{report.totalPromptTokens.toLocaleString()} tokens</span>
+            </div>
+            <div className="h-2 bg-slate-200 rounded-full overflow-hidden mt-1">
               <div
                 className={`h-full rounded-full transition-all ${
-                  (report.totalPromptTokens - report.frameTokens) / report.maxBudget > 0.9
+                  report.totalPromptTokens / (report.maxBudget + report.frameTokens) > 0.9
                     ? 'bg-red-500'
-                    : (report.totalPromptTokens - report.frameTokens) / report.maxBudget > 0.7
+                    : report.totalPromptTokens / (report.maxBudget + report.frameTokens) > 0.7
                       ? 'bg-amber-500'
                       : 'bg-teal-500'
                 }`}
-                style={{ width: `${Math.min(100, ((report.totalPromptTokens - report.frameTokens) / report.maxBudget) * 100)}%` }}
+                style={{ width: `${Math.min(100, (report.totalPromptTokens / (report.maxBudget + report.frameTokens)) * 100)}%` }}
               />
+            </div>
+            <div className="flex justify-between text-xs text-slate-400">
+              <span>Context Budget</span>
+              <span className="font-mono">{(report.maxBudget + report.frameTokens).toLocaleString()}</span>
             </div>
           </div>
         </div>

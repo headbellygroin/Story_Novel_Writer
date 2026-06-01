@@ -67,6 +67,14 @@ export interface PromptAssemblyReport {
     bibleFactsUsed: number;
     compressionRatio: number;
   };
+  frameBreakdown: {
+    systemPrompt: number;
+    styleGuide: number;
+    styleRules: number;
+    prohibitedWords: number;
+    sceneDescription: number;
+    modeInstructions: number;
+  };
   frameTokens: number;
   totalPromptTokens: number;
   maxBudget: number;
@@ -750,9 +758,6 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
     ? `\n\n=== PROHIBITED WORDS AND PHRASES ===\nDo NOT use any of these words or phrases in the generated text:\n${context.prohibitedWords.join(', ')}\n`
     : '';
 
-  const frameText = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}\n\n${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}`;
-  const frameTokens = estimateTokens(frameText);
-
   const sections = buildSections(context, contextMode, generationMode);
   sections.sort((a, b) => b.priority - a.priority);
 
@@ -807,9 +812,20 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
   const charactersUsed = context.characters?.filter(c => c.canon_status !== 'deprecated').length ?? 0;
   const locationsUsed = context.places?.filter(p => p.canon_status !== 'deprecated').length ?? 0;
   const bibleFactsUsed = context.storyBibleFacts?.filter(f => f.canon_status !== 'deprecated').length ?? 0;
-  const totalContextTokens = frameTokens + usedTokens;
-  const fullContextEstimate = sections.reduce((sum, s) => sum + estimateTokens(s.content), 0) + frameTokens;
-  const compressionRatio = fullContextEstimate > 0 ? totalContextTokens / fullContextEstimate : 1;
+
+  // Frame breakdown: detailed per-component token counts
+  const systemPromptTokens = estimateTokens(settings.system_prompt || '');
+  const styleGuideTokens = estimateTokens(settings.style_guide || '');
+  const styleRulesTokens = estimateTokens(rulesBlock);
+  const prohibitedWordsTokens = estimateTokens(prohibitedBlock);
+  const sceneDescTokens = estimateTokens(request.sceneDescription || '');
+  const modeInstructionsTokens = estimateTokens(GENERATION_MODE_INSTRUCTIONS[generationMode] || '');
+
+  const totalFrameTokens = systemPromptTokens + styleGuideTokens + styleRulesTokens + prohibitedWordsTokens + sceneDescTokens + modeInstructionsTokens;
+  const totalPromptTokens = totalFrameTokens + usedTokens;
+
+  const fullContextEstimate = sections.reduce((sum, s) => sum + estimateTokens(s.content), 0) + totalFrameTokens;
+  const compressionRatio = fullContextEstimate > 0 ? totalPromptTokens / fullContextEstimate : 1;
 
   return {
     sections: reportSections,
@@ -819,8 +835,16 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
       bibleFactsUsed,
       compressionRatio,
     },
-    frameTokens,
-    totalPromptTokens: frameTokens + usedTokens,
+    frameBreakdown: {
+      systemPrompt: systemPromptTokens,
+      styleGuide: styleGuideTokens,
+      styleRules: styleRulesTokens,
+      prohibitedWords: prohibitedWordsTokens,
+      sceneDescription: sceneDescTokens,
+      modeInstructions: modeInstructionsTokens,
+    },
+    frameTokens: totalFrameTokens,
+    totalPromptTokens,
     maxBudget: availableForContext,
     contextMode,
     generationMode,
