@@ -102,11 +102,28 @@ const GENERATION_MODE_INSTRUCTIONS: Record<GenerationMode, string> = {
   deep_analysis: `Perform a thorough analytical review of the provided material. Identify inconsistencies, continuity errors, unresolved plot threads, character behavior contradictions, timeline issues, and lore conflicts. Provide a structured report with specific citations and severity ratings. Focus on factual accuracy within the story world, not stylistic preferences.`,
 };
 
+function getDesignBriefInstruction(planningMode: PlanningMode): string {
+  const base = `Generate a structured Design Brief document based on the above context and instructions. Do NOT write prose, dialogue, or scenes. Output ONLY the structured planning document with clear section headings. Focus on emotional purpose, character goals, theme goals, worldbuilding goals, reveal restrictions, and ending beats. The brief should be detailed enough that multiple writers could independently produce a recognizable chapter from it.`;
+
+  if (planningMode === 'strict') {
+    return `${base}
+
+STRICT PLANNING RULE: Do NOT invent events, reveals, character decisions, motivations, locations, or worldbuilding details that are not explicitly present in the source scene request or the provided context. Your role is to ORGANIZE, CLARIFY, STRUCTURE, and PRIORITIZE the supplied information only. If information is missing, note it as "unspecified" rather than filling it in. Do not create new plot points, mysteries, character arcs, or future events. Every element in the brief must trace back to something explicitly stated in the scene request or context above.`;
+  }
+
+  return `${base}
+
+You may lightly extrapolate and suggest logical extensions of the provided material, but clearly mark any suggestions that go beyond the explicitly stated source material with [SUGGESTED] tags so the author can accept or reject them.`;
+}
+
+export type PlanningMode = 'strict' | 'creative';
+
 export interface GenerateSceneRequest {
   sceneDescription: string;
   generationMode?: GenerationMode;
   contextMode?: ContextMode;
   worldRichness?: WorldRichness;
+  planningMode?: PlanningMode;
   context: {
     franchiseManifesto?: string;
     characters?: Array<{ name: string; role: string; personality: string; background: string; image_description?: string; dialogue_style?: string; personality_sliders_text?: string; infrastructure_sliders_text?: string; dossier?: string; canon_status?: string }>;
@@ -141,7 +158,7 @@ function truncateToTokenBudget(text: string, maxTokens: number): string {
 }
 
 export async function generateScene(request: GenerateSceneRequest): Promise<string> {
-  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full', worldRichness = 'balanced' } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full', worldRichness = 'balanced', planningMode = 'strict' } = request;
 
   const contextLength = settings.context_length || 4096;
   let reservedForOutput = settings.max_tokens;
@@ -162,7 +179,9 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
     : '';
 
   const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : generationMode === 'deep_analysis' ? 'Analysis Instructions' : 'Outline Instructions';
-  const modeInstruction = GENERATION_MODE_INSTRUCTIONS[generationMode];
+  const modeInstruction = generationMode === 'design_brief'
+    ? getDesignBriefInstruction(planningMode)
+    : GENERATION_MODE_INSTRUCTIONS[generationMode];
 
   let fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
@@ -258,7 +277,7 @@ export async function generateSceneStreaming(
   request: GenerateSceneRequest,
   onChunk: (text: string) => void,
 ): Promise<string> {
-  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full', worldRichness = 'balanced' } = request;
+  const { sceneDescription, context, settings, generationMode = 'scene', contextMode = 'full', worldRichness = 'balanced', planningMode = 'strict' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
@@ -278,7 +297,9 @@ export async function generateSceneStreaming(
     : '';
 
   const modeLabel = generationMode === 'scene' ? 'Scene to write' : generationMode === 'design_brief' ? 'Design Brief Instructions' : generationMode === 'deep_analysis' ? 'Analysis Instructions' : 'Outline Instructions';
-  const modeInstruction = GENERATION_MODE_INSTRUCTIONS[generationMode];
+  const modeInstruction = generationMode === 'design_brief'
+    ? getDesignBriefInstruction(planningMode)
+    : GENERATION_MODE_INSTRUCTIONS[generationMode];
 
   let fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
@@ -755,7 +776,7 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
 }
 
 export function assemblePromptReport(request: GenerateSceneRequest): PromptAssemblyReport {
-  const { context, settings, contextMode = 'full', generationMode = 'scene', worldRichness = 'balanced' } = request;
+  const { context, settings, contextMode = 'full', generationMode = 'scene', worldRichness = 'balanced', planningMode = 'strict' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
@@ -832,7 +853,9 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
   const styleRulesTokens = estimateTokens(rulesBlock);
   const prohibitedWordsTokens = estimateTokens(prohibitedBlock);
   const sceneDescTokens = estimateTokens(request.sceneDescription || '');
-  const modeInstructionsTokens = estimateTokens(GENERATION_MODE_INSTRUCTIONS[generationMode] || '');
+  const modeInstructionsTokens = estimateTokens(
+    generationMode === 'design_brief' ? getDesignBriefInstruction(planningMode) : (GENERATION_MODE_INSTRUCTIONS[generationMode] || '')
+  );
 
   const totalFrameTokens = systemPromptTokens + styleGuideTokens + styleRulesTokens + prohibitedWordsTokens + sceneDescTokens + modeInstructionsTokens;
   const totalPromptTokens = totalFrameTokens + usedTokens;

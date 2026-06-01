@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
-import { generateScene, GenerationMode, ContextMode, WorldRichness, assemblePromptReport, PromptAssemblyReport } from '../services/aiService';
+import { generateScene, GenerationMode, ContextMode, WorldRichness, PlanningMode, assemblePromptReport, PromptAssemblyReport } from '../services/aiService';
 import { recommendContextTags, TagRecommendation, EntityCandidate } from '../services/contextRecommendationService';
 import { formatSlidersForPrompt } from '../lib/personalitySliders';
 import { formatInfraSlidersForPrompt } from '../lib/infrastructureSliders';
@@ -35,6 +35,7 @@ export default function Write() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<'scenes' | 'context' | 'brief' | 'image' | 'report'>('scenes');
   const [generationMode, setGenerationMode] = useState<GenerationMode>('scene');
+  const [planningMode, setPlanningMode] = useState<PlanningMode>('strict');
   const [contextMode, setContextMode] = useState<ContextMode>('relevant');
   const [worldRichness, setWorldRichness] = useState<WorldRichness>('balanced');
   const [promptReport, setPromptReport] = useState<PromptAssemblyReport | null>(null);
@@ -449,6 +450,7 @@ export default function Write() {
         generationMode,
         contextMode,
         worldRichness,
+        planningMode,
         context: {
           franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
@@ -775,6 +777,7 @@ export default function Write() {
         generationMode,
         contextMode,
         worldRichness,
+        planningMode,
         context: {
           franchiseManifesto: manifestoRes?.data?.content || undefined,
           outlineSynopsis: outline?.data?.synopsis,
@@ -1307,6 +1310,32 @@ export default function Write() {
                       Analysis
                     </button>
                   </div>
+                  {(generationMode === 'design_brief' || generationMode === 'outline') && (
+                    <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                      <button
+                        onClick={() => setPlanningMode('strict')}
+                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                          planningMode === 'strict'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                        title="Only organize supplied information — no invention"
+                      >
+                        Strict
+                      </button>
+                      <button
+                        onClick={() => setPlanningMode('creative')}
+                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                          planningMode === 'creative'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                        title="Allow light extrapolation marked with [SUGGESTED]"
+                      >
+                        Creative
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={() => generateSceneContent(selectedScene.id)}
                     disabled={generating || !settings}
