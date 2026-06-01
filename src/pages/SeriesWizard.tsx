@@ -1437,5 +1437,4 @@ function AdvancedPanel({
   );
 }
 
-
 export default SeriesWizard
