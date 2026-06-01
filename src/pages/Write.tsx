@@ -36,45 +36,45 @@ function scoreCharacterRelevance(
   chapterSummary: string,
   recentSceneText: string,
   sceneSummaryText: string,
+  charactersInvolved: string[],
 ): RelevanceScore {
   const name = (character.name || '').toLowerCase();
   const sceneDesc = sceneDescription.toLowerCase();
   const chapSum = chapterSummary.toLowerCase();
   const recentText = recentSceneText.toLowerCase();
   const summaryText = sceneSummaryText.toLowerCase();
+  const involvedLower = charactersInvolved.map(n => n.toLowerCase().trim());
 
-  // Hard include: explicitly named in scene description
+  // Hard include: explicitly named in scene description or in characters_involved from summaries
   if (name.length > 2 && sceneDesc.includes(name)) {
     return { entity: character, tier: 'hard_include', score: 100, reason: 'Named in scene request' };
   }
+  if (involvedLower.some(n => n === name || n.includes(name) || (name.length > 2 && n.includes(name)))) {
+    return { entity: character, tier: 'hard_include', score: 95, reason: 'In characters_involved' };
+  }
 
-  // High: named in chapter summary or scene summaries
+  // High: named in chapter summary
   if (name.length > 2 && chapSum.includes(name)) {
     return { entity: character, tier: 'high', score: 75, reason: 'Named in chapter summary' };
   }
+
+  // Medium: named in prior scene summaries for this chapter
   if (name.length > 2 && summaryText.includes(name)) {
-    return { entity: character, tier: 'high', score: 70, reason: 'Named in scene summaries' };
+    return { entity: character, tier: 'medium', score: 50, reason: 'Named in scene summaries' };
   }
 
-  // Medium: core cast roles
-  const role = (character.role || '').toLowerCase();
-  const coreRoles = ['protagonist', 'antagonist', 'pov'];
-  if (coreRoles.some(r => role.includes(r))) {
-    return { entity: character, tier: 'medium', score: 50, reason: `Core role: ${character.role}` };
-  }
-
-  // Low: mentioned in recent scene content
+  // Low: mentioned in recent scene content (carries over from last 2 scenes)
   if (name.length > 2 && recentText.includes(name)) {
     return { entity: character, tier: 'low', score: 25, reason: 'Named in recent scene' };
   }
 
-  // Background: merely visible
-  return { entity: character, tier: 'background', score: 0, reason: 'Visible but not relevant' };
+  // Background: merely visible — role alone does not qualify
+  return { entity: character, tier: 'background', score: 0, reason: 'Visible but not scene-relevant' };
 }
 
 function filterByRelevance(
   scores: RelevanceScore[],
-  maxBackground: number = 0,
+  maxFallback: number = 3,
 ): { included: RelevanceScore[]; excluded: RelevanceScore[] } {
   const included: RelevanceScore[] = [];
   const excluded: RelevanceScore[] = [];
@@ -87,9 +87,9 @@ function filterByRelevance(
     }
   }
 
-  // If nothing scored above background, include top 3 by role as fallback
+  // If nothing scored above background, include top N as fallback
   if (included.length === 0 && excluded.length > 0) {
-    const fallback = excluded.splice(0, Math.min(maxBackground, excluded.length));
+    const fallback = excluded.splice(0, Math.min(maxFallback, excluded.length));
     included.push(...fallback.map(s => ({ ...s, reason: s.reason + ' (fallback)' })));
   }
 
@@ -356,13 +356,16 @@ export default function Write() {
         const sceneSummaryText = (summariesRes.data || [])
           .filter((s: any) => s.scenes && s.scenes.chapter_id === scene.chapter_id && s.scenes.order_index < scene.order_index)
           .map((s: any) => s.summary || '').join(' ');
+        const charactersInvolved = (summariesRes.data || [])
+          .filter((s: any) => s.scenes && s.scenes.chapter_id === scene.chapter_id && s.scenes.order_index < scene.order_index)
+          .flatMap((s: any) => s.characters_involved || []);
         const recentSceneText = scenes
           .filter(s => s.order_index < scene.order_index && s.content)
           .slice(-2)
           .map(s => s.content || '').join(' ');
 
         const charScores = visibleCharacters.map((c: any) =>
-          scoreCharacterRelevance(c, scene.description || '', chapter.data?.summary || '', recentSceneText, sceneSummaryText)
+          scoreCharacterRelevance(c, scene.description || '', chapter.data?.summary || '', recentSceneText, sceneSummaryText, charactersInvolved)
         );
         const { included: includedChars } = filterByRelevance(charScores, 3);
         characters = includedChars.map(s => s.entity);
@@ -703,13 +706,16 @@ export default function Write() {
         const sceneSummaryText = (summariesRes.data || [])
           .filter((s: any) => s.scenes && s.scenes.chapter_id === scene.chapter_id && s.scenes.order_index < scene.order_index)
           .map((s: any) => s.summary || '').join(' ');
+        const charactersInvolved = (summariesRes.data || [])
+          .filter((s: any) => s.scenes && s.scenes.chapter_id === scene.chapter_id && s.scenes.order_index < scene.order_index)
+          .flatMap((s: any) => s.characters_involved || []);
         const recentSceneText = scenes
           .filter(s => s.order_index < scene.order_index && s.content)
           .slice(-2)
           .map(s => s.content || '').join(' ');
 
         const charScores = visibleCharacters.map((c: any) =>
-          scoreCharacterRelevance(c, scene.description || '', chapter.data?.summary || '', recentSceneText, sceneSummaryText)
+          scoreCharacterRelevance(c, scene.description || '', chapter.data?.summary || '', recentSceneText, sceneSummaryText, charactersInvolved)
         );
         const { included: includedChars } = filterByRelevance(charScores, 3);
         characters = includedChars.map(s => s.entity);
