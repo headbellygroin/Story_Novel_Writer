@@ -1219,6 +1219,3 @@ function AdvancedPanel({
     </div>
   );
 }
-
-
-export default SeriesWizard
