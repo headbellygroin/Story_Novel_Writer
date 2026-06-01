@@ -258,8 +258,18 @@ export default function Write() {
         places = allPlaces;
         things = allThings;
         technologies = allTechs;
+      } else if (generationMode === 'design_brief' || generationMode === 'outline') {
+        // Design Brief / Outline: tight limits to keep context small
+        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
+        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        characters = [...mainChars, ...otherChars.slice(0, 5)].slice(0, 6);
+        places = allPlaces.slice(0, 3);
+        things = allThings.slice(0, 3);
+        technologies = allTechs.slice(0, 3);
+        console.log(`[Story Forge] Design brief context: auto-limiting (${characters.length} chars, ${places.length} places, ${things.length} things, ${technologies.length} tech)`);
       } else {
-        // Smart fallback: limit untagged entities to reduce context pressure
+        // Scene writing: moderate limits
         const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
         const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
         const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
@@ -531,6 +541,14 @@ export default function Write() {
         places = allPlaces;
         things = allThings;
         technologies = allTechs;
+      } else if (generationMode === 'design_brief' || generationMode === 'outline') {
+        const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
+        const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        const otherChars = allCharacters.filter((c: any) => !mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));
+        characters = [...mainChars, ...otherChars.slice(0, 5)].slice(0, 6);
+        places = allPlaces.slice(0, 3);
+        things = allThings.slice(0, 3);
+        technologies = allTechs.slice(0, 3);
       } else {
         const mainRoles = ['protagonist', 'antagonist', 'main', 'pov'];
         const mainChars = allCharacters.filter((c: any) => mainRoles.some(r => (c.role || '').toLowerCase().includes(r)));

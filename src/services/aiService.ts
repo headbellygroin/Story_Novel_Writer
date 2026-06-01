@@ -56,6 +56,7 @@ export interface PromptAssemblyReport {
     label: string;
     key: string;
     tokens: number;
+    budget: number;
     included: boolean;
     truncated: boolean;
   }>;
@@ -63,6 +64,7 @@ export interface PromptAssemblyReport {
   totalPromptTokens: number;
   maxBudget: number;
   contextMode: ContextMode;
+  generationMode: GenerationMode;
 }
 
 const GENERATION_MODE_INSTRUCTIONS: Record<GenerationMode, string> = {
@@ -119,7 +121,7 @@ export async function generateScene(request: GenerateSceneRequest): Promise<stri
   const safeContextBudget = Math.floor(contextLength * 0.85);
   const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
-  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
+  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode, generationMode);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -151,7 +153,7 @@ ${modeInstruction}`;
     const reducedBudget = Math.floor(contextLength * 0.70) - reservedForOutput - reservedForPromptFrame;
     if (reducedBudget > 500) {
       console.warn(`[Story Forge] Context safety: prompt exceeded 85% threshold (${estimatedPromptTokens} tokens). Reducing context scope.`);
-      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal');
+      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal', generationMode);
       fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
@@ -235,7 +237,7 @@ export async function generateSceneStreaming(
   const safeContextBudget = Math.floor(contextLength * 0.85);
   const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
-  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode);
+  let contextPrompt = buildContextPrompt(context, availableForContext, contextMode, generationMode);
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -264,7 +266,7 @@ ${modeInstruction}`;
     const reducedBudget = Math.floor(contextLength * 0.70) - reservedForOutput - reservedForPromptFrame;
     if (reducedBudget > 500) {
       console.warn(`[Story Forge] Streaming: context safety triggered, reducing scope.`);
-      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal');
+      contextPrompt = buildContextPrompt(context, reducedBudget, contextMode === 'full' ? 'relevant' : 'minimal', generationMode);
       fullPrompt = `${settings.system_prompt}${rulesBlock}${prohibitedBlock}
 
 ${settings.style_guide ? `Writing Style Guidelines:\n${settings.style_guide}\n\n` : ''}${contextPrompt}
@@ -352,6 +354,78 @@ interface ContextSection {
   label: string;
   content: string;
   priority: number;
+}
+
+// Per-section token budgets by generation mode
+const SECTION_BUDGETS: Record<GenerationMode, Record<string, number>> = {
+  scene: {
+    characters: 3000,
+    bible: 2000,
+    places: 1000,
+    tech: 1000,
+    things: 1000,
+    style: 1500,
+    manifesto: 2000,
+    chapter: 1000,
+    synopsis: 1000,
+    events: 1500,
+    states: 1000,
+    refs: 2000,
+    summaries: 2000,
+    previous: 3000,
+  },
+  design_brief: {
+    characters: 2000,
+    bible: 1500,
+    places: 800,
+    tech: 800,
+    things: 800,
+    style: 1000,
+    manifesto: 2000,
+    chapter: 1500,
+    synopsis: 1500,
+    events: 1000,
+    states: 800,
+    refs: 1000,
+    summaries: 1500,
+    previous: 1000,
+  },
+  outline: {
+    characters: 2000,
+    bible: 1500,
+    places: 800,
+    tech: 800,
+    things: 800,
+    style: 1000,
+    manifesto: 2000,
+    chapter: 1500,
+    synopsis: 2000,
+    events: 1500,
+    states: 800,
+    refs: 1000,
+    summaries: 1500,
+    previous: 1000,
+  },
+  deep_analysis: {
+    characters: 20000,
+    bible: 15000,
+    places: 10000,
+    tech: 10000,
+    things: 10000,
+    style: 2000,
+    manifesto: 5000,
+    chapter: 3000,
+    synopsis: 3000,
+    events: 5000,
+    states: 3000,
+    refs: 10000,
+    summaries: 10000,
+    previous: 20000,
+  },
+};
+
+export function getSectionBudgets(mode: GenerationMode): Record<string, number> {
+  return SECTION_BUDGETS[mode];
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -553,23 +627,33 @@ function buildSections(context: GenerateSceneRequest['context'], contextMode: Co
   return sections;
 }
 
-function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number, contextMode: ContextMode = 'full'): string {
+function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudget: number, contextMode: ContextMode = 'full', generationMode: GenerationMode = 'scene'): string {
   const sections = buildSections(context, contextMode);
   sections.sort((a, b) => b.priority - a.priority);
 
+  const budgets = SECTION_BUDGETS[generationMode];
   const result: string[] = [];
   let usedTokens = 0;
 
   for (const section of sections) {
-    const sectionTokens = estimateTokens(section.content);
+    const sectionBudget = budgets[section.key] ?? 2000;
+    let content = section.content;
+    const rawTokens = estimateTokens(content);
+
+    // Enforce per-section budget
+    if (rawTokens > sectionBudget) {
+      content = truncateToTokenBudget(content, sectionBudget);
+    }
+
+    const sectionTokens = estimateTokens(content);
 
     if (usedTokens + sectionTokens <= tokenBudget) {
-      result.push(section.content);
+      result.push(content);
       usedTokens += sectionTokens;
     } else {
       const remaining = tokenBudget - usedTokens;
       if (remaining > 100) {
-        result.push(truncateToTokenBudget(section.content, remaining));
+        result.push(truncateToTokenBudget(content, remaining));
         break;
       }
       break;
@@ -580,12 +664,13 @@ function buildContextPrompt(context: GenerateSceneRequest['context'], tokenBudge
 }
 
 export function assemblePromptReport(request: GenerateSceneRequest): PromptAssemblyReport {
-  const { context, settings, contextMode = 'full' } = request;
+  const { context, settings, contextMode = 'full', generationMode = 'scene' } = request;
 
   const contextLength = settings.context_length || 4096;
   const reservedForOutput = settings.max_tokens;
   const reservedForPromptFrame = 300;
-  const availableForContext = contextLength - reservedForOutput - reservedForPromptFrame;
+  const safeContextBudget = Math.floor(contextLength * 0.85);
+  const availableForContext = safeContextBudget - reservedForOutput - reservedForPromptFrame;
 
   const activeRules = settings.style_rules ? getActiveRulePrompts(settings.style_rules) : [];
   const rulesBlock = activeRules.length > 0
@@ -601,27 +686,32 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
   const sections = buildSections(context, contextMode);
   sections.sort((a, b) => b.priority - a.priority);
 
+  const budgets = SECTION_BUDGETS[generationMode];
   const reportSections: PromptAssemblyReport['sections'] = [];
   let usedTokens = 0;
 
   for (const section of sections) {
-    const sectionTokens = estimateTokens(section.content);
-    const fits = usedTokens + sectionTokens <= availableForContext;
+    const rawTokens = estimateTokens(section.content);
+    const sectionBudget = budgets[section.key] ?? 2000;
+    const effectiveTokens = Math.min(rawTokens, sectionBudget);
+    const fits = usedTokens + effectiveTokens <= availableForContext;
     const remaining = availableForContext - usedTokens;
     const wouldTruncate = !fits && remaining > 100;
+    const budgetCapped = rawTokens > sectionBudget;
 
     reportSections.push({
       label: section.label,
       key: section.key,
-      tokens: fits ? sectionTokens : (wouldTruncate ? remaining : sectionTokens),
+      tokens: fits ? effectiveTokens : (wouldTruncate ? Math.min(remaining, sectionBudget) : rawTokens),
+      budget: sectionBudget,
       included: fits || wouldTruncate,
-      truncated: wouldTruncate,
+      truncated: wouldTruncate || budgetCapped,
     });
 
     if (fits) {
-      usedTokens += sectionTokens;
+      usedTokens += effectiveTokens;
     } else {
-      if (wouldTruncate) usedTokens += remaining;
+      if (wouldTruncate) usedTokens += Math.min(remaining, sectionBudget);
       break;
     }
   }
@@ -630,10 +720,13 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
   const includedKeys = new Set(reportSections.map(s => s.key));
   for (const section of sections) {
     if (!includedKeys.has(section.key)) {
+      const rawTokens = estimateTokens(section.content);
+      const sectionBudget = budgets[section.key] ?? 2000;
       reportSections.push({
         label: section.label,
         key: section.key,
-        tokens: estimateTokens(section.content),
+        tokens: rawTokens,
+        budget: sectionBudget,
         included: false,
         truncated: false,
       });
@@ -646,5 +739,6 @@ export function assemblePromptReport(request: GenerateSceneRequest): PromptAssem
     totalPromptTokens: frameTokens + usedTokens,
     maxBudget: availableForContext,
     contextMode,
+    generationMode,
   };
 }

@@ -54,6 +54,12 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
 
       {report && (
         <div className="space-y-2">
+          {report.generationMode && (
+            <div className="text-xs text-slate-500 bg-slate-50 rounded px-2 py-1 border border-slate-200">
+              Mode: <span className="font-medium text-slate-700">{report.generationMode.replace('_', ' ')}</span>
+            </div>
+          )}
+
           <div className="bg-slate-50 rounded-md p-2 border border-slate-200">
             <div className="flex justify-between text-xs mb-1">
               <span className="text-slate-600 font-medium">Frame (System + Style)</span>
@@ -71,11 +77,15 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
             {report.sections.map((section) => {
               const totalBudget = report.maxBudget + report.frameTokens;
               const pct = (section.tokens / totalBudget) * 100;
+              const budgetPct = section.budget ? (section.tokens / section.budget) * 100 : 0;
+              const overBudget = section.budget && section.tokens >= section.budget;
               const barColor = !section.included
                 ? 'bg-red-300'
-                : section.truncated
-                  ? 'bg-amber-400'
-                  : 'bg-teal-500';
+                : overBudget
+                  ? 'bg-amber-500'
+                  : section.truncated
+                    ? 'bg-amber-400'
+                    : 'bg-teal-500';
 
               return (
                 <div
@@ -83,23 +93,31 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
                   className={`rounded-md p-2 border ${
                     !section.included
                       ? 'bg-red-50/50 border-red-200'
-                      : section.truncated
+                      : overBudget
                         ? 'bg-amber-50/50 border-amber-200'
-                        : 'bg-white border-slate-200'
+                        : section.truncated
+                          ? 'bg-amber-50/50 border-amber-200'
+                          : 'bg-white border-slate-200'
                   }`}
                 >
                   <div className="flex justify-between text-xs">
                     <span className={`font-medium ${!section.included ? 'text-red-600' : 'text-slate-700'}`}>
                       {section.label}
                       {!section.included && <span className="ml-1 text-red-400">(dropped)</span>}
-                      {section.truncated && <span className="ml-1 text-amber-500">(truncated)</span>}
+                      {section.included && overBudget && <span className="ml-1 text-amber-500">(capped)</span>}
+                      {section.included && section.truncated && !overBudget && <span className="ml-1 text-amber-500">(truncated)</span>}
                     </span>
-                    <span className="font-mono text-slate-600">{section.tokens.toLocaleString()}</span>
+                    <span className="font-mono text-slate-600">
+                      {section.tokens.toLocaleString()}
+                      {section.budget > 0 && (
+                        <span className="text-slate-400"> / {section.budget.toLocaleString()}</span>
+                      )}
+                    </span>
                   </div>
                   <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
                     <div
                       className={`h-full rounded-full ${barColor}`}
-                      style={{ width: `${Math.min(100, pct * 3)}%` }}
+                      style={{ width: `${Math.min(100, budgetPct || pct * 3)}%` }}
                     />
                   </div>
                 </div>
@@ -113,7 +131,7 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
               <span className="font-mono text-slate-900">{report.totalPromptTokens.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-xs mt-1">
-              <span className="text-slate-500">Context Budget Used</span>
+              <span className="text-slate-500">Context Budget (85% safe)</span>
               <span className="font-mono text-slate-600">
                 {(report.totalPromptTokens - report.frameTokens).toLocaleString()} / {report.maxBudget.toLocaleString()}
               </span>
@@ -122,8 +140,10 @@ export default function PromptReportPanel({ report, contextMode, onContextModeCh
               <div
                 className={`h-full rounded-full transition-all ${
                   (report.totalPromptTokens - report.frameTokens) / report.maxBudget > 0.9
-                    ? 'bg-amber-500'
-                    : 'bg-teal-500'
+                    ? 'bg-red-500'
+                    : (report.totalPromptTokens - report.frameTokens) / report.maxBudget > 0.7
+                      ? 'bg-amber-500'
+                      : 'bg-teal-500'
                 }`}
                 style={{ width: `${Math.min(100, ((report.totalPromptTokens - report.frameTokens) / report.maxBudget) * 100)}%` }}
               />
