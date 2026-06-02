@@ -443,6 +443,16 @@ Focus only on the overall series structure.`;
     setSaving(true);
     setError('');
 
+    console.log('[Wizard Save] Starting save for project:', currentProjectId);
+    console.log('[Wizard Save] Output sizes:', {
+      seriesMap: quickOutput.seriesMap.length,
+      majorEvents: quickOutput.majorEvents.length,
+      bookOutline: quickOutput.bookOutline.length,
+      chapterList: quickOutput.chapterList.length,
+      chapterBriefs: quickOutput.chapterBriefs.length,
+      scenes: quickOutput.scenes.length,
+    });
+
     try {
       const entries: { project_id: string; category: string; subject: string; fact: string; importance: string }[] = [];
 
@@ -477,8 +487,10 @@ Focus only on the overall series structure.`;
         if (outlineErr) throw outlineErr;
 
         if (outlineData) {
+          console.log('[Wizard Save] Outline created:', outlineData.id);
           setCurrentOutlineId(outlineData.id);
           const parsedChapters = parseChaptersFromOutput(quickOutput.chapterList);
+          console.log('[Wizard Save] Parsed chapters:', parsedChapters.length, parsedChapters.map(c => c.title));
 
           if (parsedChapters.length > 0) {
             const chapterInserts = parsedChapters.map((ch, idx) => ({
@@ -494,11 +506,13 @@ Focus only on the overall series structure.`;
               .insert(chapterInserts)
               .select();
             if (chapterErr) throw chapterErr;
+            console.log('[Wizard Save] Chapters inserted:', chapterRows?.length);
 
             // Create scenes for Chapter 1 if we have scene breakdown
             if (chapterRows && chapterRows.length > 0 && quickOutput.scenes) {
               const ch1 = chapterRows[0];
               const parsedScenes = parseScenesFromOutput(quickOutput.scenes);
+              console.log('[Wizard Save] Parsed scenes for Ch1:', parsedScenes.length);
 
               if (parsedScenes.length > 0) {
                 const sceneInserts = parsedScenes.map((sc, idx) => ({
@@ -525,6 +539,7 @@ Focus only on the overall series structure.`;
             }
           } else {
             // Fallback: create one chapter if parsing fails
+            console.log('[Wizard Save] Chapter parsing returned 0 results, using fallback');
             const { data: chapterData, error: chapterErr } = await supabase.from('chapters').insert({
               project_id: currentProjectId,
               outline_id: outlineData.id,
@@ -549,8 +564,11 @@ Focus only on the overall series structure.`;
         }
       }
 
+      console.log('[Wizard Save] Save complete. Reloading project data...');
       await loadProjectData();
+      console.log('[Wizard Save] Done. currentOutlineId is now:', useStore.getState().currentOutlineId);
     } catch (err: any) {
+      console.error('[Wizard Save] Error:', err);
       setError(err.message || 'Save failed');
     } finally {
       setSaving(false);
@@ -566,23 +584,24 @@ Focus only on the overall series structure.`;
     let currentLines: string[] = [];
 
     for (const line of lines) {
-      const chapterMatch = line.match(/^(?:Chapter\s+\d+|#+\s*Chapter\s+\d+)\s*[-–—:]\s*"?(.+?)"?\s*$/i)
-        || line.match(/^(?:Chapter\s+\d+|#+\s*Chapter\s+\d+)\s*$/i);
+      const trimmed = line.trim();
+      // Match: "Chapter 1 - ..." or "Chapter 1:" or "## Chapter 1" etc.
+      const chapterMatch = trimmed.match(/^(?:#+\s*)?Chapter\s+(\d+)\s*[-–—:]\s*"?(.+?)"?\s*$/i)
+        || trimmed.match(/^(?:#+\s*)?Chapter\s+(\d+)\s*$/i);
 
       if (chapterMatch) {
         if (currentTitle && currentLines.length > 0) {
           results.push({ title: currentTitle, summary: currentLines.join('\n').trim() });
         }
-        currentTitle = chapterMatch[1]
-          ? `Chapter ${results.length + 1} - ${chapterMatch[1].replace(/^["']|["']$/g, '')}`
-          : `Chapter ${results.length + 1}`;
+        const num = chapterMatch[1];
+        const name = chapterMatch[2] ? chapterMatch[2].replace(/^["']|["']$/g, '') : '';
+        currentTitle = name ? `Chapter ${num} - ${name}` : `Chapter ${num}`;
         currentLines = [line];
       } else if (currentTitle) {
         currentLines.push(line);
       }
     }
 
-    // Push final chapter
     if (currentTitle && currentLines.length > 0) {
       results.push({ title: currentTitle, summary: currentLines.join('\n').trim() });
     }
@@ -599,17 +618,18 @@ Focus only on the overall series structure.`;
     let currentLines: string[] = [];
 
     for (const line of lines) {
-      const sceneMatch = line.match(/^(?:Scene\s+\d+|#+\s*Scene\s+\d+)\s*[-–—:]\s*"?(.+?)"?\s*$/i)
-        || line.match(/^(?:Scene\s+\d+)\s*$/i);
+      const trimmed = line.trim();
+      const sceneMatch = trimmed.match(/^(?:#+\s*)?Scene\s+(\d+)\s*[-–—:]\s*"?(.+?)"?\s*$/i)
+        || trimmed.match(/^(?:#+\s*)?Scene\s+(\d+)\s*$/i);
 
       if (sceneMatch) {
         if (currentTitle && currentLines.length > 0) {
           const block = currentLines.join('\n').trim();
           results.push({ title: currentTitle, description: block.slice(0, 500), content: block });
         }
-        currentTitle = sceneMatch[1]
-          ? `Scene ${results.length + 1} - ${sceneMatch[1].replace(/^["']|["']$/g, '')}`
-          : `Scene ${results.length + 1}`;
+        const num = sceneMatch[1];
+        const name = sceneMatch[2] ? sceneMatch[2].replace(/^["']|["']$/g, '') : '';
+        currentTitle = name ? `Scene ${num} - ${name}` : `Scene ${num}`;
         currentLines = [line];
       } else if (currentTitle) {
         currentLines.push(line);
