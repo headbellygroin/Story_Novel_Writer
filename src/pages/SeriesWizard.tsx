@@ -173,6 +173,32 @@ function SeriesWizard() {
     }
   }
 
+  async function deleteWizardOutputs() {
+    if (!currentProjectId) return;
+    if (!confirm('Delete all wizard outputs? This clears generated plans, outlines, briefs, and scenes from the wizard. Your prompt inputs will be preserved.')) return;
+
+    await supabase.from('wizard_sessions')
+      .update({
+        output_series_map: '',
+        output_major_events: '',
+        output_book_outline: '',
+        output_chapter_list: '',
+        output_chapter_briefs: '',
+        output_scenes: '',
+        quick_step: 1,
+        is_running: false,
+        plan_approved: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('project_id', currentProjectId);
+
+    const cleared: WizardOutput = { seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' };
+    setQuickOutput(cleared);
+    setOutput(cleared);
+    setQuickStep(1);
+    setPlanApproved(false);
+  }
+
   async function loadProjectData() {
     if (!currentProjectId) return;
 
@@ -1166,7 +1192,14 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
       <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-lg font-semibold text-slate-900">Series Planning Wizard</h1>
-          <div className="flex items-center gap-1 bg-slate-100 rounded-md p-0.5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={deleteWizardOutputs}
+              className="px-3 py-1.5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 font-medium"
+            >
+              Delete Outputs
+            </button>
+            <div className="flex items-center gap-1 bg-slate-100 rounded-md p-0.5">
             <button
               onClick={() => setMode('quick')}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${mode === 'quick' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
@@ -1179,6 +1212,7 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
             >
               Step-by-Step
             </button>
+            </div>
           </div>
         </div>
         <p className="text-sm text-slate-500">
