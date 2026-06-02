@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { generateScene } from '../services/aiService';
@@ -76,13 +75,6 @@ function SeriesWizard() {
 
   // Block navigation while generation is running
   const isGenerating = quickRunning || generating;
-  const blocker = useBlocker(isGenerating);
-
-  useEffect(() => {
-    if (blocker.state === 'blocked' && !isGenerating) {
-      blocker.proceed();
-    }
-  }, [blocker, isGenerating]);
 
   // Browser tab/close guard
   useEffect(() => {
@@ -800,38 +792,6 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Navigation blocker modal */}
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
-            <h3 className="text-base font-semibold text-slate-900 mb-2">Generation in progress</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              The wizard is still generating. If you leave now, the current step will be lost and need to be re-run when you return. Previously completed steps are saved.
-            </p>
-            <div className="flex items-center gap-3 justify-end">
-              <button
-                onClick={() => blocker.reset()}
-                className="px-4 py-2 bg-slate-900 text-white rounded-md text-sm font-medium hover:bg-slate-800 transition-colors"
-              >
-                Stay
-              </button>
-              <button
-                onClick={() => {
-                  abortRef.current = true;
-                  setQuickRunning(false);
-                  setGenerating(false);
-                  saveWizardSession({ is_running: false });
-                  blocker.proceed();
-                }}
-                className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded-md text-sm font-medium hover:bg-red-50 transition-colors"
-              >
-                Leave anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center justify-between mb-2">
