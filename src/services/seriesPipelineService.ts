@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { generateScene, GenerationSettings } from './aiService';
+import { resolveSettingsForTask, logTaskSettings, PipelineTaskMode } from './taskPresetResolver';
 
 export type PipelineLevel = 1 | 2 | 3 | 4 | 5 | 6;
 export type PipelineMode = 'accelerated' | 'guided';
@@ -96,7 +97,7 @@ type ProgressCallback = (progress: PipelineProgress) => void;
 
 // ------ HELPERS ------
 
-async function loadSettings(projectId: string): Promise<GenerationSettings> {
+async function loadSettings(projectId: string, taskMode?: PipelineTaskMode): Promise<GenerationSettings> {
   const { data, error } = await supabase
     .from('generation_settings')
     .select('*')
@@ -104,7 +105,15 @@ async function loadSettings(projectId: string): Promise<GenerationSettings> {
     .maybeSingle();
 
   if (error || !data) throw new Error('Generation settings not configured. Please set up your AI settings first.');
-  return data as GenerationSettings;
+  const global = data as GenerationSettings;
+
+  if (taskMode) {
+    const resolved = await resolveSettingsForTask(projectId, taskMode, global);
+    console.log(logTaskSettings(taskMode, resolved));
+    return resolved;
+  }
+
+  return global;
 }
 
 async function loadWorldContext(projectId: string) {
@@ -223,7 +232,7 @@ export async function runLevel1SeriesArchitect(
   endingState: string,
   onProgress: ProgressCallback,
 ): Promise<SeriesPlan[]> {
-  const settings = await loadSettings(projectId);
+  const settings = await loadSettings(projectId, 'series_architect');
   const world = await loadWorldContext(projectId);
   const worldSummary = buildWorldSummary(world);
 
@@ -315,7 +324,7 @@ export async function runLevel2BookArchitect(
   chapterCount: number,
   onProgress: ProgressCallback,
 ): Promise<string> {
-  const settings = await loadSettings(projectId);
+  const settings = await loadSettings(projectId, 'book_architect');
   const world = await loadWorldContext(projectId);
   const worldSummary = buildWorldSummary(world);
 
@@ -456,7 +465,7 @@ export async function runLevel3ChapterBrief(
   seriesPlans: SeriesPlan[],
   onProgress: ProgressCallback,
 ): Promise<ChapterBrief> {
-  const settings = await loadSettings(projectId);
+  const settings = await loadSettings(projectId, 'chapter_brief');
 
   // Load chapter and its siblings
   const { data: chapter } = await supabase.from('chapters').select('*').eq('id', chapterId).single();
@@ -572,7 +581,7 @@ export async function runLevel4SceneBlueprints(
   chapterBrief: ChapterBrief,
   onProgress: ProgressCallback,
 ): Promise<SceneBlueprint[]> {
-  const settings = await loadSettings(projectId);
+  const settings = await loadSettings(projectId, 'scene_blueprint');
 
   const { data: chapter } = await supabase.from('chapters').select('*').eq('id', chapterId).single();
   if (!chapter) throw new Error('Chapter not found');
@@ -674,7 +683,7 @@ export async function runLevel5SceneWriter(
   seriesPlan: SeriesPlan | null,
   onProgress: ProgressCallback,
 ): Promise<string> {
-  const settings = await loadSettings(projectId);
+  const settings = await loadSettings(projectId, 'scene_writer');
 
   // Load scoped context
   const { data: scene } = await supabase.from('scenes').select('*').eq('id', sceneId).single();

@@ -323,11 +323,18 @@ export default function Settings() {
   }
 
   const TASK_MODES = [
-    { key: 'design_brief', label: 'Design Brief', description: 'Chapter/scene design briefs, planning documents' },
+    { key: 'series_architect', label: 'Series Architect', description: '7-book series map, full-series roadmap, high-level book direction' },
+    { key: 'book_architect', label: 'Book Architect', description: 'One book outline, act structure, chapter list, book-level synopsis' },
+    { key: 'chapter_brief', label: 'Chapter Design Brief', description: 'Chapter brief, emotional goals, conflict beats, reveal restrictions' },
+    { key: 'scene_blueprint', label: 'Scene Blueprint', description: 'Individual scene cards, beat planning, dialogue intent, transitions' },
+    { key: 'scene_writer', label: 'Scene Writer', description: 'Prose generation, dialogue, description, character voice' },
+    { key: 'assembly', label: 'Assembly / Summary', description: 'Chapter summaries, book summaries, continuity extraction, consistency' },
+    { key: 'design_brief', label: 'Design Brief (Legacy)', description: 'Chapter/scene design briefs, planning documents' },
     { key: 'tag_recommendation', label: 'Tag Recommendation', description: 'Automatic context tag recommendation after briefs' },
-    { key: 'outline', label: 'Outline', description: 'Book, chapter, and scene outlines, franchise planning' },
-    { key: 'scene', label: 'Scene Writing', description: 'Scene generation, dialogue, character interactions' },
+    { key: 'outline', label: 'Outline (Legacy)', description: 'Book, chapter, and scene outlines, franchise planning' },
+    { key: 'scene', label: 'Scene Writing (Legacy)', description: 'Scene generation, dialogue, character interactions' },
     { key: 'rewrite', label: 'Rewrite / Polish', description: 'Editing, rewrite passes, improvement plans, implement edits' },
+    { key: 'deep_analysis', label: 'Deep Analysis', description: 'Whole manuscript analysis, continuity audits, lore consistency' },
     { key: 'brainstorm', label: 'Brainstorm', description: 'Idea generation, what-if analysis, story exploration' },
     { key: 'utility', label: 'Fast Utility', description: 'Summaries, metadata, formatting, tag cleanup, token analysis' },
     { key: 'vision', label: 'Vision / Image Analysis', description: 'Image review, character art, cover review, visual consistency' },
@@ -480,6 +487,35 @@ export default function Settings() {
     await supabase.from('model_presets').delete().eq('project_id', currentProjectId);
     setPresets([]);
     await Promise.all(defaults.map(d => savePreset(d)));
+  }
+
+  async function applyStressTestPreset() {
+    if (!currentProjectId) return;
+    if (!confirm('Apply 70B Single-Model Stress Test settings? This will replace ALL existing pipeline presets with optimized single-model settings.')) return;
+
+    const endpoint = (settings.api_endpoint as string) || 'http://localhost:1234/v1/chat/completions';
+    const model = (settings.model_name as string) || 'meta-llama';
+    const ctx = 65536;
+
+    const stressPresets: ModelPreset[] = [
+      { task_mode: 'series_architect', label: 'Stress: Series Architect', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 6000, temperature: 0.65, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: '7-book series map. Enough room for all books without truncation.', is_active: true },
+      { task_mode: 'book_architect', label: 'Stress: Book Architect', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 4000, temperature: 0.7, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Detailed enough for 10-15 chapters without waste.', is_active: true },
+      { task_mode: 'chapter_brief', label: 'Stress: Chapter Brief', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 3000, temperature: 0.7, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Good detail without producing prose too early.', is_active: true },
+      { task_mode: 'scene_blueprint', label: 'Stress: Scene Blueprint', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 2000, temperature: 0.65, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Scene cards should be focused and concise.', is_active: true },
+      { task_mode: 'scene_writer', label: 'Stress: Scene Writer', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 4000, temperature: 0.75, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Give prose enough room to breathe.', is_active: true },
+      { task_mode: 'assembly', label: 'Stress: Assembly', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 1500, temperature: 0.4, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Summaries and tracker updates - factual, concise, stable.', is_active: true },
+      // Also set legacy modes to same model for compatibility
+      { task_mode: 'design_brief', label: 'Stress: Design Brief', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 3000, temperature: 0.7, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Legacy design brief mode (uses chapter_brief settings).', is_active: true },
+      { task_mode: 'outline', label: 'Stress: Outline', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 4000, temperature: 0.7, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Legacy outline mode (uses book_architect settings).', is_active: true },
+      { task_mode: 'scene', label: 'Stress: Scene', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 4000, temperature: 0.75, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Legacy scene mode (uses scene_writer settings).', is_active: true },
+      { task_mode: 'rewrite', label: 'Stress: Rewrite', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 3000, temperature: 0.6, top_p: 0.92, top_k: 0, repetition_penalty: 1.08, presence_penalty: 0, frequency_penalty: 0, notes: 'Editing pass.', is_active: true },
+      { task_mode: 'deep_analysis', label: 'Stress: Deep Analysis', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 2000, temperature: 0.4, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Analysis and audits.', is_active: true },
+      { task_mode: 'utility', label: 'Stress: Utility', model_name: model, api_endpoint: endpoint, context_length: ctx, max_tokens: 1500, temperature: 0.3, top_p: 0.9, top_k: 0, repetition_penalty: 1.05, presence_penalty: 0, frequency_penalty: 0, notes: 'Fast utility tasks.', is_active: true },
+    ];
+
+    await supabase.from('model_presets').delete().eq('project_id', currentProjectId);
+    setPresets([]);
+    await Promise.all(stressPresets.map(d => savePreset(d)));
   }
 
   // ---------------------------------------------------------------------------
@@ -802,19 +838,33 @@ export default function Settings() {
           {presets.length === 0 && (
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-center">
               <p className="text-sm text-slate-600 mb-3">No model presets configured yet. Set up presets so Story Forge automatically picks the best model for each task.</p>
-              <button
-                onClick={initializeDefaultPresets}
-                className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
-              >
-                Load Default Presets
-              </button>
-              <p className="text-xs text-slate-400 mt-2">Pre-fills with recommended defaults: Midnight Miqu 70B (writing/planning), Meta Llama (deep analysis), Mistral 7B (utility), LLaVA (vision)</p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={initializeDefaultPresets}
+                  className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors"
+                >
+                  Load Multi-Model Defaults
+                </button>
+                <button
+                  onClick={applyStressTestPreset}
+                  className="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-700 transition-colors"
+                >
+                  Apply 70B Single-Model Stress Test
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Multi-Model: Midnight Miqu 70B + Meta Llama + Mistral 7B + LLaVA. Stress Test: Single 70B model with task-optimized token limits.</p>
             </div>
           )}
 
           {presets.length > 0 && (
             <div className="space-y-3">
-              <div className="flex justify-end mb-2">
+              <div className="flex justify-end gap-2 mb-2">
+                <button
+                  onClick={applyStressTestPreset}
+                  className="px-3 py-1.5 bg-slate-800 text-white text-xs rounded-lg hover:bg-slate-700 transition-colors"
+                >
+                  Apply Stress Test
+                </button>
                 <button
                   onClick={initializeDefaultPresets}
                   className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200 border border-slate-300 transition-colors"
