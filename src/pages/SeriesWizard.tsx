@@ -25,6 +25,10 @@ interface WizardOutput {
 
 type WizardMode = 'quick' | 'advanced';
 
+function toSnakeCase(key: string): string {
+  return key.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+
 function SeriesWizard() {
   const { currentProjectId } = useStore();
   const [mode, setMode] = useState<WizardMode>('quick');
@@ -42,6 +46,7 @@ function SeriesWizard() {
     seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '',
   });
   const abortRef = useRef(false);
+  const sessionLoadedRef = useRef(false);
 
   // Advanced mode state
   const [currentStep, setCurrentStep] = useState(1);
@@ -70,7 +75,86 @@ function SeriesWizard() {
   useEffect(() => {
     if (!currentProjectId) return;
     loadProjectData();
+    loadWizardSession();
   }, [currentProjectId]);
+
+  async function loadWizardSession() {
+    if (!currentProjectId) return;
+    const { data } = await supabase
+      .from('wizard_sessions')
+      .select('*')
+      .eq('project_id', currentProjectId)
+      .maybeSingle();
+
+    if (data) {
+      setMode(data.mode as WizardMode || 'quick');
+      setBookCount(data.book_count || 7);
+      setGenre(data.genre || '');
+      setEndGoal(data.end_goal || '');
+      setPlanningStyle((data.planning_style as any) || 'balanced');
+      setReviewFirst(data.review_first ?? true);
+      setPlanApproved(data.plan_approved ?? false);
+      setQuickStep(data.quick_step || 0);
+
+      const restored: WizardOutput = {
+        seriesMap: data.output_series_map || '',
+        majorEvents: data.output_major_events || '',
+        bookOutline: data.output_book_outline || '',
+        chapterList: data.output_chapter_list || '',
+        chapterBriefs: data.output_chapter_briefs || '',
+        scenes: data.output_scenes || '',
+      };
+      setQuickOutput(restored);
+      setOutput(restored);
+
+      // If it was marked running, it means generation was interrupted
+      if (data.is_running) {
+        await supabase.from('wizard_sessions')
+          .update({ is_running: false, updated_at: new Date().toISOString() })
+          .eq('project_id', currentProjectId);
+      }
+    }
+    sessionLoadedRef.current = true;
+  }
+
+  async function saveWizardSession(updates: Partial<{
+    mode: string;
+    quick_step: number;
+    is_running: boolean;
+    book_count: number;
+    genre: string;
+    end_goal: string;
+    planning_style: string;
+    review_first: boolean;
+    plan_approved: boolean;
+    output_series_map: string;
+    output_major_events: string;
+    output_book_outline: string;
+    output_chapter_list: string;
+    output_chapter_briefs: string;
+    output_scenes: string;
+  }>) {
+    if (!currentProjectId) return;
+    const payload = {
+      project_id: currentProjectId,
+      updated_at: new Date().toISOString(),
+      ...updates,
+    };
+
+    const { data: existing } = await supabase
+      .from('wizard_sessions')
+      .select('id')
+      .eq('project_id', currentProjectId)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from('wizard_sessions')
+        .update(payload)
+        .eq('project_id', currentProjectId);
+    } else {
+      await supabase.from('wizard_sessions').insert(payload);
+    }
+  }
 
   async function loadProjectData() {
     if (!currentProjectId) return;
@@ -160,9 +244,8 @@ function SeriesWizard() {
     // If reviewFirst and we haven't approved yet, only generate step 1
     const onlySeriesMap = reviewFirst && !planApproved;
 
-    if (!onlySeriesMap) {
-      setQuickOutput({ seriesMap: quickOutput.seriesMap || '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' });
-    } else {
+    // Don't clear outputs that are already done -- this allows resuming
+    if (onlySeriesMap && !quickOutput.seriesMap) {
       setQuickOutput({ seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' });
     }
 
@@ -180,9 +263,22 @@ function SeriesWizard() {
       ? `\n\n=== STRICT CANON RULE ===\nYou MUST use ONLY the characters, places, things, and technologies listed above. Do NOT invent new characters, locations, or world elements. Do NOT hallucinate motivations, backstories, or relationships that are not established in the world data. If the world data is sparse, keep your output proportionally focused on what IS established. Expand only where the existing data logically implies structure.\n`
       : '';
 
+    // Save session as running
+    await saveWizardSession({
+      mode: 'quick',
+      is_running: true,
+      book_count: bookCount,
+      genre,
+      end_goal: endGoal,
+      planning_style: planningStyle,
+      review_first: reviewFirst,
+      plan_approved: planApproved,
+    });
+
     try {
       // Step 1: Series Map
-      if (!quickOutput.seriesMap) {
+      let seriesMap = quickOutput.seriesMap;
+      if (!seriesMap) {
         setQuickStep(1);
         const seriesPrompt = `${world}${canonRule}${planningGuidance}
 === TASK: SERIES MAP ===
@@ -202,7 +298,7 @@ Do not create chapter outlines.
 Do not create scene outlines.
 Focus only on the overall series structure.`;
 
-        const seriesMap = await generateScene({
+        seriesMap = await generateScene({
           sceneDescription: seriesPrompt,
           generationMode: 'outline',
           contextMode: 'minimal',
@@ -213,20 +309,22 @@ Focus only on the overall series structure.`;
         });
         if (abortRef.current) return;
         setQuickOutput(prev => ({ ...prev, seriesMap }));
+        await saveWizardSession({ quick_step: 1, output_series_map: seriesMap });
 
         // If review-first mode, stop here and wait for approval
         if (onlySeriesMap) {
           setQuickStep(0);
           setQuickRunning(false);
+          await saveWizardSession({ is_running: false, quick_step: 0 });
           return;
         }
       }
 
-      const seriesMap = quickOutput.seriesMap || '';
-
       // Step 2: Book 1 Major Events
-      setQuickStep(2);
-      const eventsPrompt = `${world}${canonRule}${planningGuidance}
+      let majorEvents = quickOutput.majorEvents;
+      if (!majorEvents) {
+        setQuickStep(2);
+        const eventsPrompt = `${world}${canonRule}${planningGuidance}
 === SERIES MAP (APPROVED) ===
 ${seriesMap}
 
@@ -246,21 +344,25 @@ Include:
 For each event provide: what happens, characters involved, consequence, and emotional weight.
 Do not generate chapters.`;
 
-      const majorEvents = await generateScene({
-        sceneDescription: eventsPrompt,
-        generationMode: 'outline',
-        contextMode: 'minimal',
-        worldRichness: 'minimal',
-        planningMode: 'creative',
-        context: {},
-        settings,
-      });
-      if (abortRef.current) return;
-      setQuickOutput(prev => ({ ...prev, majorEvents }));
+        majorEvents = await generateScene({
+          sceneDescription: eventsPrompt,
+          generationMode: 'outline',
+          contextMode: 'minimal',
+          worldRichness: 'minimal',
+          planningMode: 'creative',
+          context: {},
+          settings,
+        });
+        if (abortRef.current) return;
+        setQuickOutput(prev => ({ ...prev, majorEvents }));
+        await saveWizardSession({ quick_step: 2, output_major_events: majorEvents });
+      }
 
       // Step 3: Book 1 Outline
-      setQuickStep(3);
-      const outlinePrompt = `${world}${canonRule}${planningGuidance}
+      let bookOutline = quickOutput.bookOutline;
+      if (!bookOutline) {
+        setQuickStep(3);
+        const outlinePrompt = `${world}${canonRule}${planningGuidance}
 === SERIES MAP ===
 ${seriesMap}
 
@@ -281,21 +383,25 @@ Include:
 
 Do not generate chapter lists yet.`;
 
-      const bookOutline = await generateScene({
-        sceneDescription: outlinePrompt,
-        generationMode: 'outline',
-        contextMode: 'minimal',
-        worldRichness: 'minimal',
-        planningMode: 'creative',
-        context: {},
-        settings,
-      });
-      if (abortRef.current) return;
-      setQuickOutput(prev => ({ ...prev, bookOutline }));
+        bookOutline = await generateScene({
+          sceneDescription: outlinePrompt,
+          generationMode: 'outline',
+          contextMode: 'minimal',
+          worldRichness: 'minimal',
+          planningMode: 'creative',
+          context: {},
+          settings,
+        });
+        if (abortRef.current) return;
+        setQuickOutput(prev => ({ ...prev, bookOutline }));
+        await saveWizardSession({ quick_step: 3, output_book_outline: bookOutline });
+      }
 
       // Step 4: Chapter List
-      setQuickStep(4);
-      const chapterPrompt = `${world}${canonRule}${planningGuidance}
+      let chapterList = quickOutput.chapterList;
+      if (!chapterList) {
+        setQuickStep(4);
+        const chapterPrompt = `${world}${canonRule}${planningGuidance}
 === BOOK 1 OUTLINE ===
 ${bookOutline}
 
@@ -316,21 +422,25 @@ Genre/Tone: ${genreText}
 
 One paragraph per chapter. No scene breakdowns.`;
 
-      const chapterList = await generateScene({
-        sceneDescription: chapterPrompt,
-        generationMode: 'outline',
-        contextMode: 'minimal',
-        worldRichness: 'minimal',
-        planningMode: 'creative',
-        context: {},
-        settings,
-      });
-      if (abortRef.current) return;
-      setQuickOutput(prev => ({ ...prev, chapterList }));
+        chapterList = await generateScene({
+          sceneDescription: chapterPrompt,
+          generationMode: 'outline',
+          contextMode: 'minimal',
+          worldRichness: 'minimal',
+          planningMode: 'creative',
+          context: {},
+          settings,
+        });
+        if (abortRef.current) return;
+        setQuickOutput(prev => ({ ...prev, chapterList }));
+        await saveWizardSession({ quick_step: 4, output_chapter_list: chapterList });
+      }
 
       // Step 5: Chapter Briefs (first 5 chapters)
-      setQuickStep(5);
-      const briefsPrompt = `${world}${canonRule}${planningGuidance}
+      let chapterBriefs = quickOutput.chapterBriefs;
+      if (!chapterBriefs) {
+        setQuickStep(5);
+        const briefsPrompt = `${world}${canonRule}${planningGuidance}
 === CHAPTER LIST ===
 ${chapterList}
 
@@ -348,21 +458,25 @@ Generate detailed chapter briefs for chapters 1 through 5. For each chapter:
 
 These briefs should be detailed enough that a writer could produce the chapter from them.`;
 
-      const chapterBriefs = await generateScene({
-        sceneDescription: briefsPrompt,
-        generationMode: 'outline',
-        contextMode: 'minimal',
-        worldRichness: 'minimal',
-        planningMode: 'creative',
-        context: {},
-        settings,
-      });
-      if (abortRef.current) return;
-      setQuickOutput(prev => ({ ...prev, chapterBriefs }));
+        chapterBriefs = await generateScene({
+          sceneDescription: briefsPrompt,
+          generationMode: 'outline',
+          contextMode: 'minimal',
+          worldRichness: 'minimal',
+          planningMode: 'creative',
+          context: {},
+          settings,
+        });
+        if (abortRef.current) return;
+        setQuickOutput(prev => ({ ...prev, chapterBriefs }));
+        await saveWizardSession({ quick_step: 5, output_chapter_briefs: chapterBriefs });
+      }
 
       // Step 6: Scene Breakdown (Chapter 1)
-      setQuickStep(6);
-      const scenesPrompt = `${world}${canonRule}${planningGuidance}
+      let scenes = quickOutput.scenes;
+      if (!scenes) {
+        setQuickStep(6);
+        const scenesPrompt = `${world}${canonRule}${planningGuidance}
 === CHAPTER BRIEF (CHAPTER 1) ===
 ${chapterBriefs}
 
@@ -378,23 +492,28 @@ Generate individual scene cards for Chapter 1. For each scene provide:
 - Closing beat / transition
 - Estimated word count`;
 
-      const scenes = await generateScene({
-        sceneDescription: scenesPrompt,
-        generationMode: 'outline',
-        contextMode: 'minimal',
-        worldRichness: 'minimal',
-        planningMode: 'creative',
-        context: {},
-        settings,
-      });
-      if (abortRef.current) return;
-      setQuickOutput(prev => ({ ...prev, scenes }));
+        scenes = await generateScene({
+          sceneDescription: scenesPrompt,
+          generationMode: 'outline',
+          contextMode: 'minimal',
+          worldRichness: 'minimal',
+          planningMode: 'creative',
+          context: {},
+          settings,
+        });
+        if (abortRef.current) return;
+        setQuickOutput(prev => ({ ...prev, scenes }));
+        await saveWizardSession({ quick_step: 7, output_scenes: scenes, is_running: false });
+      } else {
+        await saveWizardSession({ quick_step: 7, is_running: false });
+      }
 
       // Feed results into advanced mode
       setOutput({ seriesMap, majorEvents, bookOutline, chapterList, chapterBriefs, scenes });
       setQuickStep(7);
     } catch (err: any) {
       setError(err.message || 'Generation failed');
+      await saveWizardSession({ is_running: false });
     } finally {
       setQuickRunning(false);
     }
@@ -403,10 +522,12 @@ Generate individual scene cards for Chapter 1. For each scene provide:
   function handleAbort() {
     abortRef.current = true;
     setQuickRunning(false);
+    saveWizardSession({ is_running: false });
   }
 
   function handleApprovePlan() {
     setPlanApproved(true);
+    saveWizardSession({ plan_approved: true });
     runQuickStart();
   }
 
@@ -756,6 +877,7 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
 
       if (isQuick) {
         setQuickOutput(prev => ({ ...prev, [key]: result }));
+        await saveWizardSession({ [`output_${toSnakeCase(key)}`]: result } as any);
       } else {
         setOutput(prev => ({ ...prev, [key]: result }));
       }
@@ -894,9 +1016,21 @@ function QuickStartPanel({
 }) {
   const hasOutput = output.seriesMap || output.majorEvents || output.bookOutline || output.chapterList || output.chapterBriefs || output.scenes;
   const allDone = output.seriesMap && output.majorEvents && output.bookOutline && output.chapterList && output.chapterBriefs && output.scenes;
+  const hasPartialProgress = hasOutput && !allDone;
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
+      {/* Interrupted session notice */}
+      {hasPartialProgress && !running && (
+        <div className="bg-sky-50 border border-sky-200 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <span className="text-sm font-medium text-sky-900">Previous session restored</span>
+            <p className="text-xs text-sky-700 mt-0.5">
+              Steps already completed are shown below. Click Resume to continue from where you left off.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Intake Form */}
       <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
         <div>
@@ -1034,10 +1168,10 @@ function QuickStartPanel({
         {!running ? (
           <button
             onClick={onRun}
-            disabled={!settings}
+            disabled={!settings || !!allDone}
             className="px-6 py-3 bg-slate-900 text-white rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Build My Series
+            {hasPartialProgress ? 'Resume Generation' : 'Build My Series'}
           </button>
         ) : (
           <button
