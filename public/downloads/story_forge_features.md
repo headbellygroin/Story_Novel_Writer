@@ -371,6 +371,81 @@ A 5-stage automated production pipeline with review gates at each step:
 
 ---
 
+## Production-Scale Novel Generation
+
+Full-book autonomous writing system designed for "set it and walk away" operation.
+
+### Auto-Write Book
+- Generates prose for every scene sequentially (Chapter 1 Scene 1 through Chapter N Scene N)
+- Assembles each chapter when all its scenes complete
+- Assembles full book manuscript when all chapters complete
+- Saves after every single scene (crash-safe)
+- Resume from exact position after interruption, browser refresh, or reboot
+- Creates scene scaffolds automatically for chapters that have none
+- Designed for 8-12 hour unattended runs
+
+### Draft Quality Profiles
+| Profile | Words/Scene | Use Case |
+|---------|-------------|----------|
+| Fast Draft | 500-800 | Quick testing, structure validation |
+| Standard Draft | 1000-1500 | First pass, iteration |
+| Novel Draft | 1500-2500 | Production writing (default) |
+| Publisher Draft | 2500-4000 | Final quality, publication-ready |
+
+### Context Continuity
+Before each scene, the AI automatically receives:
+- Series manifesto and themes
+- Book outline synopsis
+- Chapter summary and POV character
+- Previous scene ending (continuity bridge)
+- Character voice profile
+- Setting description
+- Relevant Story Bible entries
+- Full character cast summaries
+
+### Chapter Assembly
+- Combines all scenes into single chapter document
+- Preserves scene breaks (asterisk separators)
+- Auto-generates chapter summary
+- Tracks word count per chapter
+- One-click re-assembly after edits
+
+### Book Assembly
+- Collects all assembled chapters in order
+- Generates title page
+- Generates table of contents with per-chapter word counts
+- Calculates total manuscript word count
+- Marks completion status (draft vs assembled)
+
+### Character Voice Tracking
+- Per-character voice profiles stored in database
+- Speaking style, vocabulary, personality traits
+- Emotional tendencies, relationship dynamics
+- Sample dialogue for reference
+- Auto-injected into every scene generation
+
+### Living Story Bible Updates
+- Post-generation extraction of new world elements
+- Detects: characters, locations, technologies, organizations, events
+- Approval queue (approve to add to Story Bible, reject to discard)
+- World grows automatically as books are written
+
+### Production Dashboard
+- Books assembled / Chapters done / Scenes written / Total words
+- Current generation step and activity
+- Progress bar with estimated time remaining
+- Run status (idle/running/paused/completed/failed)
+- Error messages with resume capability
+
+### Data Safety & Reliability
+- Scene saves retry once on failure, then verify via readback
+- Chapter assembly refuses to overwrite with shorter content (protects against partial loads)
+- Book assembly refuses to downgrade a completed manuscript
+- All operations save state to database for crash recovery
+- Never repeats completed work on resume
+
+---
+
 ## Settings & Configuration
 
 ### AI Model
@@ -463,12 +538,13 @@ A 5-stage automated production pipeline with review gates at each step:
 
 - **Blueprint before prose:** Story Forge is built on the premise that great series come from complete development blueprints. The tools guide authors through world-building, planning, and structural design before a single chapter is written.
 - **World-building first:** The app is designed around the assumption that authors build their world (characters, places, manifesto, story bible) before using the writing tools. Rich world data produces rich AI output; empty world data produces generic output.
+- **Set it and walk away:** Production-scale generation is designed for autonomous long-run operation. Every step saves immediately, resumes from interruption, and never loses completed work.
 - **Context-first generation:** AI always sees the full relevant project state
 - **Quick Start to Power User:** The Quick Start wizard removes writer's block by generating a full backbone from 3 inputs. The results feed into the advanced editor for fine-tuning, so casual users get momentum and power users get control.
 - **Series At A Glance:** After Quick Start completes, a bird's-eye summary shows the full scope of the generated series (book list, chapter count, word estimate, characters, themes) before the author commits.
-- **Immediate testability:** Saving Quick Start output auto-creates a Chapter 1 Scene 1 with starter prose, so the user can test TTS, Pipeline, and Write features without any additional setup.
+- **Immediate testability:** Saving Quick Start output auto-creates scenes for ALL chapters with starter content in Chapter 1, so the user can test TTS, Pipeline, and Write features without any additional setup.
 - **Review gates:** Human approval required at every production stage
-- **Non-destructive:** Backups, canon statuses, and version tracking prevent data loss
+- **Non-destructive:** Backups, canon statuses, downgrade protection, and version tracking prevent data loss
 - **Local-first:** Runs against local models for privacy and uncensored output
 - **Single responsibility views:** Each page handles one concern
 - **Progressive disclosure:** Advanced features (sliders, dossier, hero's journey) are collapsible

@@ -959,14 +959,104 @@ Complete walkthrough from a blank project to a finished audiobook video chapter.
 9. Update Character States and Story Events on the Consistency page as the story progresses.
 10. Repeat for each scene until the chapter is complete.
 
-### 5 -- Quality Review
+### 5 -- Production-Scale Novel Generation
+
+Story Forge can generate an entire novel unattended. Open the **Production** page for all long-run writing operations.
+
+#### Auto-Write Book
+
+1. Select a Draft Quality profile:
+   - **Fast Draft:** 500-800 words per scene (quick iteration)
+   - **Standard Draft:** 1000-1500 words per scene
+   - **Novel Draft:** 1500-2500 words per scene (default)
+   - **Publisher Draft:** 2500-4000 words per scene (production quality)
+2. Click **Start Writing**. The system works through every chapter in order:
+   - Generates prose for each scene using full context injection
+   - Saves immediately after every scene completes
+   - Assembles each chapter after all its scenes are done
+   - Generates a chapter summary automatically
+   - Assembles the full book manuscript when all chapters finish
+3. **Resume capability:** Progress is saved to the database after every scene. If the browser closes, LM Studio restarts, or the machine reboots, open the Production page and click **Resume** -- it picks up at the exact scene where it stopped. Completed scenes are never regenerated.
+4. **Long-run reliability:** Designed for 8-12 hour unattended runs. Set it and walk away.
+
+#### Context Continuity
+
+Before generating each scene, the system automatically injects:
+- Franchise Manifesto (series-level rules)
+- Book outline synopsis and themes
+- Chapter summary and POV character
+- Previous scene ending (last 800 chars for continuity)
+- Character voice profile (speaking style, vocabulary, personality)
+- Setting description
+- Relevant Story Bible entries (critical/high importance)
+- Character summaries for cast members
+
+This eliminates character drift and maintains consistency across hundreds of scenes.
+
+#### Chapter Assembly
+
+Click **Assemble Chapter** on any chapter to combine all its scenes into a single document with preserved scene breaks and auto-generated summary. Re-assemble at any time after editing scenes.
+
+#### Book Assembly
+
+Click **Assemble Book** to compile the full manuscript with:
+- Title page
+- Table of contents with per-chapter word counts
+- All assembled chapters in order
+- Total word count and completion status
+
+The manuscript is ready for editing, export, narration, or publication.
+
+#### Character Voice Tracking
+
+Define voice profiles for each character on the **Character Voices** tab:
+- Speaking style
+- Vocabulary preferences
+- Personality traits
+- Emotional tendencies
+- Relationship dynamics
+- Sample dialogue
+
+These profiles are automatically injected into every scene generation prompt where the character appears, ensuring the character sounds consistent from Chapter 1 through Chapter 175.
+
+#### Living Story Bible Updates
+
+After each scene generates, the system extracts newly introduced world-building elements:
+- Characters
+- Locations
+- Technologies
+- Organizations
+- Historical events
+
+Discoveries appear in the **World Extractions** queue for approval. Approve to add to the Story Bible, reject to discard. The world grows automatically as books are written.
+
+#### Production Dashboard
+
+The dashboard shows real-time progress:
+- Books assembled
+- Chapters completed
+- Scenes written
+- Total words
+- Current generation step
+- Estimated time remaining
+- Progress bar with percentage
+
+#### Data Safety
+
+- Scene saves include retry (once after 2s) and verification (readback check)
+- Chapter assembly refuses to overwrite a longer assembly with a shorter one (protects against partial loads)
+- Book assembly refuses to downgrade a completed manuscript with fewer chapters
+- All database operations check for errors and surface them clearly
+- Generation runs persist state to survive interruptions at any point
+
+### 6 -- Quality Review
 
 1. Run a Logic Check on the chapter (or dossier, outline, characters, worldbuilding).
 2. Review the detailed audit report.
 3. Fix any identified issues in the Write page.
 4. Re-run the check until it passes cleanly.
 
-### 6 -- Production Pipeline
+### 7 -- Production Pipeline
 
 1. Open the Pipeline page and select the finished chapter.
 2. **Stage 1:** Analyze & Generate Images -- review all images in the grid before continuing.
@@ -976,7 +1066,7 @@ Complete walkthrough from a blank project to a finished audiobook video chapter.
 6. **Stage 5:** Generate Lip-sync -- select a character face image, generate all clips.
 7. Lip-sync clips are named sequentially -- stitch in filename order using an external video tool.
 
-### 7 -- Final Assembly (External)
+### 8 -- Final Assembly (External)
 
 1. Use the Video Assembly Manifest JSON to drive scene image changes in sync with the narration.
 2. Place the scene video (animated images + audio) in a smaller overlay window.
