@@ -113,6 +113,95 @@ Smaller layers create more detail.
 Larger layers create direction.
 Never collapse all layers into one output.`;
 
+const STYLE_GUIDE_V2 = `Wayward Naught Series — Style Guide v2
+
+Narrative Voice
+- Warm
+- Human
+- Observational
+- Optimistic without being naive
+- The narrator respects ordinary people
+- The story finds dignity in practical work
+
+---
+
+Tone
+Primary: Blue-collar space opera
+Secondary: Found-family adventure
+Supporting: Mystery, Humor, Wonder, Hope
+
+Avoid:
+- Edgelord cynicism
+- Grimdark fatalism
+- Constant despair
+- Cruel irony
+
+---
+
+Character Writing
+Characters are defined by: Competence, Relationships, Values.
+Not by power. Not by destiny. Not by status.
+Every crew member contributes.
+No character exists only to support another character.
+
+---
+
+Dialogue
+Dialogue should sound human.
+People interrupt. People misunderstand. People joke. People ramble. People tell stories.
+
+Avoid:
+- Exposition speeches
+- Lore dumps
+- Monologues explaining the plot
+
+---
+
+Worldbuilding
+Worldbuilding should emerge naturally.
+Readers learn through: Conversations, Meals, Work, Repairs, Travel, Traditions, Daily life.
+Avoid encyclopedia-style explanations.
+
+---
+
+The Wayward Naught
+The ship is never treated as a machine.
+The ship is never treated as a god.
+The ship is treated as a member of the family.
+Its personality emerges slowly.
+Its humanity is discovered gradually.
+
+---
+
+Mystery Handling
+Questions appear before answers.
+Clues appear before reveals.
+Readers should feel curious, not confused.
+Every mystery must eventually have a payoff.
+
+---
+
+Emotional Style
+Small moments matter. Shared meals matter.
+Repairing something matters. Helping someone matters. Friendship matters.
+The emotional core should always be stronger than the spectacle.
+
+---
+
+Action Scenes
+Action exists to reveal character, not merely to create excitement.
+Every action scene should answer:
+- Who are these people?
+- What do they value?
+- How have they changed?
+
+---
+
+End State
+The reader should finish each book feeling: Hopeful, Curious, Connected to the crew, Interested in the next journey.
+The reader should never feel that the story exists only to set up the next book.
+Each book must stand on its own while contributing to the larger series.`;
+
 // ---------------------------------------------------------------------------
 // Small helper: collapsible section wrapper
 // ---------------------------------------------------------------------------
@@ -1107,15 +1196,24 @@ export default function Settings() {
             <p className="text-xs text-slate-400 mt-1">Base instructions for the AI about its role and behavior. The v2 Narrative Intelligence prompt is optimized for multi-book franchise generation.</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Style Guide</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-slate-700">Style Guide</label>
+              <button
+                type="button"
+                onClick={() => setSettings({ ...settings, style_guide: STYLE_GUIDE_V2 })}
+                className="px-3 py-1 text-xs font-medium bg-slate-800 text-white rounded hover:bg-slate-700 transition-colors"
+              >
+                Load Wayward Naught v2
+              </button>
+            </div>
             <textarea
               value={settings.style_guide || ''}
               onChange={(e) => setSettings({ ...settings, style_guide: e.target.value })}
-              rows={5}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm"
+              rows={12}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-400 text-sm font-mono"
               placeholder="Write in third person limited POV. Use vivid sensory details. Keep dialogue natural and character-specific..."
             />
-            <p className="text-xs text-slate-400 mt-1">Project-specific writing style guidelines (POV, tense, tone, etc.)</p>
+            <p className="text-xs text-slate-400 mt-1">Project-specific writing style guidelines. The v2 Wayward Naught guide covers voice, tone, dialogue, worldbuilding, and emotional style.</p>
           </div>
 
           <div>
