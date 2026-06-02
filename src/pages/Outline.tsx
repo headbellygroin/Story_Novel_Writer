@@ -1,8 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Database } from '../lib/database.types';
-import { generateScene } from '../services/aiService';
 import ProjectSelector from '../components/ProjectSelector';
 
 type Outline = Database['public']['Tables']['outlines']['Row'];
@@ -23,27 +22,6 @@ export default function Outline() {
   const [chapterFormData, setChapterFormData] = useState<Partial<Chapter>>({});
   const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
   const [editingOutlineId, setEditingOutlineId] = useState<string | null>(null);
-
-  // Auto-Write state
-  const [autoWriteActive, setAutoWriteActive] = useState(false);
-  const [autoWriteProgress, setAutoWriteProgress] = useState<{
-    currentChapter: number;
-    totalChapters: number;
-    currentScene: number;
-    totalScenes: number;
-    chapterTitle: string;
-    sceneTitle: string;
-    completedScenes: number;
-    totalAllScenes: number;
-    status: 'idle' | 'running' | 'paused' | 'completed' | 'failed';
-    error: string;
-  }>({
-    currentChapter: 0, totalChapters: 0, currentScene: 0, totalScenes: 0,
-    chapterTitle: '', sceneTitle: '', completedScenes: 0, totalAllScenes: 0,
-    status: 'idle', error: '',
-  });
-  const autoWriteAbortRef = useRef(false);
-  const [showAutoWrite, setShowAutoWrite] = useState(false);
 
   useEffect(() => {
     if (currentProjectId) {
@@ -239,208 +217,6 @@ export default function Outline() {
     setShowChapterForm(true);
   }
 
-  async function loadAutoWriteSettings() {
-    if (!currentProjectId) return null;
-    const { data } = await supabase
-      .from('generation_settings')
-      .select('*')
-      .eq('project_id', currentProjectId)
-      .maybeSingle();
-    return data;
-  }
-
-  async function startAutoWrite() {
-    if (!currentProjectId || !currentOutlineId) return;
-
-    const settings = await loadAutoWriteSettings();
-    if (!settings) {
-      setAutoWriteProgress(p => ({ ...p, status: 'failed', error: 'No AI settings configured. Go to Settings page first.' }));
-      return;
-    }
-
-    // Load all chapters for this outline
-    const { data: allChapters } = await supabase
-      .from('chapters')
-      .select('*')
-      .eq('outline_id', currentOutlineId)
-      .order('order_index', { ascending: true });
-
-    if (!allChapters || allChapters.length === 0) {
-      setAutoWriteProgress(p => ({ ...p, status: 'failed', error: 'No chapters found in this outline.' }));
-      return;
-    }
-
-    // Load all scenes for all chapters
-    const chapterIds = allChapters.map(c => c.id);
-    const { data: allScenes } = await supabase
-      .from('scenes')
-      .select('*')
-      .in('chapter_id', chapterIds)
-      .order('order_index', { ascending: true });
-
-    if (!allScenes || allScenes.length === 0) {
-      setAutoWriteProgress(p => ({ ...p, status: 'failed', error: 'No scenes found. Create scenes in your chapters first (use the Series Wizard or add them manually on the Write page).' }));
-      return;
-    }
-
-    // Load world context
-    const [bibleRes, manifestoRes, charsRes] = await Promise.all([
-      supabase.from('story_bible_entries').select('*').eq('project_id', currentProjectId).limit(30),
-      supabase.from('franchise_manifesto').select('*').eq('project_id', currentProjectId).maybeSingle(),
-      supabase.from('characters').select('*').eq('project_id', currentProjectId),
-    ]);
-
-    const worldContext = {
-      bible: (bibleRes.data || []).map((e: any) => `[${e.category}] ${e.subject}: ${e.fact}`).join('\n'),
-      manifesto: manifestoRes.data?.content || '',
-      characters: (charsRes.data || []).map((c: any) => `${c.name}: ${c.description || ''}`).join('\n'),
-    };
-
-    // Get the outline synopsis for context
-    const currentOutlineData = outlines.find(o => o.id === currentOutlineId);
-    const outlineSynopsis = currentOutlineData?.synopsis || '';
-
-    setAutoWriteActive(true);
-    autoWriteAbortRef.current = false;
-
-    const totalScenes = allScenes.length;
-    setAutoWriteProgress({
-      currentChapter: 0, totalChapters: allChapters.length,
-      currentScene: 0, totalScenes: 0,
-      chapterTitle: '', sceneTitle: '',
-      completedScenes: 0, totalAllScenes: totalScenes,
-      status: 'running', error: '',
-    });
-
-    let completedCount = 0;
-
-    for (let ci = 0; ci < allChapters.length; ci++) {
-      if (autoWriteAbortRef.current) break;
-      const chapter = allChapters[ci];
-      const chapterScenes = allScenes.filter(s => s.chapter_id === chapter.id);
-
-      if (chapterScenes.length === 0) continue;
-
-      // Get previous chapter content for continuity
-      let previousChapterEnding = '';
-      if (ci > 0) {
-        const prevChapter = allChapters[ci - 1];
-        const prevScenes = allScenes.filter(s => s.chapter_id === prevChapter.id);
-        const lastPrevScene = prevScenes[prevScenes.length - 1];
-        if (lastPrevScene?.content && lastPrevScene.content.length > 100) {
-          previousChapterEnding = lastPrevScene.content.slice(-800);
-        }
-      }
-
-      for (let si = 0; si < chapterScenes.length; si++) {
-        if (autoWriteAbortRef.current) break;
-        const scene = chapterScenes[si];
-
-        // Skip scenes that already have substantial content
-        if (scene.content && scene.content.length > 200) {
-          completedCount++;
-          continue;
-        }
-
-        setAutoWriteProgress(p => ({
-          ...p,
-          currentChapter: ci + 1,
-          totalChapters: allChapters.length,
-          currentScene: si + 1,
-          totalScenes: chapterScenes.length,
-          chapterTitle: chapter.title || `Chapter ${ci + 1}`,
-          sceneTitle: scene.title || `Scene ${si + 1}`,
-          completedScenes: completedCount,
-        }));
-
-        // Build prompt
-        const previousSceneContent = si > 0 && chapterScenes[si - 1]?.content
-          ? `\n\n=== PREVIOUS SCENE ENDING ===\n${chapterScenes[si - 1].content.slice(-600)}`
-          : previousChapterEnding ? `\n\n=== PREVIOUS CHAPTER ENDING ===\n${previousChapterEnding}` : '';
-
-        const prompt = `=== BOOK OUTLINE ===
-${outlineSynopsis.slice(0, 2000)}
-
-=== CHAPTER: ${chapter.title} ===
-${chapter.summary || ''}
-
-=== SCENE BRIEF: ${scene.title} ===
-${scene.description || scene.content || 'Write the opening scene for this chapter.'}
-${previousSceneContent}
-
-=== WORLD CONTEXT ===
-${worldContext.characters.slice(0, 1500)}
-${worldContext.bible.slice(0, 1500)}
-
-=== TASK ===
-Write this scene as polished prose fiction. Use third-person limited POV. Write 1500-2500 words.
-Include:
-- Sensory detail (sight, sound, smell, texture)
-- Character interiority and subtext
-- Natural dialogue with distinct character voices
-- Scene-level tension and pacing
-- A clear opening hook and closing beat that transitions to the next scene
-
-Do NOT include headers, scene titles, or metadata. Write only the prose.`;
-
-        try {
-          const result = await generateScene({
-            sceneDescription: prompt,
-            generationMode: 'scene',
-            contextMode: 'full',
-            worldRichness: 'balanced',
-            planningMode: 'creative',
-            context: {},
-            settings,
-          });
-
-          if (autoWriteAbortRef.current) break;
-
-          if (!result || result.trim().length < 100) {
-            setAutoWriteProgress(p => ({
-              ...p, status: 'failed',
-              error: `Scene "${scene.title}" in ${chapter.title} returned insufficient output. Stopping. All prior scenes are saved.`,
-            }));
-            setAutoWriteActive(false);
-            return;
-          }
-
-          // Save to DB
-          await supabase.from('scenes').update({
-            content: result,
-            status: 'draft',
-            updated_at: new Date().toISOString(),
-          }).eq('id', scene.id);
-
-          completedCount++;
-          // Update the local allScenes reference for continuity
-          scene.content = result;
-
-        } catch (err: any) {
-          setAutoWriteProgress(p => ({
-            ...p, status: 'failed',
-            error: `Failed at "${scene.title}" in ${chapter.title}: ${err.message}. All prior scenes are saved.`,
-          }));
-          setAutoWriteActive(false);
-          return;
-        }
-      }
-    }
-
-    if (!autoWriteAbortRef.current) {
-      setAutoWriteProgress(p => ({
-        ...p, status: 'completed', completedScenes: completedCount,
-      }));
-    }
-    setAutoWriteActive(false);
-  }
-
-  function stopAutoWrite() {
-    autoWriteAbortRef.current = true;
-    setAutoWriteProgress(p => ({ ...p, status: 'paused', error: 'Stopped by user. All completed scenes are saved.' }));
-    setAutoWriteActive(false);
-  }
-
   if (!currentProjectId) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -596,13 +372,12 @@ Do NOT include headers, scene titles, or metadata. Write only the prose.`;
           <div className="mb-4 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-slate-900">Chapters</h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowAutoWrite(!showAutoWrite)}
-                disabled={autoWriteActive}
-                className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors text-sm font-medium"
+              <a
+                href="/production"
+                className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium"
               >
-                {showAutoWrite ? 'Hide Auto-Write' : 'Auto-Write Book'}
-              </button>
+                Auto-Write Book
+              </a>
               <button
                 onClick={() => setShowChapterForm(true)}
                 className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
@@ -611,89 +386,6 @@ Do NOT include headers, scene titles, or metadata. Write only the prose.`;
               </button>
             </div>
           </div>
-
-          {/* Auto-Write Panel */}
-          {showAutoWrite && (
-            <div className="mb-6 bg-slate-50 rounded-lg border border-slate-200 p-5 space-y-4">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">Auto-Write Book</h3>
-                <p className="text-sm text-slate-600 mt-1">
-                  Automatically generate prose for every scene in this outline. Runs through each chapter in order, writing each scene using the outline, chapter brief, and world data as context.
-                </p>
-              </div>
-
-              <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
-                <p className="text-xs text-amber-800">
-                  Scenes that already have content (200+ characters) will be skipped. Generation saves after each scene completes. If generation fails or is stopped, all prior scenes are preserved. You can resume later -- it will pick up from where it left off.
-                </p>
-              </div>
-
-              {autoWriteProgress.status === 'idle' && (
-                <button
-                  onClick={startAutoWrite}
-                  disabled={chapters.length === 0}
-                  className="px-5 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Start Writing All Scenes
-                </button>
-              )}
-
-              {autoWriteProgress.status === 'running' && (
-                <div className="space-y-3">
-                  <div className="bg-slate-900 rounded-lg p-4">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
-                      <span className="text-sm text-white font-medium">
-                        Writing: {autoWriteProgress.chapterTitle} / {autoWriteProgress.sceneTitle}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 mb-2">
-                      Chapter {autoWriteProgress.currentChapter}/{autoWriteProgress.totalChapters} | Scene {autoWriteProgress.currentScene}/{autoWriteProgress.totalScenes} | {autoWriteProgress.completedScenes}/{autoWriteProgress.totalAllScenes} total scenes done
-                    </div>
-                    <div className="w-full bg-slate-700 rounded-full h-2">
-                      <div
-                        className="bg-green-400 h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${(autoWriteProgress.completedScenes / Math.max(autoWriteProgress.totalAllScenes, 1)) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={stopAutoWrite}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
-                  >
-                    Stop
-                  </button>
-                </div>
-              )}
-
-              {autoWriteProgress.status === 'completed' && (
-                <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                  <span className="text-sm font-medium text-green-800">
-                    Auto-write complete. {autoWriteProgress.completedScenes} scenes written. Visit the Write page to review and refine.
-                  </span>
-                </div>
-              )}
-
-              {(autoWriteProgress.status === 'failed' || autoWriteProgress.status === 'paused') && (
-                <div className="space-y-3">
-                  <div className={`${autoWriteProgress.status === 'failed' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'} border rounded-md p-3`}>
-                    <span className={`text-sm ${autoWriteProgress.status === 'failed' ? 'text-red-700' : 'text-amber-700'}`}>
-                      {autoWriteProgress.error}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setAutoWriteProgress(p => ({ ...p, status: 'idle', error: '' }));
-                      startAutoWrite();
-                    }}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-md text-sm font-medium hover:bg-slate-800 transition-colors"
-                  >
-                    Resume Writing
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
 
           {showChapterForm && (
             <div className="mb-8 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
