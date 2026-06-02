@@ -83,10 +83,49 @@ export async function getOrCreateRun(projectId: string, outlineId: string, profi
 }
 
 export async function updateRunState(runId: string, updates: Partial<Record<string, any>>): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('generation_runs')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', runId);
+  if (error) {
+    console.error('[Production] Failed to update run state:', error.message);
+  }
+}
+
+// Save scene content with retry
+export async function saveSceneContent(
+  sceneId: string,
+  content: string,
+): Promise<void> {
+  const payload = {
+    content,
+    status: 'draft',
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from('scenes').update(payload).eq('id', sceneId);
+
+  if (error) {
+    console.error('[Production] Scene save failed, retrying once:', error.message);
+    // Retry once after short delay
+    await new Promise(r => setTimeout(r, 2000));
+    const { error: retryErr } = await supabase.from('scenes').update(payload).eq('id', sceneId);
+    if (retryErr) {
+      throw new Error(`Scene save failed after retry: ${retryErr.message}. Content was ${content.length} chars.`);
+    }
+  }
+
+  // Verify the save by reading back
+  const { data: verified } = await supabase
+    .from('scenes')
+    .select('id')
+    .eq('id', sceneId)
+    .gt('content', '')
+    .maybeSingle();
+
+  if (!verified) {
+    throw new Error(`Scene save verification failed: content not persisted for scene ${sceneId}`);
+  }
 }
 
 // Build rich context for scene generation
@@ -98,7 +137,6 @@ export async function buildSceneContext(
   allChapters: any[],
   allScenes: any[],
 ): Promise<{ contextPrompt: string; characters: string; previousEnding: string }> {
-  // Load world data
   const [outlineRes, bibleRes, manifestoRes, charsRes, voicesRes, placesRes] = await Promise.all([
     supabase.from('outlines').select('*').eq('id', outlineId).maybeSingle(),
     supabase.from('story_bible_entries').select('*').eq('project_id', projectId).limit(40),
@@ -115,9 +153,8 @@ export async function buildSceneContext(
   const voices = voicesRes.data || [];
   const places = placesRes.data || [];
 
-  // Find the current chapter
   const chapter = allChapters.find((c: any) => c.id === chapterId);
-  const chapterIndex = allChapters.indexOf(chapter);
+  const chapterIndex = chapter ? allChapters.indexOf(chapter) : 0;
   const chapterScenes = allScenes.filter((s: any) => s.chapter_id === chapterId);
 
   // POV character voice
@@ -160,30 +197,24 @@ export async function buildSceneContext(
     }
   }
 
-  // Chapter summary for context
   const chapterSummary = chapter?.summary || '';
-
-  // Build the context
   const contextParts: string[] = [];
 
   if (manifesto?.content) {
     contextParts.push(`=== SERIES MANIFESTO ===\n${manifesto.content.slice(0, 1000)}`);
   }
-
   if (outline?.themes) {
     contextParts.push(`=== SERIES THEME ===\n${outline.themes}`);
   }
-
   if (outline?.synopsis) {
     contextParts.push(`=== BOOK OUTLINE (Summary) ===\n${outline.synopsis.slice(0, 1500)}`);
   }
 
-  contextParts.push(`=== CHAPTER ${chapterIndex + 1}: ${chapter?.title || ''} ===\n${chapterSummary}`);
+  contextParts.push(`=== CHAPTER ${chapterIndex + 1}: ${chapter?.title || 'Untitled'} ===\n${chapterSummary}`);
 
   if (povVoice) contextParts.push(povVoice);
   if (settingContext) contextParts.push(settingContext);
 
-  // Relevant bible entries
   const relevantBible = bible
     .filter(b => b.importance === 'critical' || b.importance === 'high')
     .slice(0, 15)
@@ -193,7 +224,6 @@ export async function buildSceneContext(
     contextParts.push(`=== WORLD BIBLE (Key Entries) ===\n${relevantBible}`);
   }
 
-  // Character summaries
   const charSummaries = characters
     .filter(c => c.description)
     .slice(0, 10)
@@ -270,17 +300,25 @@ export async function assembleChapter(
   projectId: string,
   chapterId: string,
 ): Promise<{ content: string; wordCount: number; sceneCount: number }> {
-  const { data: chapter } = await supabase
+  const { data: chapter, error: chapterErr } = await supabase
     .from('chapters')
     .select('*')
     .eq('id', chapterId)
     .maybeSingle();
 
-  const { data: scenes } = await supabase
+  if (chapterErr) {
+    throw new Error(`Failed to load chapter ${chapterId}: ${chapterErr.message}`);
+  }
+
+  const { data: scenes, error: scenesErr } = await supabase
     .from('scenes')
     .select('*')
     .eq('chapter_id', chapterId)
     .order('order_index', { ascending: true });
+
+  if (scenesErr) {
+    throw new Error(`Failed to load scenes for chapter ${chapterId}: ${scenesErr.message}`);
+  }
 
   if (!scenes || scenes.length === 0) {
     return { content: '', wordCount: 0, sceneCount: 0 };
@@ -288,7 +326,6 @@ export async function assembleChapter(
 
   const parts: string[] = [];
 
-  // Chapter header
   if (chapter) {
     parts.push(`# ${chapter.title}\n`);
     if (chapter.summary) {
@@ -298,43 +335,57 @@ export async function assembleChapter(
 
   // Assemble scenes with breaks
   let totalWords = 0;
+  let assembledSceneCount = 0;
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     if (!scene.content || scene.content.length < 50) continue;
 
-    if (i > 0) {
+    if (assembledSceneCount > 0) {
       parts.push('\n* * *\n');
     }
     parts.push(scene.content);
     totalWords += countWords(scene.content);
+    assembledSceneCount++;
   }
 
   const content = parts.join('\n');
 
   // Upsert the chapter assembly
-  const { data: existing } = await supabase
+  const { data: existing, error: existErr } = await supabase
     .from('chapter_assemblies')
-    .select('id')
+    .select('id, word_count')
     .eq('chapter_id', chapterId)
     .maybeSingle();
+
+  if (existErr) {
+    throw new Error(`Failed to check existing assembly for chapter ${chapterId}: ${existErr.message}`);
+  }
+
+  // Refuse to overwrite a longer assembly with a shorter one (protects against partial loads)
+  if (existing && existing.word_count > 0 && totalWords < existing.word_count * 0.5 && totalWords > 0) {
+    console.warn(`[Production] Refusing to downgrade chapter assembly: existing=${existing.word_count} words, new=${totalWords} words`);
+    return { content, wordCount: totalWords, sceneCount: assembledSceneCount };
+  }
 
   const assemblyData = {
     project_id: projectId,
     chapter_id: chapterId,
     content,
     word_count: totalWords,
-    scene_count: scenes.filter(s => s.content && s.content.length >= 50).length,
+    scene_count: assembledSceneCount,
     status: 'assembled',
     updated_at: new Date().toISOString(),
   };
 
   if (existing) {
-    await supabase.from('chapter_assemblies').update(assemblyData).eq('id', existing.id);
+    const { error } = await supabase.from('chapter_assemblies').update(assemblyData).eq('id', existing.id);
+    if (error) throw new Error(`Failed to update chapter assembly: ${error.message}`);
   } else {
-    await supabase.from('chapter_assemblies').insert(assemblyData);
+    const { error } = await supabase.from('chapter_assemblies').insert(assemblyData);
+    if (error) throw new Error(`Failed to create chapter assembly: ${error.message}`);
   }
 
-  return { content, wordCount: totalWords, sceneCount: scenes.length };
+  return { content, wordCount: totalWords, sceneCount: assembledSceneCount };
 }
 
 // Assemble a full book manuscript
@@ -342,39 +393,56 @@ export async function assembleBook(
   projectId: string,
   outlineId: string,
 ): Promise<{ content: string; wordCount: number; chapterCount: number }> {
-  const { data: outline } = await supabase
+  const { data: outline, error: outlineErr } = await supabase
     .from('outlines')
     .select('*')
     .eq('id', outlineId)
     .maybeSingle();
 
-  const { data: chapters } = await supabase
+  if (outlineErr) {
+    throw new Error(`Failed to load outline: ${outlineErr.message}`);
+  }
+
+  const { data: chapters, error: chapErr } = await supabase
     .from('chapters')
     .select('*')
     .eq('outline_id', outlineId)
     .order('order_index', { ascending: true });
 
+  if (chapErr) {
+    throw new Error(`Failed to load chapters: ${chapErr.message}`);
+  }
+
   if (!chapters || chapters.length === 0) {
     return { content: '', wordCount: 0, chapterCount: 0 };
   }
 
-  const { data: assemblies } = await supabase
+  const { data: assemblies, error: asmErr } = await supabase
     .from('chapter_assemblies')
     .select('*')
     .in('chapter_id', chapters.map(c => c.id));
 
+  if (asmErr) {
+    throw new Error(`Failed to load chapter assemblies: ${asmErr.message}`);
+  }
+
   const assemblyMap = new Map((assemblies || []).map(a => [a.chapter_id, a]));
+
+  // Check existing manuscript to prevent downgrades
+  const { data: existingManuscript } = await supabase
+    .from('book_manuscripts')
+    .select('id, word_count, chapter_count, status')
+    .eq('outline_id', outlineId)
+    .maybeSingle();
 
   const bookTitle = outline?.title || 'Untitled';
   const parts: string[] = [];
   let totalWords = 0;
   let completedChapters = 0;
 
-  // Title page
   const titlePage = `# ${bookTitle}\n\nA Novel\n\n---\n`;
   parts.push(titlePage);
 
-  // Chapter index
   const indexLines = chapters.map((ch, i) => {
     const assembly = assemblyMap.get(ch.id);
     const words = assembly?.word_count || 0;
@@ -382,7 +450,6 @@ export async function assembleBook(
   });
   parts.push(`## Table of Contents\n\n${indexLines.join('\n')}\n\n---\n`);
 
-  // Chapters
   for (const chapter of chapters) {
     const assembly = assemblyMap.get(chapter.id);
     if (assembly && assembly.content) {
@@ -394,14 +461,17 @@ export async function assembleBook(
     }
   }
 
-  const content = parts.join('\n');
+  // Refuse to overwrite a more-complete manuscript with a less-complete one
+  if (existingManuscript && existingManuscript.status === 'assembled') {
+    if (completedChapters < existingManuscript.chapter_count) {
+      console.warn(
+        `[Production] Refusing to downgrade manuscript: existing has ${existingManuscript.chapter_count} chapters, new would have ${completedChapters}`
+      );
+      return { content: parts.join('\n'), wordCount: totalWords, chapterCount: completedChapters };
+    }
+  }
 
-  // Upsert the book manuscript
-  const { data: existing } = await supabase
-    .from('book_manuscripts')
-    .select('id')
-    .eq('outline_id', outlineId)
-    .maybeSingle();
+  const content = parts.join('\n');
 
   const manuscriptData = {
     project_id: projectId,
@@ -416,10 +486,12 @@ export async function assembleBook(
     updated_at: new Date().toISOString(),
   };
 
-  if (existing) {
-    await supabase.from('book_manuscripts').update(manuscriptData).eq('id', existing.id);
+  if (existingManuscript) {
+    const { error } = await supabase.from('book_manuscripts').update(manuscriptData).eq('id', existingManuscript.id);
+    if (error) throw new Error(`Failed to update manuscript: ${error.message}`);
   } else {
-    await supabase.from('book_manuscripts').insert(manuscriptData);
+    const { error } = await supabase.from('book_manuscripts').insert(manuscriptData);
+    if (error) throw new Error(`Failed to create manuscript: ${error.message}`);
   }
 
   return { content, wordCount: totalWords, chapterCount: completedChapters };
@@ -478,8 +550,8 @@ Return ONLY the JSON array, nothing else.`;
     if (inserts.length > 0) {
       await supabase.from('bible_extraction_queue').insert(inserts);
     }
-  } catch {
-    // Non-critical -- don't fail the pipeline for extraction errors
+  } catch (err) {
+    console.warn('[Production] Bible extraction failed (non-critical):', err instanceof Error ? err.message : 'unknown');
   }
 }
 

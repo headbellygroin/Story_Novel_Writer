@@ -7,6 +7,7 @@ import {
   DRAFT_PROFILES,
   getOrCreateRun,
   updateRunState,
+  saveSceneContent,
   generateSceneContent,
   assembleChapter,
   assembleBook,
@@ -167,12 +168,8 @@ export default function Production() {
               throw new Error('Generation returned insufficient output');
             }
 
-            // Save scene content
-            await supabase.from('scenes').update({
-              content: result,
-              status: 'draft',
-              updated_at: new Date().toISOString(),
-            }).eq('id', scene.id);
+            // Save scene content (with retry and verification)
+            await saveSceneContent(scene.id, result);
 
             // Update local reference for continuity
             scene.content = result;
