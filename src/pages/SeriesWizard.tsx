@@ -489,16 +489,123 @@ Focus only on the overall series structure.`;
         if (outlineData) {
           console.log('[Wizard Save] Outline created:', outlineData.id);
           setCurrentOutlineId(outlineData.id);
-          const parsedChapters = parseChaptersFromOutput(quickOutput.chapterList);
+
+          // Parse chapters from Step 4 (Chapter List)
+          let parsedChapters = parseChaptersFromOutput(quickOutput.chapterList);
+
+          // Also parse any additional chapters from Step 3 (Book Outline) that Step 4 missed
+          if (quickOutput.bookOutline) {
+            const outlineChapters = parseChaptersFromOutput(quickOutput.bookOutline);
+            const existingNums = new Set(parsedChapters.map((_, i) => i + 1));
+            for (const oc of outlineChapters) {
+              const numMatch = oc.title.match(/Chapter\s+(\d+)/i);
+              if (numMatch && !existingNums.has(Number(numMatch[1]))) {
+                parsedChapters.push(oc);
+              }
+            }
+            // Sort by chapter number
+            parsedChapters.sort((a, b) => {
+              const numA = Number(a.title.match(/Chapter\s+(\d+)/i)?.[1] || 0);
+              const numB = Number(b.title.match(/Chapter\s+(\d+)/i)?.[1] || 0);
+              return numA - numB;
+            });
+          }
+
           console.log('[Wizard Save] Parsed chapters:', parsedChapters.length, parsedChapters.map(c => c.title));
 
           if (parsedChapters.length > 0) {
+            // Collect unique character names and locations from parsed chapters
+            const uniqueCharNames = [...new Set(parsedChapters.map(c => c.povCharacter).filter(Boolean))];
+            const uniqueLocNames = [...new Set(parsedChapters.map(c => c.location).filter(Boolean))];
+
+            // Load existing characters and places for this project
+            const [existingCharsRes, existingPlacesRes] = await Promise.all([
+              supabase.from('characters').select('id, name').eq('project_id', currentProjectId),
+              supabase.from('places').select('id, name').eq('project_id', currentProjectId),
+            ]);
+            const existingChars = existingCharsRes.data || [];
+            const existingPlaces = existingPlacesRes.data || [];
+
+            // Match or create characters (with fuzzy "The X" / "X" matching)
+            const charMap = new Map<string, string>(); // normalized name -> id
+            for (const ec of existingChars) {
+              charMap.set(ec.name.toLowerCase(), ec.id);
+              // Also index without "the " prefix for fuzzy matching
+              const stripped = ec.name.toLowerCase().replace(/^the\s+/, '');
+              if (stripped !== ec.name.toLowerCase()) charMap.set(stripped, ec.id);
+            }
+
+            function findCharId(name: string): string | null {
+              const lower = name.toLowerCase();
+              if (charMap.has(lower)) return charMap.get(lower)!;
+              const stripped = lower.replace(/^the\s+/, '');
+              if (charMap.has(stripped)) return charMap.get(stripped)!;
+              if (charMap.has('the ' + stripped)) return charMap.get('the ' + stripped)!;
+              return null;
+            }
+
+            const newChars = uniqueCharNames.filter(name => !findCharId(name));
+            if (newChars.length > 0) {
+              const { data: createdChars } = await supabase
+                .from('characters')
+                .insert(newChars.map(name => ({
+                  project_id: currentProjectId,
+                  name,
+                  description: `POV character identified during series planning.`,
+                })))
+                .select('id, name');
+              if (createdChars) {
+                for (const c of createdChars) {
+                  charMap.set(c.name.toLowerCase(), c.id);
+                }
+              }
+            }
+            console.log('[Wizard Save] Characters mapped:', charMap.size, '(created', newChars.length, 'new)');
+
+            // Match or create places (with fuzzy "The X" / "X" matching)
+            const placeMap = new Map<string, string>(); // normalized name -> id
+            for (const ep of existingPlaces) {
+              placeMap.set(ep.name.toLowerCase(), ep.id);
+              const stripped = ep.name.toLowerCase().replace(/^the\s+/, '');
+              if (stripped !== ep.name.toLowerCase()) placeMap.set(stripped, ep.id);
+            }
+
+            function findPlaceId(name: string): string | null {
+              const lower = name.toLowerCase();
+              if (placeMap.has(lower)) return placeMap.get(lower)!;
+              const stripped = lower.replace(/^the\s+/, '');
+              if (placeMap.has(stripped)) return placeMap.get(stripped)!;
+              if (placeMap.has('the ' + stripped)) return placeMap.get('the ' + stripped)!;
+              return null;
+            }
+
+            const newPlaces = uniqueLocNames.filter(name => !findPlaceId(name));
+            if (newPlaces.length > 0) {
+              const { data: createdPlaces } = await supabase
+                .from('places')
+                .insert(newPlaces.map(name => ({
+                  project_id: currentProjectId,
+                  name,
+                  description: `Location identified during series planning.`,
+                })))
+                .select('id, name');
+              if (createdPlaces) {
+                for (const p of createdPlaces) {
+                  placeMap.set(p.name.toLowerCase(), p.id);
+                }
+              }
+            }
+            console.log('[Wizard Save] Places mapped:', placeMap.size, '(created', newPlaces.length, 'new)');
+
+            // Create chapters with character and place links
             const chapterInserts = parsedChapters.map((ch, idx) => ({
               project_id: currentProjectId,
               outline_id: outlineData.id,
               title: ch.title,
               summary: ch.summary,
               order_index: idx,
+              pov_character_id: ch.povCharacter ? findCharId(ch.povCharacter) : null,
+              setting_place_id: ch.location ? findPlaceId(ch.location) : null,
             }));
 
             const { data: chapterRows, error: chapterErr } = await supabase
@@ -575,13 +682,15 @@ Focus only on the overall series structure.`;
     }
   }
 
-  function parseChaptersFromOutput(chapterList: string): Array<{ title: string; summary: string }> {
+  function parseChaptersFromOutput(chapterList: string): Array<{ title: string; summary: string; povCharacter: string; location: string }> {
     if (!chapterList) return [];
-    const results: Array<{ title: string; summary: string }> = [];
+    const results: Array<{ title: string; summary: string; povCharacter: string; location: string }> = [];
     const lines = chapterList.split('\n');
 
     let currentTitle = '';
     let currentLines: string[] = [];
+    let currentPov = '';
+    let currentLocation = '';
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -591,21 +700,30 @@ Focus only on the overall series structure.`;
 
       if (chapterMatch) {
         if (currentTitle && currentLines.length > 0) {
-          results.push({ title: currentTitle, summary: currentLines.join('\n').trim() });
+          results.push({ title: currentTitle, summary: currentLines.join('\n').trim(), povCharacter: currentPov, location: currentLocation });
         }
         const num = chapterMatch[1];
         const name = chapterMatch[2] ? chapterMatch[2].replace(/^["']|["']$/g, '') : '';
         currentTitle = name ? `Chapter ${num} - ${name}` : `Chapter ${num}`;
         currentLines = [line];
+        currentPov = '';
+        currentLocation = '';
       } else if (currentTitle) {
         currentLines.push(line);
+        // Extract POV character
+        const povMatch = trimmed.match(/^[-*]?\s*POV\s*(?:Character)?[:\s]+(.+)/i);
+        if (povMatch) currentPov = povMatch[1].trim().replace(/^["']|["']$/g, '');
+        // Extract location
+        const locMatch = trimmed.match(/^[-*]?\s*(?:Location|Primary Location|Setting)[:\s]+(.+)/i);
+        if (locMatch) currentLocation = locMatch[1].trim().replace(/^["']|["']$/g, '');
       }
     }
 
     if (currentTitle && currentLines.length > 0) {
-      results.push({ title: currentTitle, summary: currentLines.join('\n').trim() });
+      results.push({ title: currentTitle, summary: currentLines.join('\n').trim(), povCharacter: currentPov, location: currentLocation });
     }
 
+    // Also parse from outline (Step 3) to find chapters beyond what the chapter list generated
     return results;
   }
 

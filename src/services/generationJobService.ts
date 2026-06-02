@@ -331,6 +331,8 @@ ${outputs.chapterList}
 ${outputs.bookOutline}
 
 === TASK: CHAPTER BRIEFS (BOOK 1, CHAPTERS 1-5) ===
+Genre/Tone: ${genreText}
+
 Generate detailed chapter briefs for chapters 1 through 5. For each chapter:
 - Opening state
 - Scene-by-scene breakdown (3-5 scenes per chapter)
@@ -349,6 +351,8 @@ These briefs should be detailed enough that a writer could produce the chapter f
 ${outputs.chapterBriefs}
 
 === TASK: SCENE BREAKDOWN (CHAPTER 1) ===
+Genre/Tone: ${genreText}
+
 Generate individual scene cards for Chapter 1. For each scene provide:
 - Scene title
 - POV character
