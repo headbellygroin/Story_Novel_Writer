@@ -3,6 +3,7 @@ import { useBlocker } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { generateScene } from '../services/aiService';
+import { jobRunner, GenerationJob, WizardJobMetadata } from '../services/generationJobService';
 
 const STEPS = [
   { id: 1, key: 'seriesMap', title: 'Series Map', description: 'High-level arc across all books.' },
@@ -253,54 +254,70 @@ function SeriesWizard() {
 
   // --- Quick Start ---
 
+  // Subscribe to active job on mount
+  useEffect(() => {
+    if (!currentProjectId) return;
+    let unsub: (() => void) | null = null;
+
+    (async () => {
+      const activeJob = await jobRunner.getActiveJob(currentProjectId);
+      if (activeJob && activeJob.task_type === 'wizard_quick') {
+        setActiveJobId(activeJob.id);
+        setQuickRunning(true);
+        applyJobState(activeJob);
+        unsub = jobRunner.subscribe(activeJob.id, handleJobUpdate);
+      }
+    })();
+
+    return () => { if (unsub) unsub(); };
+  }, [currentProjectId]);
+
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  function applyJobState(job: GenerationJob) {
+    const meta = job.metadata as WizardJobMetadata | undefined;
+    if (!meta) return;
+
+    setQuickStep(job.current_step);
+    const o = meta.outputs || { seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' };
+    setQuickOutput(o);
+    setOutput(o);
+
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      setQuickRunning(false);
+      if (job.status === 'completed') setQuickStep(7);
+      if (job.status === 'failed') setError(job.error_message || 'Generation failed');
+    }
+  }
+
+  function handleJobUpdate(job: GenerationJob) {
+    applyJobState(job);
+  }
+
   async function runQuickStart() {
     if (!settings || !currentProjectId) {
       setError('No generation settings found. Configure your AI settings first.');
       return;
     }
+
     setQuickRunning(true);
     setError('');
     abortRef.current = false;
 
-    // If reviewFirst and we haven't approved yet, only generate step 1
+    // If reviewFirst and we haven't approved yet, only generate step 1 (old inline path)
     const onlySeriesMap = reviewFirst && !planApproved;
-
-    // Don't clear outputs that are already done -- this allows resuming
     if (onlySeriesMap && !quickOutput.seriesMap) {
-      setQuickOutput({ seriesMap: '', majorEvents: '', bookOutline: '', chapterList: '', chapterBriefs: '', scenes: '' });
-    }
-
-    const world = buildWorldSummary();
-    const genreText = genre || 'epic genre fiction';
-    const endText = endGoal || 'the protagonist achieves their ultimate goal';
-
-    const planningGuidance = planningStyle === 'discovery'
-      ? '\nPlanning Style: DISCOVERY WRITING. Keep plans loose and suggestive. Leave room for surprise and organic development. Fewer rigid plot points, more thematic direction and character motivation.\n'
-      : planningStyle === 'architect'
-      ? '\nPlanning Style: ARCHITECT WRITING. Plan meticulously. Strong foreshadowing, tight causality, interconnected plot threads. Every element should serve a structural purpose. Heavy planning with clear cause-and-effect chains.\n'
-      : '\nPlanning Style: BALANCED. Mix structured planning with room for organic development.\n';
-
-    const canonRule = world.trim()
-      ? `\n\n=== STRICT CANON RULE ===\nYou MUST use ONLY the characters, places, things, and technologies listed above. Do NOT invent new characters, locations, or world elements. Do NOT hallucinate motivations, backstories, or relationships that are not established in the world data. If the world data is sparse, keep your output proportionally focused on what IS established. Expand only where the existing data logically implies structure.\n`
-      : '';
-
-    // Save session as running
-    await saveWizardSession({
-      mode: 'quick',
-      is_running: true,
-      book_count: bookCount,
-      genre,
-      end_goal: endGoal,
-      planning_style: planningStyle,
-      review_first: reviewFirst,
-      plan_approved: planApproved,
-    });
-
-    try {
-      // Step 1: Series Map
-      let seriesMap = quickOutput.seriesMap;
-      if (!seriesMap) {
+      // Step 1 only -- run inline for the review gate
+      try {
         setQuickStep(1);
+        const world = buildWorldSummary();
+        const genreText = genre || 'epic genre fiction';
+        const endText = endGoal || 'the protagonist achieves their ultimate goal';
+        const planningGuidance = getPlanningGuidance();
+        const canonRule = world.trim()
+          ? `\n\n=== STRICT CANON RULE ===\nYou MUST use ONLY the characters, places, things, and technologies listed above. Do NOT invent new characters, locations, or world elements. Do NOT hallucinate motivations, backstories, or relationships that are not established in the world data. If the world data is sparse, keep your output proportionally focused on what IS established. Expand only where the existing data logically implies structure.\n`
+          : '';
+
         const seriesPrompt = `${world}${canonRule}${planningGuidance}
 === TASK: SERIES MAP ===
 Create a ${bookCount}-book series roadmap.
@@ -319,7 +336,7 @@ Do not create chapter outlines.
 Do not create scene outlines.
 Focus only on the overall series structure.`;
 
-        seriesMap = await generateScene({
+        const seriesMap = await generateScene({
           sceneDescription: seriesPrompt,
           generationMode: 'outline',
           contextMode: 'minimal',
@@ -331,218 +348,81 @@ Focus only on the overall series structure.`;
         if (abortRef.current) return;
         setQuickOutput(prev => ({ ...prev, seriesMap }));
         await saveWizardSession({ quick_step: 1, output_series_map: seriesMap });
-
-        // If review-first mode, stop here and wait for approval
-        if (onlySeriesMap) {
-          setQuickStep(0);
-          setQuickRunning(false);
-          await saveWizardSession({ is_running: false, quick_step: 0 });
-          return;
-        }
+        setQuickStep(0);
+      } catch (err: any) {
+        setError(err.message || 'Generation failed');
+      } finally {
+        setQuickRunning(false);
       }
+      return;
+    }
 
-      // Step 2: Book 1 Major Events
-      let majorEvents = quickOutput.majorEvents;
-      if (!majorEvents) {
-        setQuickStep(2);
-        const eventsPrompt = `${world}${canonRule}${planningGuidance}
-=== SERIES MAP (APPROVED) ===
-${seriesMap}
+    // Full run via job manager
+    const world = buildWorldSummary();
+    const planningGuidance = getPlanningGuidance();
+    const canonRule = world.trim()
+      ? `\n\n=== STRICT CANON RULE ===\nYou MUST use ONLY the characters, places, things, and technologies listed above. Do NOT invent new characters, locations, or world elements. Do NOT hallucinate motivations, backstories, or relationships that are not established in the world data. If the world data is sparse, keep your output proportionally focused on what IS established. Expand only where the existing data logically implies structure.\n`
+      : '';
 
-=== TASK: MAJOR EVENTS FOR BOOK 1 ===
-Generate the major turning points for Book 1.
-Genre/Tone: ${genreText}
+    const metadata: WizardJobMetadata = {
+      book_count: bookCount,
+      genre: genre || 'epic genre fiction',
+      end_goal: endGoal || 'the protagonist achieves their ultimate goal',
+      planning_style: planningStyle,
+      world_summary: world,
+      canon_rule: canonRule,
+      planning_guidance: planningGuidance,
+      outputs: { ...quickOutput },
+    };
 
-Include:
-- Opening
-- Inciting Incident
-- First Turning Point
-- Midpoint
-- Major Reversal
-- Climax
-- Resolution
+    try {
+      const jobId = await jobRunner.createWizardJob(currentProjectId, settings, metadata);
+      setActiveJobId(jobId);
 
-For each event provide: what happens, characters involved, consequence, and emotional weight.
-Do not generate chapters.`;
+      const unsub = jobRunner.subscribe(jobId, handleJobUpdate);
+      // Store unsub in ref for cleanup
+      jobUnsubRef.current = unsub;
 
-        majorEvents = await generateScene({
-          sceneDescription: eventsPrompt,
-          generationMode: 'outline',
-          contextMode: 'minimal',
-          worldRichness: 'minimal',
-          planningMode: 'creative',
-          context: {},
-          settings,
-        });
-        if (abortRef.current) return;
-        setQuickOutput(prev => ({ ...prev, majorEvents }));
-        await saveWizardSession({ quick_step: 2, output_major_events: majorEvents });
-      }
+      // Fire and forget -- the runner owns the connection now
+      jobRunner.runWizardJob(jobId);
 
-      // Step 3: Book 1 Outline
-      let bookOutline = quickOutput.bookOutline;
-      if (!bookOutline) {
-        setQuickStep(3);
-        const outlinePrompt = `${world}${canonRule}${planningGuidance}
-=== SERIES MAP ===
-${seriesMap}
-
-=== BOOK 1 MAJOR EVENTS ===
-${majorEvents}
-
-=== TASK: BOOK 1 OUTLINE ===
-Convert Book 1 major events into a detailed book outline.
-Genre/Tone: ${genreText}
-
-Include:
-- Act 1 setup (world state, character introductions, inciting incident)
-- Act 2 rising action (complications, subplots, midpoint)
-- Act 2B descent (consequences, dark moment)
-- Act 3 resolution (climax, resolution, new equilibrium)
-- Series threads advanced
-- Character arcs progressed
-
-Do not generate chapter lists yet.`;
-
-        bookOutline = await generateScene({
-          sceneDescription: outlinePrompt,
-          generationMode: 'outline',
-          contextMode: 'minimal',
-          worldRichness: 'minimal',
-          planningMode: 'creative',
-          context: {},
-          settings,
-        });
-        if (abortRef.current) return;
-        setQuickOutput(prev => ({ ...prev, bookOutline }));
-        await saveWizardSession({ quick_step: 3, output_book_outline: bookOutline });
-      }
-
-      // Step 4: Chapter List
-      let chapterList = quickOutput.chapterList;
-      if (!chapterList) {
-        setQuickStep(4);
-        const chapterPrompt = `${world}${canonRule}${planningGuidance}
-=== BOOK 1 OUTLINE ===
-${bookOutline}
-
-=== BOOK 1 MAJOR EVENTS ===
-${majorEvents}
-
-=== TASK: CHAPTER LIST FOR BOOK 1 ===
-Generate chapters for Book 1.
-Genre/Tone: ${genreText}
-
-20-30 chapters. For each chapter provide:
-- Chapter number
-- Working title
-- POV character
-- Primary location
-- Key events (2-3 bullet points)
-- Emotional tone
-
-One paragraph per chapter. No scene breakdowns.`;
-
-        chapterList = await generateScene({
-          sceneDescription: chapterPrompt,
-          generationMode: 'outline',
-          contextMode: 'minimal',
-          worldRichness: 'minimal',
-          planningMode: 'creative',
-          context: {},
-          settings,
-        });
-        if (abortRef.current) return;
-        setQuickOutput(prev => ({ ...prev, chapterList }));
-        await saveWizardSession({ quick_step: 4, output_chapter_list: chapterList });
-      }
-
-      // Step 5: Chapter Briefs (first 5 chapters)
-      let chapterBriefs = quickOutput.chapterBriefs;
-      if (!chapterBriefs) {
-        setQuickStep(5);
-        const briefsPrompt = `${world}${canonRule}${planningGuidance}
-=== CHAPTER LIST ===
-${chapterList}
-
-=== BOOK OUTLINE ===
-${bookOutline}
-
-=== TASK: CHAPTER BRIEFS (BOOK 1, CHAPTERS 1-5) ===
-Generate detailed chapter briefs for chapters 1 through 5. For each chapter:
-- Opening state
-- Scene-by-scene breakdown (3-5 scenes per chapter)
-- Character goals and obstacles
-- Key dialogue beats or reveals
-- Closing state / cliffhanger
-- Theme advancement
-
-These briefs should be detailed enough that a writer could produce the chapter from them.`;
-
-        chapterBriefs = await generateScene({
-          sceneDescription: briefsPrompt,
-          generationMode: 'outline',
-          contextMode: 'minimal',
-          worldRichness: 'minimal',
-          planningMode: 'creative',
-          context: {},
-          settings,
-        });
-        if (abortRef.current) return;
-        setQuickOutput(prev => ({ ...prev, chapterBriefs }));
-        await saveWizardSession({ quick_step: 5, output_chapter_briefs: chapterBriefs });
-      }
-
-      // Step 6: Scene Breakdown (Chapter 1)
-      let scenes = quickOutput.scenes;
-      if (!scenes) {
-        setQuickStep(6);
-        const scenesPrompt = `${world}${canonRule}${planningGuidance}
-=== CHAPTER BRIEF (CHAPTER 1) ===
-${chapterBriefs}
-
-=== TASK: SCENE BREAKDOWN (CHAPTER 1) ===
-Generate individual scene cards for Chapter 1. For each scene provide:
-- Scene title
-- POV character
-- Location
-- Characters present
-- Opening beat
-- Core conflict/tension
-- Key dialogue moments
-- Closing beat / transition
-- Estimated word count`;
-
-        scenes = await generateScene({
-          sceneDescription: scenesPrompt,
-          generationMode: 'outline',
-          contextMode: 'minimal',
-          worldRichness: 'minimal',
-          planningMode: 'creative',
-          context: {},
-          settings,
-        });
-        if (abortRef.current) return;
-        setQuickOutput(prev => ({ ...prev, scenes }));
-        await saveWizardSession({ quick_step: 7, output_scenes: scenes, is_running: false });
-      } else {
-        await saveWizardSession({ quick_step: 7, is_running: false });
-      }
-
-      // Feed results into advanced mode
-      setOutput({ seriesMap, majorEvents, bookOutline, chapterList, chapterBriefs, scenes });
-      setQuickStep(7);
+      await saveWizardSession({
+        mode: 'quick',
+        is_running: true,
+        book_count: bookCount,
+        genre,
+        end_goal: endGoal,
+        planning_style: planningStyle,
+        review_first: reviewFirst,
+        plan_approved: planApproved,
+      });
     } catch (err: any) {
-      setError(err.message || 'Generation failed');
-      await saveWizardSession({ is_running: false });
-    } finally {
+      setError(err.message || 'Failed to start generation');
       setQuickRunning(false);
     }
+  }
+
+  const jobUnsubRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => { if (jobUnsubRef.current) jobUnsubRef.current(); };
+  }, []);
+
+  function getPlanningGuidance(): string {
+    return planningStyle === 'discovery'
+      ? '\nPlanning Style: DISCOVERY WRITING. Keep plans loose and suggestive. Leave room for surprise and organic development. Fewer rigid plot points, more thematic direction and character motivation.\n'
+      : planningStyle === 'architect'
+      ? '\nPlanning Style: ARCHITECT WRITING. Plan meticulously. Strong foreshadowing, tight causality, interconnected plot threads. Every element should serve a structural purpose. Heavy planning with clear cause-and-effect chains.\n'
+      : '\nPlanning Style: BALANCED. Mix structured planning with room for organic development.\n';
   }
 
   function handleAbort() {
     abortRef.current = true;
     setQuickRunning(false);
+    if (activeJobId) {
+      jobRunner.cancelJob(activeJobId);
+      setActiveJobId(null);
+    }
     saveWizardSession({ is_running: false });
   }
 
@@ -980,6 +860,11 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
+        {/* Job Status Panel */}
+        <div className="max-w-4xl mx-auto px-6 pt-4">
+          <JobStatusPanel projectId={currentProjectId} />
+        </div>
+
         {mode === 'quick' ? (
           <QuickStartPanel
             bookCount={bookCount}
@@ -1791,6 +1676,119 @@ function AdvancedPanel({
       )}
     </div>
   );
+}
+// --- Job Status Panel ---
+
+function JobStatusPanel({ projectId }: { projectId: string }) {
+  const [jobs, setJobs] = useState<GenerationJob[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    loadJobs();
+    const interval = setInterval(loadJobs, 5000);
+    return () => clearInterval(interval);
+  }, [projectId]);
+
+  async function loadJobs() {
+    const recent = await jobRunner.getRecentJobs(projectId, 5);
+    setJobs(recent);
+  }
+
+  if (jobs.length === 0) return null;
+
+  const activeJob = jobs.find(j => j.status === 'running' || j.status === 'queued');
+  const completedJobs = jobs.filter(j => j.status === 'completed');
+  const failedJobs = jobs.filter(j => j.status === 'failed');
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div
+        className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-2">
+          {activeJob && <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+          <span className="text-xs font-medium text-slate-700">
+            Generation Jobs
+          </span>
+          {activeJob && (
+            <span className="text-xs text-slate-500">
+              -- Step {activeJob.current_step}/{activeJob.total_steps}: {activeJob.step_label}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {completedJobs.length > 0 && (
+            <span className="px-1.5 py-0.5 text-[10px] bg-green-100 text-green-700 rounded font-medium">
+              {completedJobs.length} done
+            </span>
+          )}
+          {failedJobs.length > 0 && (
+            <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded font-medium">
+              {failedJobs.length} failed
+            </span>
+          )}
+          <span className="text-xs text-slate-400">{expanded ? '\u25B2' : '\u25BC'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-slate-100 divide-y divide-slate-100">
+          {jobs.map(job => (
+            <div key={job.id} className="px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <StatusBadge status={job.status} />
+                <div>
+                  <span className="text-xs font-medium text-slate-700">{job.task_type.replace(/_/g, ' ')}</span>
+                  <span className="text-[10px] text-slate-500 ml-2">
+                    {job.status === 'running' ? job.step_label : `${job.current_step}/${job.total_steps} steps`}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {job.status === 'running' && (
+                  <button
+                    onClick={e => { e.stopPropagation(); jobRunner.cancelJob(job.id); loadJobs(); }}
+                    className="px-2 py-0.5 text-[10px] bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <span className="text-[10px] text-slate-400">
+                  {formatTimeAgo(job.updated_at)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    queued: 'bg-slate-100 text-slate-600',
+    running: 'bg-green-100 text-green-700',
+    completed: 'bg-green-50 text-green-600',
+    failed: 'bg-red-50 text-red-600',
+    cancelled: 'bg-slate-100 text-slate-500',
+  };
+  return (
+    <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${styles[status] || styles.queued}`}>
+      {status}
+    </span>
+  );
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 
