@@ -20,6 +20,8 @@ export interface GenerationJob {
   updated_at: string;
 }
 
+export type GenerationMode = 'guided' | 'accelerated';
+
 export interface WizardJobMetadata {
   book_count: number;
   genre: string;
@@ -28,6 +30,9 @@ export interface WizardJobMetadata {
   world_summary: string;
   canon_rule: string;
   planning_guidance: string;
+  generation_mode: GenerationMode;
+  auto_approve_steps: string[];
+  needs_review: boolean;
   outputs: {
     seriesMap: string;
     majorEvents: string;
@@ -36,6 +41,36 @@ export interface WizardJobMetadata {
     chapterBriefs: string;
     scenes: string;
   };
+}
+
+const STEP_KEYS = ['seriesMap', 'majorEvents', 'bookOutline', 'chapterList', 'chapterBriefs', 'scenes'] as const;
+
+const MIN_OUTPUT_LENGTH = 100;
+
+const REFUSAL_PATTERNS = [
+  /^i('m| am) (sorry|unable|not able)/i,
+  /^i cannot/i,
+  /^as an ai/i,
+  /^i apologize/i,
+  /^unfortunately,? i (can't|cannot|am unable)/i,
+  /^i don't have (the ability|access|enough)/i,
+];
+
+const CONTEXT_OVERFLOW_PATTERNS = [
+  /context (length|window|limit) exceeded/i,
+  /maximum context/i,
+  /token limit/i,
+  /input too long/i,
+  /reduce the length/i,
+];
+
+function detectRefusal(text: string): boolean {
+  const trimmed = text.trim();
+  return REFUSAL_PATTERNS.some(p => p.test(trimmed));
+}
+
+function detectContextOverflow(text: string): boolean {
+  return CONTEXT_OVERFLOW_PATTERNS.some(p => p.test(text));
 }
 
 type JobListener = (job: GenerationJob) => void;
@@ -52,7 +87,6 @@ class GenerationJobRunner {
     }
     this.listeners.get(jobId)!.add(listener);
 
-    // If not the active job, start polling DB for external updates
     if (jobId !== this.activeJobId) {
       this.startPolling(jobId);
     }
@@ -182,13 +216,15 @@ class GenerationJobRunner {
     const meta = job.metadata as WizardJobMetadata;
     const settings = job.settings_snapshot;
     const outputs = { ...meta.outputs };
+    const isAccelerated = meta.generation_mode === 'accelerated';
+    const autoApproveSteps = meta.auto_approve_steps || [];
 
     const { world_summary: world, canon_rule: canonRule, planning_guidance: planningGuidance } = meta;
     const genreText = meta.genre || 'epic genre fiction';
     const endText = meta.end_goal || 'the protagonist achieves their ultimate goal';
 
     const steps: Array<{
-      key: keyof typeof outputs;
+      key: typeof STEP_KEYS[number];
       label: string;
       buildPrompt: () => string;
     }> = [
@@ -341,6 +377,12 @@ Generate individual scene cards for Chapter 1. For each scene provide:
           continue;
         }
 
+        // In accelerated mode, check if this step is auto-approved
+        // In guided mode, all steps run when the job is created (approval handled at component level)
+        if (isAccelerated && !autoApproveSteps.includes(step.key)) {
+          continue;
+        }
+
         const stepNum = i + 1;
         await this.updateJob(jobId, {
           current_step: stepNum,
@@ -349,17 +391,65 @@ Generate individual scene cards for Chapter 1. For each scene provide:
         });
 
         const prompt = step.buildPrompt();
-        const result = await generateScene({
-          sceneDescription: prompt,
-          generationMode: 'outline',
-          contextMode: 'minimal',
-          worldRichness: 'minimal',
-          planningMode: 'creative',
-          context: {},
-          settings,
-        });
+        let result: string;
+
+        try {
+          result = await generateScene({
+            sceneDescription: prompt,
+            generationMode: 'outline',
+            contextMode: 'minimal',
+            worldRichness: 'minimal',
+            planningMode: 'creative',
+            context: {},
+            settings,
+          });
+        } catch (fetchErr: any) {
+          const errMsg = fetchErr.message || 'Generation request failed';
+          if (detectContextOverflow(errMsg)) {
+            await this.updateJob(jobId, {
+              status: 'failed',
+              error_message: `Context window exceeded at step "${step.label}". The accumulated context is too large for the model. Try a model with a larger context window or reduce world data.`,
+              metadata: { ...meta, outputs },
+            });
+          } else {
+            await this.updateJob(jobId, {
+              status: 'failed',
+              error_message: `Step "${step.label}" failed: ${errMsg}`,
+              metadata: { ...meta, outputs },
+            });
+          }
+          return;
+        }
 
         if (this.aborted) return;
+
+        // Safeguard: check output quality
+        if (!result || result.trim().length < MIN_OUTPUT_LENGTH) {
+          await this.updateJob(jobId, {
+            status: 'failed',
+            error_message: `Step "${step.label}" produced empty or insufficient output (${result?.trim().length || 0} chars). The model may have encountered an issue. All prior steps are preserved.`,
+            metadata: { ...meta, outputs },
+          });
+          return;
+        }
+
+        if (detectRefusal(result)) {
+          await this.updateJob(jobId, {
+            status: 'failed',
+            error_message: `Step "${step.label}" returned a refusal/error response from the model. The output begins with: "${result.slice(0, 120)}..." All prior steps are preserved.`,
+            metadata: { ...meta, outputs },
+          });
+          return;
+        }
+
+        if (detectContextOverflow(result)) {
+          await this.updateJob(jobId, {
+            status: 'failed',
+            error_message: `Step "${step.label}" indicates context window overflow. Try a model with a larger context window. All prior steps are preserved.`,
+            metadata: { ...meta, outputs },
+          });
+          return;
+        }
 
         outputs[step.key] = result;
 
@@ -371,13 +461,14 @@ Generate individual scene cards for Chapter 1. For each scene provide:
         });
       }
 
-      // All done
+      // All done -- mark needs_review for accelerated jobs
+      const updatedMeta = { ...meta, outputs, needs_review: isAccelerated };
       await this.updateJob(jobId, {
         status: 'completed',
         current_step: 6,
-        step_label: 'All steps complete',
+        step_label: isAccelerated ? 'All steps complete - Needs Review' : 'All steps complete',
         result: JSON.stringify(outputs),
-        metadata: { ...meta, outputs },
+        metadata: updatedMeta,
         completed_at: new Date().toISOString(),
       });
     } catch (err: any) {
