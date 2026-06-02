@@ -1060,6 +1060,20 @@ export default function Write() {
     }
   }
 
+  async function deleteAllScenesInChapter() {
+    if (!selectedChapterId) return;
+    if (!confirm(`Delete ALL ${scenes.length} scenes in this chapter? This cannot be undone.`)) return;
+
+    try {
+      const { error } = await supabase.from('scenes').delete().eq('chapter_id', selectedChapterId);
+      if (error) throw error;
+      setScenes([]);
+      setSelectedSceneId(null);
+    } catch (error) {
+      console.error('Error deleting all scenes:', error);
+    }
+  }
+
   if (!currentProjectId) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1124,6 +1138,14 @@ export default function Write() {
                 >
                   Add Scene
                 </button>
+                {scenes.length > 0 && (
+                  <button
+                    onClick={deleteAllScenesInChapter}
+                    className="px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded-md hover:bg-red-100 text-sm whitespace-nowrap"
+                  >
+                    Delete All
+                  </button>
+                )}
               </div>
             </div>
           </div>

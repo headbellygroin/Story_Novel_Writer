@@ -22,6 +22,7 @@ import SetupGuide from './pages/SetupGuide';
 import RevealTimeline from './pages/RevealTimeline';
 import SeriesWizard from './pages/SeriesWizard';
 import Production from './pages/Production';
+import SeriesPipeline from './pages/SeriesPipeline';
 
 export default function App() {
   return (
@@ -193,6 +194,14 @@ export default function App() {
           element={
             <Layout>
               <Production />
+            </Layout>
+          }
+        />
+        <Route
+          path="/series-pipeline"
+          element={
+            <Layout>
+              <SeriesPipeline />
             </Layout>
           }
         />

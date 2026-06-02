@@ -211,6 +211,19 @@ export default function Outline() {
     }
   }
 
+  async function deleteAllChapters() {
+    if (!currentOutlineId) return;
+    if (!confirm(`Delete ALL ${chapters.length} chapters for this outline? This will also delete all scenes within them. This cannot be undone.`)) return;
+
+    try {
+      const { error } = await supabase.from('chapters').delete().eq('outline_id', currentOutlineId);
+      if (error) throw error;
+      setChapters([]);
+    } catch (error) {
+      console.error('Error deleting all chapters:', error);
+    }
+  }
+
   function startEditChapter(chapter: Chapter) {
     setEditingChapterId(chapter.id);
     setChapterFormData(chapter);
@@ -370,8 +383,16 @@ export default function Outline() {
       {currentOutlineId && (
         <>
           <div className="mb-4 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-slate-900">Chapters</h2>
+            <h2 className="text-xl font-semibold text-slate-900">Chapters ({chapters.length})</h2>
             <div className="flex items-center gap-2">
+              {chapters.length > 0 && (
+                <button
+                  onClick={deleteAllChapters}
+                  className="px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium"
+                >
+                  Delete All Chapters
+                </button>
+              )}
               <a
                 href="/production"
                 className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium"

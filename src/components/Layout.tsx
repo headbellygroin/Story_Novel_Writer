@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { path: '/series-wizard', label: 'Wizard' },
   { path: '/outline', label: 'Outline' },
   { path: '/write', label: 'Write' },
+  { path: '/series-pipeline', label: 'Series' },
   { path: '/production', label: 'Production' },
   { path: '/story-bible', label: 'Story Bible' },
   { path: '/style-anchors', label: 'Style' },
