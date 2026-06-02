@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { generateScene } from '../services/aiService';
 import { jobRunner, GenerationJob, WizardJobMetadata, GenerationMode } from '../services/generationJobService';
+import { runFullAcceleratedPipeline, PipelineProgress } from '../services/seriesPipelineService';
 
 const STEPS = [
   { id: 1, key: 'seriesMap', title: 'Series Map', description: 'High-level arc across all books.' },
@@ -51,6 +52,8 @@ function SeriesWizard() {
   });
   const abortRef = useRef(false);
   const sessionLoadedRef = useRef(false);
+  const [pipelineLog, setPipelineLog] = useState<string[]>([]);
+  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
 
   // Advanced mode state
   const [currentStep, setCurrentStep] = useState(1);
@@ -323,6 +326,43 @@ function SeriesWizard() {
       return;
     }
 
+    // Accelerated mode: delegate to the Series Pipeline execution engine
+    if (generationMode === 'accelerated') {
+      setQuickRunning(true);
+      setError('');
+      abortRef.current = false;
+      setPipelineLog([]);
+      setPipelineProgress(null);
+      setQuickStep(1);
+
+      try {
+        await runFullAcceleratedPipeline({
+          projectId: currentProjectId,
+          bookCount,
+          seriesPremise: genre || 'epic genre fiction',
+          genre: genre || 'epic genre fiction',
+          endingState: endGoal || 'the protagonist achieves their ultimate goal',
+          chapterCount: 12,
+          onProgress: (p) => {
+            setPipelineProgress(p);
+            setQuickStep(p.level);
+          },
+          onLog: (msg) => {
+            setPipelineLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+          },
+          abortSignal: abortRef,
+        });
+      } catch (err: any) {
+        if (!abortRef.current) {
+          setError(err.message || 'Pipeline failed');
+        }
+      } finally {
+        setQuickRunning(false);
+        setQuickStep(0);
+      }
+      return;
+    }
+
     setQuickRunning(true);
     setError('');
     abortRef.current = false;
@@ -397,7 +437,7 @@ Focus only on the overall series structure.`;
       canon_rule: canonRule,
       planning_guidance: planningGuidance,
       generation_mode: generationMode,
-      auto_approve_steps: generationMode === 'accelerated' ? autoApproveSteps : ['seriesMap', 'majorEvents', 'bookOutline', 'chapterList', 'chapterBriefs', 'scenes'],
+      auto_approve_steps: ['seriesMap', 'majorEvents', 'bookOutline', 'chapterList', 'chapterBriefs', 'scenes'],
       needs_review: false,
       outputs: { ...quickOutput },
     };
@@ -1260,6 +1300,8 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
             onRegenerate={handleRegenerateSection}
             onSwitchToAdvanced={handleSwitchToAdvanced}
             projectData={projectData}
+            pipelineLog={pipelineLog}
+            pipelineProgress={pipelineProgress}
           />
         ) : (
           <AdvancedPanel
@@ -1296,6 +1338,7 @@ function QuickStartPanel({
   generationMode, setGenerationMode, autoApproveSteps, setAutoApproveSteps, needsReview,
   running, step, output, error, settings, saving,
   onRun, onAbort, onSaveAll, onRegenerate, onSwitchToAdvanced, projectData,
+  pipelineLog, pipelineProgress,
 }: {
   bookCount: number;
   setBookCount: (n: number) => void;
@@ -1326,6 +1369,8 @@ function QuickStartPanel({
   onRegenerate: (key: StepKey) => void;
   onSwitchToAdvanced: () => void;
   projectData: any;
+  pipelineLog: string[];
+  pipelineProgress: PipelineProgress | null;
 }) {
   const hasOutput = output.seriesMap || output.majorEvents || output.bookOutline || output.chapterList || output.chapterBriefs || output.scenes;
   const allDone = output.seriesMap && output.majorEvents && output.bookOutline && output.chapterList && output.chapterBriefs && output.scenes;
@@ -1589,21 +1634,51 @@ function QuickStartPanel({
 
       {/* Accelerated Running Banner */}
       {running && generationMode === 'accelerated' && (
-        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3">
-          <div className="w-3 h-3 bg-amber-500 rounded-full animate-pulse mt-0.5 flex-shrink-0" />
-          <div>
-            <span className="text-sm font-medium text-amber-900 block">
-              Accelerated Development is running unattended.
-            </span>
-            <span className="text-xs text-amber-700 mt-0.5 block">
-              Review required before writing canon prose. All completed stages are saved immediately.
-            </span>
+        <div className="space-y-3">
+          <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-start gap-3">
+            <div className="w-3 h-3 bg-amber-500 rounded-full animate-pulse mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="text-sm font-medium text-amber-900 block">
+                Full Pipeline Running: Series → Books → Chapters → Briefs → Scenes → Prose → Assembly
+              </span>
+              <span className="text-xs text-amber-700 mt-0.5 block">
+                All completed stages are saved immediately. If any step fails, the pipeline stops and preserves prior work. You can monitor progress on the Series page.
+              </span>
+            </div>
           </div>
+          {pipelineProgress && (
+            <div className="bg-slate-900 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+                <span className="text-sm text-white font-medium">
+                  Level {pipelineProgress.level} of 6: {['', 'Series Architect', 'Book Architect', 'Chapter Architect', 'Scene Architect', 'Scene Writer', 'Assembly'][pipelineProgress.level]}
+                  {pipelineProgress.book > 0 && ` — Book ${pipelineProgress.book}`}
+                </span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2 mb-3">
+                <div
+                  className="bg-green-400 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${(pipelineProgress.level / 6) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-400 truncate">{pipelineProgress.message}</p>
+            </div>
+          )}
+          {pipelineLog.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-slate-500 mb-2">Pipeline Log</p>
+              <div className="space-y-0.5 font-mono text-xs text-slate-600">
+                {pipelineLog.slice(-20).map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Progress Indicator */}
-      {running && (
+      {/* Progress Indicator (Guided mode only) */}
+      {running && generationMode !== 'accelerated' && (
         <div className="bg-slate-900 rounded-lg p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />

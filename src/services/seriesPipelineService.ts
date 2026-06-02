@@ -911,6 +911,240 @@ export async function deleteSceneBlueprints(projectId: string, chapterId?: strin
   }
 }
 
+// ------ FULL ACCELERATED PIPELINE (Wizard Orchestration) ------
+
+export interface AcceleratedPipelineConfig {
+  projectId: string;
+  bookCount: number;
+  seriesPremise: string;
+  genre: string;
+  endingState: string;
+  chapterCount: number;
+  onProgress: ProgressCallback;
+  onLog: (message: string) => void;
+  abortSignal?: { current: boolean };
+}
+
+export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConfig): Promise<void> {
+  const { projectId, bookCount, seriesPremise, genre, endingState, chapterCount, onProgress, onLog, abortSignal } = config;
+
+  const state = await getOrCreatePipelineState(projectId, 'accelerated');
+
+  function checkAbort() {
+    if (abortSignal?.current) throw new Error('Pipeline aborted by user.');
+  }
+
+  // ===== LEVEL 1: Series Architect =====
+  onLog('Level 1: Series Architect starting...');
+  await updatePipelineState(state.id, { level1_status: 'running', is_running: true, current_level: 1, started_at: new Date().toISOString() });
+
+  const seriesPlans = await runLevel1SeriesArchitect(projectId, bookCount, seriesPremise, genre, endingState, onProgress);
+  checkAbort();
+
+  await updatePipelineState(state.id, { level1_status: 'complete', current_level: 2 });
+  onLog(`Level 1 complete: ${seriesPlans.length} book plans generated.`);
+
+  // ===== LEVEL 2: Book Architect (all books) =====
+  onLog('Level 2: Book Architect starting...');
+  await updatePipelineState(state.id, { level2_status: 'running', current_level: 2 });
+
+  const [charsRes, placesRes] = await Promise.all([
+    supabase.from('characters').select('id, name').eq('project_id', projectId),
+    supabase.from('places').select('id, name').eq('project_id', projectId),
+  ]);
+  const chars = charsRes.data || [];
+  const places = placesRes.data || [];
+
+  for (let b = 1; b <= seriesPlans.length; b++) {
+    checkAbort();
+    onLog(`Level 2: Book ${b} of ${seriesPlans.length}...`);
+    await updatePipelineState(state.id, { current_book: b });
+
+    const result = await runLevel2BookArchitect(projectId, b, seriesPlans, chapterCount, onProgress);
+    checkAbort();
+
+    const plan = seriesPlans.find(p => p.book_number === b);
+    const { data: outline } = await supabase
+      .from('outlines')
+      .insert({ project_id: projectId, title: plan?.title || `Book ${b}`, synopsis: plan?.high_level_outline || '' })
+      .select()
+      .single();
+
+    if (outline) {
+      await saveLevel2Chapters(projectId, outline.id, b, result, chars, places);
+      // Update plan with outline_id
+      await supabase.from('series_plans').update({ outline_id: outline.id }).eq('id', plan!.id);
+      seriesPlans[b - 1].outline_id = outline.id;
+    }
+  }
+
+  await updatePipelineState(state.id, { level2_status: 'complete', current_level: 3 });
+  onLog('Level 2 complete: All book outlines generated.');
+
+  // ===== LEVEL 3: Chapter Architect (all books) =====
+  onLog('Level 3: Chapter Architect starting...');
+  await updatePipelineState(state.id, { level3_status: 'running', current_level: 3 });
+
+  for (let b = 1; b <= seriesPlans.length; b++) {
+    checkAbort();
+    const plan = seriesPlans[b - 1];
+    if (!plan.outline_id) continue;
+
+    onLog(`Level 3: Chapter briefs for Book ${b}...`);
+    await updatePipelineState(state.id, { current_book: b });
+
+    const { data: chapters } = await supabase
+      .from('chapters')
+      .select('*')
+      .eq('outline_id', plan.outline_id)
+      .order('order_index', { ascending: true });
+
+    if (!chapters || chapters.length === 0) continue;
+
+    for (const chapter of chapters) {
+      checkAbort();
+      await runLevel3ChapterBrief(projectId, chapter.id, b, seriesPlans, onProgress);
+    }
+  }
+
+  await updatePipelineState(state.id, { level3_status: 'complete', current_level: 4 });
+  onLog('Level 3 complete: All chapter briefs generated.');
+
+  // ===== LEVEL 4: Scene Architect (all books) =====
+  onLog('Level 4: Scene Architect starting...');
+  await updatePipelineState(state.id, { level4_status: 'running', current_level: 4 });
+
+  for (let b = 1; b <= seriesPlans.length; b++) {
+    checkAbort();
+    const plan = seriesPlans[b - 1];
+    if (!plan.outline_id) continue;
+
+    onLog(`Level 4: Scene blueprints for Book ${b}...`);
+    await updatePipelineState(state.id, { current_book: b });
+
+    const { data: chapters } = await supabase
+      .from('chapters')
+      .select('*')
+      .eq('outline_id', plan.outline_id)
+      .order('order_index', { ascending: true });
+
+    if (!chapters) continue;
+
+    for (const chapter of chapters) {
+      checkAbort();
+
+      const { data: briefData } = await supabase
+        .from('chapter_briefs')
+        .select('*')
+        .eq('chapter_id', chapter.id)
+        .eq('status', 'complete')
+        .maybeSingle();
+
+      if (!briefData) continue;
+
+      const existingBps = await supabase
+        .from('scene_blueprints')
+        .select('id')
+        .eq('chapter_id', chapter.id);
+
+      if (existingBps.data && existingBps.data.length > 0) continue;
+
+      const blueprints = await runLevel4SceneBlueprints(projectId, chapter.id, briefData as ChapterBrief, onProgress);
+
+      for (let i = 0; i < blueprints.length; i++) {
+        const bp = blueprints[i];
+        const { data: scene } = await supabase
+          .from('scenes')
+          .insert({
+            project_id: projectId,
+            chapter_id: chapter.id,
+            title: bp.title,
+            description: `POV: ${bp.pov_character}\nSetting: ${bp.setting}\n\n${bp.opening_beat}\n\n${bp.conflict_tension}`,
+            order_index: i,
+          })
+          .select()
+          .single();
+
+        if (scene) {
+          await supabase.from('scene_blueprints').update({ scene_id: scene.id }).eq('id', bp.id);
+        }
+      }
+    }
+  }
+
+  await updatePipelineState(state.id, { level4_status: 'complete', current_level: 5 });
+  onLog('Level 4 complete: All scene blueprints generated.');
+
+  // ===== LEVELS 5 & 6: Scene Writer + Assembly (book by book) =====
+  for (let b = 1; b <= seriesPlans.length; b++) {
+    checkAbort();
+    const plan = seriesPlans[b - 1];
+    if (!plan.outline_id) continue;
+
+    // Level 5: Scene Writer
+    onLog(`Level 5: Writing prose for Book ${b}...`);
+    await updatePipelineState(state.id, { level5_status: 'running', current_level: 5, current_book: b });
+
+    const { data: chapters } = await supabase
+      .from('chapters')
+      .select('*')
+      .eq('outline_id', plan.outline_id)
+      .order('order_index', { ascending: true });
+
+    if (chapters) {
+      for (const chapter of chapters) {
+        checkAbort();
+
+        const { data: briefData } = await supabase
+          .from('chapter_briefs')
+          .select('*')
+          .eq('chapter_id', chapter.id)
+          .eq('status', 'complete')
+          .maybeSingle();
+
+        if (!briefData) continue;
+
+        const { data: scenes } = await supabase
+          .from('scenes')
+          .select('*')
+          .eq('chapter_id', chapter.id)
+          .order('order_index', { ascending: true });
+
+        if (!scenes) continue;
+
+        for (const scene of scenes) {
+          checkAbort();
+          if (scene.content && scene.content.length > 200) continue;
+
+          const { data: blueprint } = await supabase
+            .from('scene_blueprints')
+            .select('*')
+            .eq('scene_id', scene.id)
+            .maybeSingle();
+
+          if (!blueprint) continue;
+
+          await runLevel5SceneWriter(projectId, scene.id, blueprint as SceneBlueprint, briefData as ChapterBrief, plan, onProgress);
+        }
+      }
+    }
+
+    // Level 6: Assembly
+    onLog(`Level 6: Assembling Book ${b}...`);
+    await updatePipelineState(state.id, { level6_status: 'running', current_level: 6, current_book: b });
+    await runLevel6Assembly(projectId, plan.outline_id, b, onProgress);
+    onLog(`Book ${b} complete.`);
+  }
+
+  await updatePipelineState(state.id, {
+    level5_status: 'complete',
+    level6_status: 'complete',
+    is_running: false,
+    completed_at: new Date().toISOString(),
+  });
+  onLog('ACCELERATED PIPELINE COMPLETE. Full series drafted.');
+}
+
 // ------ PARSING HELPERS ------
 
 function findBookSection(text: string, bookNum: number): string {
