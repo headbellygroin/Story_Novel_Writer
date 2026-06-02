@@ -126,9 +126,39 @@ export default function Production() {
       for (let ci = startChapter; ci < allChapters.length; ci++) {
         if (abortRef.current) break;
         const chapter = allChapters[ci];
-        const chapterScenes = allScenes.filter(s => s.chapter_id === chapter.id);
+        let chapterScenes = allScenes.filter(s => s.chapter_id === chapter.id);
 
-        if (chapterScenes.length === 0) continue;
+        // If chapter has no scenes, create scaffolds from the chapter summary
+        if (chapterScenes.length === 0) {
+          setCurrentActivity(`Creating scene scaffolds for: ${chapter.title}`);
+          const scaffoldCount = 4;
+          const scaffolds = [];
+          for (let si = 0; si < scaffoldCount; si++) {
+            scaffolds.push({
+              project_id: currentProjectId,
+              chapter_id: chapter.id,
+              title: `Scene ${si + 1}`,
+              description: si === 0 ? (chapter.summary || '').slice(0, 300) : '',
+              content: '',
+              order_index: si,
+              status: 'draft',
+            });
+          }
+          const { data: newScenes } = await supabase
+            .from('scenes')
+            .insert(scaffolds)
+            .select();
+          if (newScenes) {
+            chapterScenes = newScenes;
+            allScenes.push(...newScenes);
+            // Update run totals
+            const newTotal = (runState.totalScenes || 0) + newScenes.length;
+            await updateRunState(runState.id, { total_scenes: newTotal });
+            setRun(r => r ? { ...r, totalScenes: newTotal } : r);
+          } else {
+            continue;
+          }
+        }
 
         const sceneStart = ci === startChapter ? startScene : 0;
 
@@ -730,6 +760,7 @@ function VoicesPanel({
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<any>({});
+  const formRef = useRef<HTMLDivElement>(null);
 
   function startEdit(charId: string) {
     const existing = voices.find(v => v.character_id === charId);
@@ -742,6 +773,7 @@ function VoicesPanel({
       relationship_dynamics: '',
       sample_dialogue: '',
     });
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   }
 
   async function saveVoice() {
@@ -799,7 +831,7 @@ function VoicesPanel({
       </div>
 
       {editing && (
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
+        <div ref={formRef} className="bg-white rounded-lg border border-slate-200 p-6">
           <h3 className="text-base font-semibold text-slate-900 mb-4">
             Voice Profile: {characters.find(c => c.id === editing)?.name}
           </h3>

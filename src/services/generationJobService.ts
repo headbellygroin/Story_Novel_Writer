@@ -237,17 +237,22 @@ Create a ${meta.book_count}-book series roadmap.
 Genre/Tone: ${genreText}
 Series End Goal: ${endText}
 
-For each book provide:
-- Theme
-- Beginning State
-- Ending State
-- Major Events (3-5 key moments)
-- Character Growth
-- World Changes
+For each book provide ONLY:
+- Book title
+- Theme (one sentence)
+- Beginning State (one sentence)
+- Ending State (one sentence)
+- Major Events (3-5 bullet points, one line each)
+- Character Growth (one sentence)
+- World Changes (one sentence)
 
-Do not create chapter outlines.
-Do not create scene outlines.
-Focus only on the overall series structure.`,
+CRITICAL RULES:
+- You MUST include ALL ${meta.book_count} books.
+- Keep each book summary to 8-12 lines maximum.
+- Do NOT create chapter outlines or chapter lists.
+- Do NOT create scene outlines.
+- Do NOT expand beyond the bullet format above.
+- Focus only on the overall series arc across all ${meta.book_count} books.`,
       },
       {
         key: 'majorEvents',
@@ -307,10 +312,10 @@ ${outputs.bookOutline}
 ${outputs.majorEvents}
 
 === TASK: CHAPTER LIST FOR BOOK 1 ===
-Generate chapters for Book 1.
+Generate ALL chapters for Book 1 (typically 10-15 chapters based on the outline above).
 Genre/Tone: ${genreText}
 
-20-30 chapters. For each chapter provide:
+For each chapter provide:
 - Chapter number
 - Working title
 - POV character
@@ -330,18 +335,19 @@ ${outputs.chapterList}
 === BOOK OUTLINE ===
 ${outputs.bookOutline}
 
-=== TASK: CHAPTER BRIEFS (BOOK 1, CHAPTERS 1-5) ===
+=== TASK: CHAPTER BRIEFS (BOOK 1, ALL CHAPTERS) ===
 Genre/Tone: ${genreText}
 
-Generate detailed chapter briefs for chapters 1 through 5. For each chapter:
+Generate detailed chapter briefs for ALL chapters listed above. For each chapter:
 - Opening state
-- Scene-by-scene breakdown (3-5 scenes per chapter)
+- Scene-by-scene breakdown (3-5 scenes per chapter, numbered list with one-sentence descriptions)
 - Character goals and obstacles
 - Key dialogue beats or reveals
 - Closing state / cliffhanger
 - Theme advancement
 
-These briefs should be detailed enough that a writer could produce the chapter from them.`,
+These briefs should be detailed enough that a writer could produce the chapter from them.
+You MUST cover every chapter in the chapter list. Do not stop early.`,
       },
       {
         key: 'scenes',
