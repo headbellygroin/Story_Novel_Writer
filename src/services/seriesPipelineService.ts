@@ -1,6 +1,29 @@
 import { supabase } from '../lib/supabase';
 import { generateScene, GenerationSettings } from './aiService';
 import { resolveSettingsForTask, logTaskSettings, PipelineTaskMode } from './taskPresetResolver';
+import {
+  BookOwnershipRule,
+  RevealEntry,
+  SceneDepthMode,
+  SCENE_DEPTH_THRESHOLDS,
+  buildCanonIntegrityPrompt,
+  buildRevealDisciplinePrompt,
+  buildOwnershipPrompt,
+  buildSceneDepthPrompt,
+  buildWorldContextFromData,
+  checkBookOwnership,
+  checkMSU,
+  checkRevealTimeline,
+  repairBookOutline,
+  repairMSU,
+  repairReveal,
+  expandScene,
+  countWords,
+  GateStatus,
+} from './qualityGateService';
+
+export type { BookOwnershipRule, RevealEntry, SceneDepthMode } from './qualityGateService';
+export { SCENE_DEPTH_THRESHOLDS } from './qualityGateService';
 
 export type PipelineLevel = 1 | 2 | 3 | 4 | 5 | 6;
 export type PipelineMode = 'accelerated' | 'guided';
@@ -242,6 +265,8 @@ export async function runLevel1SeriesArchitect(
 
 ${worldSummary}
 
+${buildCanonIntegrityPrompt()}
+
 SERIES PREMISE: ${seriesPremise}
 GENRE: ${genre}
 SERIES ENDING STATE: ${endingState}
@@ -323,6 +348,8 @@ export async function runLevel2BookArchitect(
   seriesPlans: SeriesPlan[],
   chapterCount: number,
   onProgress: ProgressCallback,
+  ownershipRule?: BookOwnershipRule,
+  revealTimeline?: RevealEntry[],
 ): Promise<string> {
   const settings = await loadSettings(projectId, 'book_architect');
   const world = await loadWorldContext(projectId);
@@ -368,6 +395,12 @@ export async function runLevel2BookArchitect(
   const prompt = `You are a Book Architect. Expand the following book plan into a detailed ${chapterCount}-chapter outline.
 
 ${worldSummary}
+
+${buildCanonIntegrityPrompt()}
+
+${revealTimeline ? buildRevealDisciplinePrompt(bookNumber, revealTimeline) : ''}
+
+${ownershipRule ? buildOwnershipPrompt(ownershipRule) : ''}
 
 ${priorContext}${priorChapterContext}
 
@@ -504,6 +537,8 @@ export async function runLevel3ChapterBrief(
 
   const prompt = `You are a Chapter Architect. Generate a detailed design brief for this chapter.
 
+${buildCanonIntegrityPrompt()}
+
 === BOOK CONTEXT ===
 Book ${bookNumber}: ${currentPlan?.title || 'Unknown'}
 Theme: ${currentPlan?.core_theme || ''}
@@ -599,6 +634,8 @@ export async function runLevel4SceneBlueprints(
 
   const prompt = `You are a Scene Architect. Generate detailed scene blueprints (scene cards) for this chapter.
 
+${buildCanonIntegrityPrompt()}
+
 === CHAPTER BRIEF ===
 Chapter: ${chapter.title}
 Purpose: ${chapterBrief.chapter_purpose}
@@ -682,6 +719,7 @@ export async function runLevel5SceneWriter(
   chapterBrief: ChapterBrief,
   seriesPlan: SeriesPlan | null,
   onProgress: ProgressCallback,
+  sceneDepthMode?: SceneDepthMode,
 ): Promise<string> {
   const settings = await loadSettings(projectId, 'scene_writer');
 
@@ -728,7 +766,10 @@ export async function runLevel5SceneWriter(
     message: `Writing scene: ${blueprint.title}`,
   });
 
+  const depthPrompt = sceneDepthMode ? `\n\n${buildSceneDepthPrompt(sceneDepthMode)}` : '';
+
   const sceneDescription = `Write this scene based on the following blueprint:
+${depthPrompt}
 
 === SERIES CONTEXT ===
 ${seriesPlan ? `Book ${seriesPlan.book_number}: "${seriesPlan.title}" - Theme: ${seriesPlan.core_theme}` : 'Standalone book'}
@@ -760,12 +801,14 @@ ${characterContext ? `=== CHARACTER DETAILS ===\n${characterContext}` : ''}
 
 Write this scene with vivid prose, strong character voice, and natural dialogue. Follow the blueprint closely but bring it to life with sensory detail and emotional depth.`;
 
+  const depthTokenOverride = sceneDepthMode ? SCENE_DEPTH_THRESHOLDS[sceneDepthMode].maxTokens : undefined;
+
   const content = await generateScene({
     sceneDescription,
     generationMode: 'scene',
     contextMode: 'minimal',
     context: {},
-    settings,
+    settings: depthTokenOverride ? { ...settings, max_tokens: depthTokenOverride } : settings,
   });
 
   // Save the prose
@@ -923,16 +966,31 @@ export interface AcceleratedPipelineConfig {
   onProgress: ProgressCallback;
   onLog: (message: string) => void;
   abortSignal?: { current: boolean };
+  bookOwnership?: BookOwnershipRule[];
+  sceneDepthMode?: SceneDepthMode;
+  revealTimeline?: RevealEntry[];
 }
 
 export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConfig): Promise<void> {
-  const { projectId, bookCount, seriesPremise, genre, endingState, chapterCount, onProgress, onLog, abortSignal } = config;
+  const { projectId, bookCount, seriesPremise, genre, endingState, chapterCount, onProgress, onLog, abortSignal, bookOwnership, sceneDepthMode, revealTimeline: configReveals } = config;
 
   const state = await getOrCreatePipelineState(projectId, 'accelerated');
+  const depthMode: SceneDepthMode = sceneDepthMode || 'standard_draft';
+
+  // Save depth mode to pipeline state
+  await updatePipelineState(state.id, { scene_depth_mode: depthMode } as any);
 
   function checkAbort() {
     if (abortSignal?.current) throw new Error('Pipeline aborted by user.');
   }
+
+  // Load world context for quality gates
+  const world = await loadWorldContext(projectId);
+  const worldCtx = buildWorldContextFromData(world);
+  const reveals: RevealEntry[] = configReveals || world.reveals.map(r => ({
+    id: r.id, title: r.title, description: r.description || '',
+    target_book: r.target_book || null, target_chapter: r.target_chapter || null,
+  }));
 
   // ===== LEVEL 1: Series Architect =====
   onLog('Level 1: Series Architect starting...');
@@ -940,6 +998,17 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
 
   const seriesPlans = await runLevel1SeriesArchitect(projectId, bookCount, seriesPremise, genre, endingState, onProgress);
   checkAbort();
+
+  // Level 1 MSU Check (light, single check on full output)
+  const seriesPlanText = seriesPlans.map(p => `Book ${p.book_number}: ${p.title} - ${p.high_level_outline}`).join('\n');
+  const l1Msu = await checkMSU(projectId, seriesPlanText, 'series_architect', worldCtx);
+  onLog(`Level 1 MSU Check: ${l1Msu.status.toUpperCase()}${l1Msu.flags.length > 0 ? ' - ' + l1Msu.flags[0] : ''}`);
+
+  if (l1Msu.status === 'failed' && l1Msu.severity === 'major') {
+    onLog('Level 1 MSU: MAJOR failure detected. Attempting repair...');
+    await repairMSU(projectId, seriesPlanText, l1Msu.flags, worldCtx, 'series_architect');
+    onLog('Level 1 MSU repair complete. Proceeding (plans already saved, downstream will use repaired context).');
+  }
 
   await updatePipelineState(state.id, { level1_status: 'complete', current_level: 2 });
   onLog(`Level 1 complete: ${seriesPlans.length} book plans generated.`);
@@ -960,9 +1029,104 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
     onLog(`Level 2: Book ${b} of ${seriesPlans.length}...`);
     await updatePipelineState(state.id, { current_book: b });
 
-    const result = await runLevel2BookArchitect(projectId, b, seriesPlans, chapterCount, onProgress);
+    const ownershipRule = bookOwnership?.find(o => o.bookNumber === b);
+
+    let result = await runLevel2BookArchitect(projectId, b, seriesPlans, chapterCount, onProgress, ownershipRule, reveals);
     checkAbort();
 
+    // --- OWNERSHIP GATE ---
+    if (ownershipRule && ownershipRule.requiredOwner) {
+      const ownerCheck = await checkBookOwnership(projectId, b, result, ownershipRule);
+      onLog(`Book ${b} Ownership Check: ${ownerCheck.passed ? 'PASSED' : 'FAILED'} (score: ${ownerCheck.score})${ownerCheck.failures.length > 0 ? ' - ' + ownerCheck.failures[0] : ''}`);
+
+      if (!ownerCheck.passed) {
+        onLog(`Book ${b} Story Doctor: repairing...`);
+        result = await repairBookOutline(projectId, b, result, ownershipRule, ownerCheck.failures);
+        const recheck = await checkBookOwnership(projectId, b, result, ownershipRule);
+        onLog(`Book ${b} Ownership Re-check: ${recheck.passed ? 'PASSED' : 'FAILED'} (score: ${recheck.score})`);
+
+        if (!recheck.passed) {
+          await supabase.from('series_plans').update({
+            ownership_status: 'needs_review',
+            ownership_score: recheck.score,
+            repair_attempts: 2,
+          }).eq('project_id', projectId).eq('book_number', b);
+          await updatePipelineState(state.id, {
+            is_running: false,
+            error_message: `Book ${b} failed ownership check after repair: ${recheck.failures.join('; ')}`,
+          });
+          onLog(`PIPELINE HALTED: Book ${b} ownership cannot be resolved. Needs human review.`);
+          return;
+        }
+
+        await supabase.from('series_plans').update({
+          ownership_status: 'passed',
+          ownership_score: recheck.score,
+          repair_attempts: 1,
+        }).eq('project_id', projectId).eq('book_number', b);
+      } else {
+        await supabase.from('series_plans').update({
+          ownership_status: 'passed',
+          ownership_score: ownerCheck.score,
+        }).eq('project_id', projectId).eq('book_number', b);
+      }
+    }
+
+    // --- REVEAL GATE ---
+    if (reveals.length > 0) {
+      const revealCheck = await checkRevealTimeline(projectId, b, result, reveals, 'book_architect');
+      onLog(`Book ${b} Reveal Check: ${revealCheck.status.toUpperCase()}${revealCheck.flags.length > 0 ? ' - ' + revealCheck.flags[0] : ''}`);
+
+      if (revealCheck.status === 'failed') {
+        onLog(`Book ${b} Reveal repair: fixing...`);
+        result = await repairReveal(projectId, b, result, revealCheck.flags, reveals);
+        const revRecheck = await checkRevealTimeline(projectId, b, result, reveals, 'book_architect');
+        onLog(`Book ${b} Reveal Re-check: ${revRecheck.status.toUpperCase()}`);
+
+        if (revRecheck.status === 'failed') {
+          await supabase.from('series_plans').update({ reveal_status: 'needs_review', reveal_flags: revRecheck.flags.join('; ') })
+            .eq('project_id', projectId).eq('book_number', b);
+          await updatePipelineState(state.id, {
+            is_running: false,
+            error_message: `Book ${b} failed reveal check: ${revRecheck.flags.join('; ')}`,
+          });
+          onLog(`PIPELINE HALTED: Book ${b} reveal violations unresolvable.`);
+          return;
+        }
+        await supabase.from('series_plans').update({ reveal_status: 'passed' })
+          .eq('project_id', projectId).eq('book_number', b);
+      } else {
+        await supabase.from('series_plans').update({ reveal_status: revealCheck.status })
+          .eq('project_id', projectId).eq('book_number', b);
+      }
+    }
+
+    // --- MSU GATE ---
+    const msuCheck = await checkMSU(projectId, result, 'book_architect', worldCtx);
+    onLog(`Book ${b} MSU Check: ${msuCheck.status.toUpperCase()}${msuCheck.flags.length > 0 ? ' - ' + msuCheck.flags[0] : ''}`);
+
+    if (msuCheck.status === 'failed' && msuCheck.severity === 'major') {
+      onLog(`Book ${b} MSU repair: removing unapproved elements...`);
+      result = await repairMSU(projectId, result, msuCheck.flags, worldCtx, 'book_architect');
+      const msuRecheck = await checkMSU(projectId, result, 'book_architect', worldCtx);
+      onLog(`Book ${b} MSU Re-check: ${msuRecheck.status.toUpperCase()}`);
+
+      if (msuRecheck.status === 'failed') {
+        await supabase.from('series_plans').update({ msu_status: 'needs_review', msu_flags: msuRecheck.flags.join('; ') })
+          .eq('project_id', projectId).eq('book_number', b);
+        await updatePipelineState(state.id, {
+          is_running: false,
+          error_message: `Book ${b} MSU check failed: ${msuRecheck.flags.join('; ')}`,
+        });
+        onLog(`PIPELINE HALTED: Book ${b} MSU violations unresolvable.`);
+        return;
+      }
+    }
+
+    await supabase.from('series_plans').update({ msu_status: msuCheck.status === 'failed' ? 'passed' : msuCheck.status })
+      .eq('project_id', projectId).eq('book_number', b);
+
+    // --- SAVE OUTLINE & CHAPTERS ---
     const plan = seriesPlans.find(p => p.book_number === b);
     const { data: outline } = await supabase
       .from('outlines')
@@ -972,14 +1136,13 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
 
     if (outline) {
       await saveLevel2Chapters(projectId, outline.id, b, result, chars, places);
-      // Update plan with outline_id
       await supabase.from('series_plans').update({ outline_id: outline.id }).eq('id', plan!.id);
       seriesPlans[b - 1].outline_id = outline.id;
     }
   }
 
   await updatePipelineState(state.id, { level2_status: 'complete', current_level: 3 });
-  onLog('Level 2 complete: All book outlines generated.');
+  onLog('Level 2 complete: All book outlines generated and validated.');
 
   // ===== LEVEL 3: Chapter Architect (all books) =====
   onLog('Level 3: Chapter Architect starting...');
@@ -1001,14 +1164,75 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
 
     if (!chapters || chapters.length === 0) continue;
 
+    const briefTexts: string[] = [];
+    const briefIds: string[] = [];
+
     for (const chapter of chapters) {
       checkAbort();
-      await runLevel3ChapterBrief(projectId, chapter.id, b, seriesPlans, onProgress);
+      const brief = await runLevel3ChapterBrief(projectId, chapter.id, b, seriesPlans, onProgress);
+      briefTexts.push(brief.raw_output);
+      briefIds.push(brief.id);
+    }
+
+    // --- BATCH REVEAL GATE (per book) ---
+    if (reveals.length > 0) {
+      const batchText = briefTexts.join('\n\n---\n\n');
+      const revCheck = await checkRevealTimeline(projectId, b, batchText, reveals, 'chapter_architect_batch');
+      onLog(`Book ${b} Chapter Batch Reveal Check: ${revCheck.status.toUpperCase()}${revCheck.flags.length > 0 ? ' - ' + revCheck.flags[0] : ''}`);
+
+      if (revCheck.status === 'failed') {
+        onLog(`Book ${b} Chapter Batch Reveal repair...`);
+        const repairedBatch = await repairReveal(projectId, b, batchText, revCheck.flags, reveals);
+        const revRecheck = await checkRevealTimeline(projectId, b, repairedBatch, reveals, 'chapter_architect_batch');
+        onLog(`Book ${b} Chapter Batch Reveal Re-check: ${revRecheck.status.toUpperCase()}`);
+
+        const revStatus: GateStatus = revRecheck.status === 'failed' ? 'needs_review' : 'passed';
+        for (const id of briefIds) {
+          await supabase.from('chapter_briefs').update({ reveal_status: revStatus, reveal_flags: revRecheck.flags.join('; ') }).eq('id', id);
+        }
+
+        if (revRecheck.status === 'failed') {
+          await updatePipelineState(state.id, { is_running: false, error_message: `Book ${b} chapters reveal check failed.` });
+          onLog(`PIPELINE HALTED: Book ${b} chapter reveal violations unresolvable.`);
+          return;
+        }
+      } else {
+        for (const id of briefIds) {
+          await supabase.from('chapter_briefs').update({ reveal_status: revCheck.status }).eq('id', id);
+        }
+      }
+    }
+
+    // --- BATCH MSU GATE (per book) ---
+    const batchMsuText = briefTexts.join('\n\n---\n\n');
+    const msuCheck = await checkMSU(projectId, batchMsuText, 'chapter_architect_batch', worldCtx);
+    onLog(`Book ${b} Chapter Batch MSU Check: ${msuCheck.status.toUpperCase()}${msuCheck.flags.length > 0 ? ' - ' + msuCheck.flags[0] : ''}`);
+
+    if (msuCheck.status === 'failed' && msuCheck.severity === 'major') {
+      onLog(`Book ${b} Chapter Batch MSU repair...`);
+      const repairedMsu = await repairMSU(projectId, batchMsuText, msuCheck.flags, worldCtx, 'chapter_architect_batch');
+      const msuRecheck = await checkMSU(projectId, repairedMsu, 'chapter_architect_batch', worldCtx);
+      onLog(`Book ${b} Chapter Batch MSU Re-check: ${msuRecheck.status.toUpperCase()}`);
+
+      const msuStatus: GateStatus = msuRecheck.status === 'failed' ? 'needs_review' : 'passed';
+      for (const id of briefIds) {
+        await supabase.from('chapter_briefs').update({ msu_status: msuStatus, msu_flags: msuRecheck.flags.join('; ') }).eq('id', id);
+      }
+
+      if (msuRecheck.status === 'failed') {
+        await updatePipelineState(state.id, { is_running: false, error_message: `Book ${b} chapters MSU check failed.` });
+        onLog(`PIPELINE HALTED: Book ${b} chapter MSU violations unresolvable.`);
+        return;
+      }
+    } else {
+      for (const id of briefIds) {
+        await supabase.from('chapter_briefs').update({ msu_status: msuCheck.status }).eq('id', id);
+      }
     }
   }
 
   await updatePipelineState(state.id, { level3_status: 'complete', current_level: 4 });
-  onLog('Level 3 complete: All chapter briefs generated.');
+  onLog('Level 3 complete: All chapter briefs generated and validated.');
 
   // ===== LEVEL 4: Scene Architect (all books) =====
   onLog('Level 4: Scene Architect starting...');
@@ -1069,6 +1293,19 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
           await supabase.from('scene_blueprints').update({ scene_id: scene.id }).eq('id', bp.id);
         }
       }
+
+      // --- OPTIONAL MSU WARNING at Level 4 (lore-triggered only) ---
+      const bpText = blueprints.map(bp => bp.raw_output || '').join('\n');
+      const hasLoreTrigger = /\b(ancient|prophecy|civilization|faction|order|guild|council)\b/i.test(bpText);
+      if (hasLoreTrigger) {
+        const l4Msu = await checkMSU(projectId, bpText, 'scene_architect', worldCtx);
+        if (l4Msu.status !== 'passed') {
+          onLog(`Book ${b} Ch${chapter.order_index + 1} Scene MSU: ${l4Msu.status.toUpperCase()} (warning only) - ${l4Msu.flags[0] || ''}`);
+          for (const bp of blueprints) {
+            await supabase.from('scene_blueprints').update({ msu_status: l4Msu.status, msu_flags: l4Msu.flags.join('; ') }).eq('id', bp.id);
+          }
+        }
+      }
     }
   }
 
@@ -1076,13 +1313,15 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
   onLog('Level 4 complete: All scene blueprints generated.');
 
   // ===== LEVELS 5 & 6: Scene Writer + Assembly (book by book) =====
+  const depthThresholds = SCENE_DEPTH_THRESHOLDS[depthMode];
+
   for (let b = 1; b <= seriesPlans.length; b++) {
     checkAbort();
     const plan = seriesPlans[b - 1];
     if (!plan.outline_id) continue;
 
     // Level 5: Scene Writer
-    onLog(`Level 5: Writing prose for Book ${b}...`);
+    onLog(`Level 5: Writing prose for Book ${b} (${depthMode.replace('_', ' ')}, target ${depthThresholds.target} words)...`);
     await updatePipelineState(state.id, { level5_status: 'running', current_level: 5, current_book: b });
 
     const { data: chapters } = await supabase
@@ -1124,7 +1363,48 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
 
           if (!blueprint) continue;
 
-          await runLevel5SceneWriter(projectId, scene.id, blueprint as SceneBlueprint, briefData as ChapterBrief, plan, onProgress);
+          const content = await runLevel5SceneWriter(projectId, scene.id, blueprint as SceneBlueprint, briefData as ChapterBrief, plan, onProgress, depthMode);
+
+          // --- SCENE DEPTH CHECK ---
+          const wc = countWords(content);
+          const targetWc = depthThresholds.target;
+
+          if (wc < depthThresholds.minimum) {
+            onLog(`Scene ${b}.${chapter.order_index + 1}.${scene.order_index + 1} Depth Check: FAILED - ${wc} words, target ${targetWc}`);
+
+            const briefContext = `Purpose: ${briefData.chapter_purpose}\nEmotional: ${briefData.emotional_goal}\nConflict: ${briefData.conflict_structure}`;
+            const bpContext = `Title: ${blueprint.title}\nPOV: ${blueprint.pov_character}\nSetting: ${blueprint.setting}\nOpening: ${blueprint.opening_beat}\nConflict: ${blueprint.conflict_tension}\nClosing: ${blueprint.closing_beat}`;
+
+            const expanded = await expandScene(projectId, content, bpContext, briefContext, targetWc);
+            const expandedWc = countWords(expanded);
+
+            if (expandedWc >= depthThresholds.minimum) {
+              await supabase.from('scenes').update({
+                content: expanded,
+                word_count: expandedWc,
+                target_word_count: targetWc,
+                scene_depth_status: 'passed',
+                expansion_attempts: 1,
+                updated_at: new Date().toISOString(),
+              }).eq('id', scene.id);
+              onLog(`Scene ${b}.${chapter.order_index + 1}.${scene.order_index + 1} Expansion: PASSED - ${expandedWc} words`);
+            } else {
+              await supabase.from('scenes').update({
+                word_count: wc,
+                target_word_count: targetWc,
+                scene_depth_status: 'needs_review',
+                expansion_attempts: 1,
+                updated_at: new Date().toISOString(),
+              }).eq('id', scene.id);
+              onLog(`Scene ${b}.${chapter.order_index + 1}.${scene.order_index + 1} Expansion: still short (${expandedWc} words), marking needs_review`);
+            }
+          } else {
+            await supabase.from('scenes').update({
+              word_count: wc,
+              target_word_count: targetWc,
+              scene_depth_status: 'passed',
+            }).eq('id', scene.id);
+          }
         }
       }
     }
@@ -1142,7 +1422,7 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
     is_running: false,
     completed_at: new Date().toISOString(),
   });
-  onLog('ACCELERATED PIPELINE COMPLETE. Full series drafted.');
+  onLog('ACCELERATED PIPELINE COMPLETE. Full series drafted with quality gates.');
 }
 
 // ------ PARSING HELPERS ------

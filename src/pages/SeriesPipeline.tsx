@@ -656,6 +656,17 @@ export default function SeriesPipeline() {
                   </div>
                   <p className="text-xs text-slate-600">{plan.core_theme}</p>
                   <p className="text-xs text-slate-500 mt-1 line-clamp-2">{plan.high_level_outline}</p>
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {(plan as any).ownership_status && (
+                      <GateBadge label="Own" status={(plan as any).ownership_status} />
+                    )}
+                    {(plan as any).msu_status && (
+                      <GateBadge label="MSU" status={(plan as any).msu_status} />
+                    )}
+                    {(plan as any).reveal_status && (
+                      <GateBadge label="Rev" status={(plan as any).reveal_status} />
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -887,4 +898,19 @@ export default function SeriesPipeline() {
       </div>
     );
   }
+}
+
+function GateBadge({ label, status }: { label: string; status: string }) {
+  const colors: Record<string, string> = {
+    passed: 'bg-green-50 text-green-700 border-green-200',
+    warning: 'bg-amber-50 text-amber-700 border-amber-200',
+    failed: 'bg-red-50 text-red-700 border-red-200',
+    needs_review: 'bg-orange-50 text-orange-700 border-orange-200',
+  };
+  const colorClass = colors[status] || 'bg-slate-50 text-slate-500 border-slate-200';
+  return (
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${colorClass}`}>
+      {label}: {status === 'needs_review' ? 'review' : status}
+    </span>
+  );
 }

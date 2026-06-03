@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { generateScene } from '../services/aiService';
 import { jobRunner, GenerationJob, WizardJobMetadata, GenerationMode } from '../services/generationJobService';
-import { runFullAcceleratedPipeline, PipelineProgress } from '../services/seriesPipelineService';
+import { runFullAcceleratedPipeline, PipelineProgress, BookOwnershipRule, SceneDepthMode } from '../services/seriesPipelineService';
 
 const STEPS = [
   { id: 1, key: 'seriesMap', title: 'Series Map', description: 'High-level arc across all books.' },
@@ -54,6 +54,8 @@ function SeriesWizard() {
   const sessionLoadedRef = useRef(false);
   const [pipelineLog, setPipelineLog] = useState<string[]>([]);
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
+  const [sceneDepthMode, setSceneDepthMode] = useState<SceneDepthMode>('standard_draft');
+  const [bookOwnershipConfig, setBookOwnershipConfig] = useState<BookOwnershipRule[]>([]);
 
   // Advanced mode state
   const [currentStep, setCurrentStep] = useState(1);
@@ -351,6 +353,8 @@ function SeriesWizard() {
             setPipelineLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
           },
           abortSignal: abortRef,
+          bookOwnership: bookOwnershipConfig.filter(o => o.requiredOwner),
+          sceneDepthMode,
         });
       } catch (err: any) {
         if (!abortRef.current) {
@@ -1302,6 +1306,10 @@ ${userInput ? `Author's notes:\n${userInput}\n\n` : ''}Generate individual scene
             projectData={projectData}
             pipelineLog={pipelineLog}
             pipelineProgress={pipelineProgress}
+            sceneDepthMode={sceneDepthMode}
+            setSceneDepthMode={setSceneDepthMode}
+            bookOwnershipConfig={bookOwnershipConfig}
+            setBookOwnershipConfig={setBookOwnershipConfig}
           />
         ) : (
           <AdvancedPanel
@@ -1339,6 +1347,7 @@ function QuickStartPanel({
   running, step, output, error, settings, saving,
   onRun, onAbort, onSaveAll, onRegenerate, onSwitchToAdvanced, projectData,
   pipelineLog, pipelineProgress,
+  sceneDepthMode, setSceneDepthMode, bookOwnershipConfig, setBookOwnershipConfig,
 }: {
   bookCount: number;
   setBookCount: (n: number) => void;
@@ -1371,6 +1380,10 @@ function QuickStartPanel({
   projectData: any;
   pipelineLog: string[];
   pipelineProgress: PipelineProgress | null;
+  sceneDepthMode: SceneDepthMode;
+  setSceneDepthMode: (m: SceneDepthMode) => void;
+  bookOwnershipConfig: BookOwnershipRule[];
+  setBookOwnershipConfig: (c: BookOwnershipRule[]) => void;
 }) {
   const hasOutput = output.seriesMap || output.majorEvents || output.bookOutline || output.chapterList || output.chapterBriefs || output.scenes;
   const allDone = output.seriesMap && output.majorEvents && output.bookOutline && output.chapterList && output.chapterBriefs && output.scenes;
@@ -1607,6 +1620,86 @@ function QuickStartPanel({
           </div>
         )}
       </div>
+
+      {/* Quality Gates Config (visible in accelerated mode) */}
+      {generationMode === 'accelerated' && (
+        <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-800">Quality Gates</h3>
+          <p className="text-xs text-slate-500">Configure automated checks that run after each generation stage. Gates catch canon drift, reveal spoilers, and shallow prose.</p>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Scene Depth Target</label>
+            <select
+              value={sceneDepthMode}
+              onChange={(e) => setSceneDepthMode(e.target.value as any)}
+              disabled={running}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            >
+              <option value="fast_draft">Fast Draft (700-1000 words/scene)</option>
+              <option value="standard_draft">Standard Draft (1200-1800 words/scene)</option>
+              <option value="novel_draft">Novel Draft (1800-2500 words/scene)</option>
+              <option value="publisher_draft">Publisher Draft (2500-4000 words/scene)</option>
+            </select>
+          </div>
+
+          {projectData.characters.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Book Ownership (optional)</label>
+              <p className="text-xs text-slate-500 mb-2">Assign a character who must be the emotional center of each book.</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {Array.from({ length: bookCount }, (_, i) => i + 1).map(bookNum => (
+                  <div key={bookNum} className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-slate-500 w-12">Bk {bookNum}</span>
+                    <select
+                      value={bookOwnershipConfig[bookNum - 1]?.requiredOwner || ''}
+                      onChange={(e) => {
+                        const updated = [...bookOwnershipConfig];
+                        if (!updated[bookNum - 1]) {
+                          updated[bookNum - 1] = { bookNumber: bookNum, requiredOwner: '', requiredTheme: '', ownershipBeats: [] };
+                        }
+                        updated[bookNum - 1].requiredOwner = e.target.value;
+                        setBookOwnershipConfig(updated);
+                      }}
+                      disabled={running}
+                      className="flex-1 px-2 py-1 border border-slate-200 rounded text-xs"
+                    >
+                      <option value="">No owner assigned</option>
+                      {projectData.characters.map((c: any) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={bookOwnershipConfig[bookNum - 1]?.requiredTheme || ''}
+                      onChange={(e) => {
+                        const updated = [...bookOwnershipConfig];
+                        if (!updated[bookNum - 1]) {
+                          updated[bookNum - 1] = { bookNumber: bookNum, requiredOwner: '', requiredTheme: '', ownershipBeats: [] };
+                        }
+                        updated[bookNum - 1].requiredTheme = e.target.value;
+                        setBookOwnershipConfig(updated);
+                      }}
+                      placeholder="Theme..."
+                      disabled={running}
+                      className="flex-1 px-2 py-1 border border-slate-200 rounded text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-slate-50 rounded p-3 text-xs text-slate-600 space-y-1">
+            <p className="font-medium text-slate-700">Active gates for accelerated runs:</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Canon Integrity (MSU) - prevents inventing unapproved lore</li>
+              <li>Reveal Timeline - prevents early reveals and spoilers</li>
+              <li>Book Ownership - enforces character centrality (if configured)</li>
+              <li>Scene Depth - ensures prose meets word count targets</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Build Button */}
       <div className="flex items-center gap-3">

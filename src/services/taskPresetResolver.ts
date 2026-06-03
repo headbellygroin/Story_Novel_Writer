@@ -7,7 +7,8 @@ export type PipelineTaskMode =
   | 'chapter_brief'
   | 'scene_blueprint'
   | 'scene_writer'
-  | 'assembly';
+  | 'assembly'
+  | 'quality_gate';
 
 export async function resolveSettingsForTask(
   projectId: string,
