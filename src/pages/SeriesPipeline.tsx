@@ -24,6 +24,7 @@ import {
   deleteChapterBriefs,
   deleteSceneBlueprints,
 } from '../services/seriesPipelineService';
+import { extractCharacterStatesFromBook } from '../services/characterStateService';
 
 type LevelStatus = 'pending' | 'running' | 'complete' | 'stale';
 
@@ -66,6 +67,7 @@ export default function SeriesPipeline() {
   // Chapter briefs state
   const [chapterBriefs, setChapterBriefs] = useState<ChapterBrief[]>([]);
   const [sceneBlueprints, setSceneBlueprints] = useState<SceneBlueprint[]>([]);
+  const [characterStateCounts, setCharacterStateCounts] = useState<Record<number, number>>({});
 
   useEffect(() => {
     if (currentProjectId) {
@@ -76,17 +78,26 @@ export default function SeriesPipeline() {
   async function loadPipelineData() {
     if (!currentProjectId) return;
 
-    const [plansRes, briefsRes, blueprintsRes, stateRes] = await Promise.all([
+    const [plansRes, briefsRes, blueprintsRes, stateRes, charStatesRes] = await Promise.all([
       supabase.from('series_plans').select('*').eq('project_id', currentProjectId).order('book_number'),
       supabase.from('chapter_briefs').select('*').eq('project_id', currentProjectId).order('book_number'),
       supabase.from('scene_blueprints').select('*').eq('project_id', currentProjectId).order('order_index'),
       supabase.from('pipeline_state').select('*').eq('project_id', currentProjectId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('character_states').select('book_number').eq('project_id', currentProjectId).eq('extraction_source', 'pipeline'),
     ]);
 
     setSeriesPlans(plansRes.data || []);
     setChapterBriefs(briefsRes.data || []);
     setSceneBlueprints(blueprintsRes.data || []);
     if (stateRes.data) setPipelineState(stateRes.data as PipelineState);
+
+    const counts: Record<number, number> = {};
+    for (const row of (charStatesRes.data || [])) {
+      if (row.book_number != null) {
+        counts[row.book_number] = (counts[row.book_number] || 0) + 1;
+      }
+    }
+    setCharacterStateCounts(counts);
   }
 
   function addLog(msg: string) {
@@ -415,6 +426,24 @@ export default function SeriesPipeline() {
     }
   }
 
+  // ------ CHARACTER STATE EXTRACTION ------
+
+  async function handleExtractStates(bookNum: number) {
+    if (!currentProjectId) return;
+    setIsRunning(true);
+    addLog(`Extracting character states from Book ${bookNum}...`);
+
+    try {
+      const snapshots = await extractCharacterStatesFromBook(currentProjectId, bookNum, addLog);
+      addLog(`Extraction complete: ${snapshots.length} character states saved for Book ${bookNum}.`);
+      await loadPipelineData();
+    } catch (err: any) {
+      addLog(`Extraction FAILED: ${err.message}`);
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
   // ------ ACCELERATED MODE ------
 
   async function runAccelerated() {
@@ -666,6 +695,11 @@ export default function SeriesPipeline() {
                     {(plan as any).reveal_status && (
                       <GateBadge label="Rev" status={(plan as any).reveal_status} />
                     )}
+                    {characterStateCounts[plan.book_number] != null && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-sky-50 text-sky-700 border-sky-200">
+                        States: {characterStateCounts[plan.book_number]}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -881,7 +915,7 @@ export default function SeriesPipeline() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-slate-600">
-          Assemble written scenes into chapters and chapters into book manuscripts.
+          Assemble written scenes into chapters and chapters into book manuscripts. After assembly, extract character states for continuity in subsequent books.
         </p>
         <div className="flex items-center gap-3">
           {seriesPlans.filter(p => p.outline_id).map(plan => (
@@ -895,6 +929,29 @@ export default function SeriesPipeline() {
             </button>
           ))}
         </div>
+        {seriesPlans.filter(p => p.outline_id).length > 0 && (
+          <div className="border-t border-slate-100 pt-3 mt-3">
+            <p className="text-sm font-medium text-slate-700 mb-2">Character State Extraction</p>
+            <p className="text-xs text-slate-500 mb-2">
+              Extract character states after a book is assembled. These states are injected into subsequent book generation to prevent character regression.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              {seriesPlans.filter(p => p.outline_id).map(plan => (
+                <button
+                  key={`extract-${plan.book_number}`}
+                  onClick={() => handleExtractStates(plan.book_number)}
+                  disabled={isRunning}
+                  className="px-3 py-1.5 border border-sky-300 text-sky-700 rounded-lg hover:bg-sky-50 disabled:opacity-50 text-xs font-medium"
+                >
+                  Extract Book {plan.book_number}
+                  {characterStateCounts[plan.book_number] != null && (
+                    <span className="ml-1.5 text-[10px] bg-sky-100 px-1 rounded">{characterStateCounts[plan.book_number]}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

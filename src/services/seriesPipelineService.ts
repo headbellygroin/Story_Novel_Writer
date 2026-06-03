@@ -21,6 +21,10 @@ import {
   countWords,
   GateStatus,
 } from './qualityGateService';
+import {
+  extractCharacterStatesFromBook,
+  buildCharacterStatePromptForBook,
+} from './characterStateService';
 
 export type { BookOwnershipRule, RevealEntry, SceneDepthMode } from './qualityGateService';
 export { SCENE_DEPTH_THRESHOLDS } from './qualityGateService';
@@ -140,7 +144,7 @@ async function loadSettings(projectId: string, taskMode?: PipelineTaskMode): Pro
 }
 
 async function loadWorldContext(projectId: string) {
-  const [chars, places, things, techs, manifesto, bible, reveals] = await Promise.all([
+  const [chars, places, things, techs, manifesto, bible, reveals, charStates] = await Promise.all([
     supabase.from('characters').select('*').eq('project_id', projectId),
     supabase.from('places').select('*').eq('project_id', projectId),
     supabase.from('things').select('*').eq('project_id', projectId),
@@ -148,6 +152,7 @@ async function loadWorldContext(projectId: string) {
     supabase.from('franchise_manifesto').select('*').eq('project_id', projectId).maybeSingle(),
     supabase.from('story_bible_entries').select('*').eq('project_id', projectId),
     supabase.from('reveal_timeline').select('*').eq('project_id', projectId).order('target_chapter', { ascending: true }),
+    supabase.from('character_states').select('*').eq('project_id', projectId).eq('extraction_source', 'pipeline').order('book_number', { ascending: false }),
   ]);
 
   return {
@@ -158,6 +163,7 @@ async function loadWorldContext(projectId: string) {
     manifesto: manifesto.data,
     bibleFacts: bible.data || [],
     reveals: reveals.data || [],
+    characterStates: charStates.data || [],
   };
 }
 
@@ -390,6 +396,8 @@ export async function runLevel2BookArchitect(
     ? `\n\n=== PRIOR BOOK CHAPTER OUTLINES ===\n${priorOutlines.join('\n\n')}`
     : '';
 
+  const characterStateContext = await buildCharacterStatePromptForBook(projectId, bookNumber);
+
   onProgress({ level: 2, book: bookNumber, chapter: 0, scene: 0, message: `Generating chapter outline for Book ${bookNumber}...` });
 
   const prompt = `You are a Book Architect. Expand the following book plan into a detailed ${chapterCount}-chapter outline.
@@ -403,6 +411,8 @@ ${revealTimeline ? buildRevealDisciplinePrompt(bookNumber, revealTimeline) : ''}
 ${ownershipRule ? buildOwnershipPrompt(ownershipRule) : ''}
 
 ${priorContext}${priorChapterContext}
+
+${characterStateContext}
 
 === CURRENT BOOK PLAN (Book ${bookNumber}) ===
 Title: ${currentPlan.title}
@@ -527,6 +537,8 @@ export async function runLevel3ChapterBrief(
       }).join('\n')}`
     : '';
 
+  const characterStateContext = await buildCharacterStatePromptForBook(projectId, bookNumber);
+
   onProgress({
     level: 3,
     book: bookNumber,
@@ -538,6 +550,8 @@ export async function runLevel3ChapterBrief(
   const prompt = `You are a Chapter Architect. Generate a detailed design brief for this chapter.
 
 ${buildCanonIntegrityPrompt()}
+
+${characterStateContext}
 
 === BOOK CONTEXT ===
 Book ${bookNumber}: ${currentPlan?.title || 'Unknown'}
@@ -766,10 +780,13 @@ export async function runLevel5SceneWriter(
     message: `Writing scene: ${blueprint.title}`,
   });
 
+  const characterStateContext = await buildCharacterStatePromptForBook(projectId, chapterBrief.book_number);
   const depthPrompt = sceneDepthMode ? `\n\n${buildSceneDepthPrompt(sceneDepthMode)}` : '';
 
   const sceneDescription = `Write this scene based on the following blueprint:
 ${depthPrompt}
+
+${characterStateContext}
 
 === SERIES CONTEXT ===
 ${seriesPlan ? `Book ${seriesPlan.book_number}: "${seriesPlan.title}" - Theme: ${seriesPlan.core_theme}` : 'Standalone book'}
@@ -1413,7 +1430,15 @@ export async function runFullAcceleratedPipeline(config: AcceleratedPipelineConf
     onLog(`Level 6: Assembling Book ${b}...`);
     await updatePipelineState(state.id, { level6_status: 'running', current_level: 6, current_book: b });
     await runLevel6Assembly(projectId, plan.outline_id, b, onProgress);
-    onLog(`Book ${b} complete.`);
+
+    // Level 5.5: Character State Extraction (after assembly, before next book)
+    onLog(`Extracting character states from Book ${b}...`);
+    try {
+      const snapshots = await extractCharacterStatesFromBook(projectId, b, onLog);
+      onLog(`Book ${b} complete. ${snapshots.length} character states extracted.`);
+    } catch (err: any) {
+      onLog(`Book ${b} character state extraction failed (non-blocking): ${err.message}`);
+    }
   }
 
   await updatePipelineState(state.id, {
