@@ -145,14 +145,16 @@ export function buildOwnershipPrompt(rule: BookOwnershipRule): string {
     `This is ${rule.requiredOwner}'s book. ${rule.requiredOwner} is the emotional center.`,
     `Theme: ${rule.requiredTheme || 'character transformation'}`,
     '',
-    `${rule.requiredOwner} must:`,
-    `- Be POV character in at least 40% of chapters`,
-    `- Have the strongest emotional arc in this book`,
-    `- Face and resolve the central question: "${rule.requiredTheme || 'their personal transformation'}"`,
-    `- Appear in the climax as the decision-maker`,
-    `- NOT be replaced by generic plot events`,
+    `IMPORTANT: Ownership does NOT mean POV dominance.`,
+    `Ownership means ${rule.requiredOwner}:`,
+    `- Experiences the largest internal change in this book`,
+    `- Faces the central thematic conflict: "${rule.requiredTheme || 'their personal transformation'}"`,
+    `- Drives the book's resolution through their choices`,
+    `- Appears in the climax as the decision-maker`,
     '',
-    `The climax MUST resolve ${rule.requiredOwner}'s personal transformation.`,
+    `Other characters may carry POV scenes. Multiple POV characters are encouraged for pacing and perspective.`,
+    `But the THEMATIC WEIGHT of the book belongs to ${rule.requiredOwner}. Their arc is the spine.`,
+    `Other characters serve as mirrors, catalysts, or witnesses to ${rule.requiredOwner}'s transformation.`,
   ];
 
   if (rule.ownershipBeats && rule.ownershipBeats.length > 0) {

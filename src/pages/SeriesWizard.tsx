@@ -1645,7 +1645,8 @@ function QuickStartPanel({
           {projectData.characters.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Book Ownership (optional)</label>
-              <p className="text-xs text-slate-500 mb-2">Assign a character who must be the emotional center of each book.</p>
+              <p className="text-xs text-slate-500 mb-1">Assign a character who must be the emotional center of each book.</p>
+              <p className="text-xs text-slate-400 italic mb-2">Ownership does NOT force POV. It defines who experiences the largest internal change, faces the central thematic conflict, and drives the resolution. Other characters still carry POV scenes freely.</p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {Array.from({ length: bookCount }, (_, i) => i + 1).map(bookNum => (
                   <div key={bookNum} className="flex items-center gap-2">
@@ -1694,7 +1695,7 @@ function QuickStartPanel({
             <ul className="list-disc list-inside space-y-0.5">
               <li>Canon Integrity (MSU) - prevents inventing unapproved lore</li>
               <li>Reveal Timeline - prevents early reveals and spoilers</li>
-              <li>Book Ownership - enforces character centrality (if configured)</li>
+              <li>Book Ownership - enforces emotional center and thematic arc (not POV)</li>
               <li>Scene Depth - ensures prose meets word count targets</li>
             </ul>
           </div>
