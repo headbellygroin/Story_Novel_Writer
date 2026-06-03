@@ -10,6 +10,14 @@ export type PipelineTaskMode =
   | 'assembly'
   | 'quality_gate';
 
+const PLANNING_TEMPERATURE_CAPS: Partial<Record<PipelineTaskMode, number>> = {
+  series_architect: 0.4,
+  book_architect: 0.4,
+  chapter_brief: 0.5,
+  scene_blueprint: 0.5,
+  quality_gate: 0.3,
+};
+
 export async function resolveSettingsForTask(
   projectId: string,
   taskMode: PipelineTaskMode,
@@ -24,9 +32,7 @@ export async function resolveSettingsForTask(
     .limit(1)
     .maybeSingle();
 
-  if (!preset) return globalSettings;
-
-  return {
+  const resolved = preset ? {
     ...globalSettings,
     model_name: preset.model_name || globalSettings.model_name,
     api_endpoint: preset.api_endpoint || globalSettings.api_endpoint,
@@ -38,7 +44,14 @@ export async function resolveSettingsForTask(
     repetition_penalty: preset.repetition_penalty ?? globalSettings.repetition_penalty,
     presence_penalty: preset.presence_penalty ?? globalSettings.presence_penalty,
     frequency_penalty: preset.frequency_penalty ?? globalSettings.frequency_penalty,
-  };
+  } : { ...globalSettings };
+
+  const cap = PLANNING_TEMPERATURE_CAPS[taskMode];
+  if (cap !== undefined && resolved.temperature > cap) {
+    resolved.temperature = cap;
+  }
+
+  return resolved;
 }
 
 export function logTaskSettings(taskMode: PipelineTaskMode, settings: GenerationSettings): string {

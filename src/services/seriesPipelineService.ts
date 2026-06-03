@@ -7,6 +7,7 @@ import {
   SceneDepthMode,
   SCENE_DEPTH_THRESHOLDS,
   buildCanonIntegrityPrompt,
+  buildPlanningAuthorityPrompt,
   buildRevealDisciplinePrompt,
   buildOwnershipPrompt,
   buildSceneDepthPrompt,
@@ -273,6 +274,8 @@ ${worldSummary}
 
 ${buildCanonIntegrityPrompt()}
 
+${buildPlanningAuthorityPrompt()}
+
 SERIES PREMISE: ${seriesPremise}
 GENRE: ${genre}
 SERIES ENDING STATE: ${endingState}
@@ -405,6 +408,8 @@ export async function runLevel2BookArchitect(
 ${worldSummary}
 
 ${buildCanonIntegrityPrompt()}
+
+${buildPlanningAuthorityPrompt()}
 
 ${revealTimeline ? buildRevealDisciplinePrompt(bookNumber, revealTimeline) : ''}
 
@@ -551,6 +556,8 @@ export async function runLevel3ChapterBrief(
 
 ${buildCanonIntegrityPrompt()}
 
+${buildPlanningAuthorityPrompt()}
+
 ${characterStateContext}
 
 === BOOK CONTEXT ===
@@ -649,6 +656,8 @@ export async function runLevel4SceneBlueprints(
   const prompt = `You are a Scene Architect. Generate detailed scene blueprints (scene cards) for this chapter.
 
 ${buildCanonIntegrityPrompt()}
+
+${buildPlanningAuthorityPrompt()}
 
 === CHAPTER BRIEF ===
 Chapter: ${chapter.title}
@@ -815,6 +824,17 @@ Reveal Restrictions: ${blueprint.reveal_restrictions}
 ${prevEnding ? `=== PREVIOUS SCENE ENDING ===\n...${prevEnding}` : ''}
 
 ${characterContext ? `=== CHARACTER DETAILS ===\n${characterContext}` : ''}
+
+=== CREATIVE LICENSE ===
+This is the Scene Writer stage — the ONLY stage where creativity is concentrated. You have full creative freedom over:
+- Prose style, rhythm, sentence structure, and word choice
+- Dialogue cadence, subtext, interruptions, and silences
+- Sensory detail, metaphor, and imagery
+- Internal monologue and emotional nuance
+- Micro-pacing within the scene (beats, pauses, transitions)
+- Show-don't-tell techniques
+
+You MUST still honor the blueprint structure (opening/conflict/closing beats, characters present, setting, restrictions). But HOW you render those beats into living prose is entirely your domain. Be bold, be vivid, be surprising in execution.
 
 Write this scene with vivid prose, strong character voice, and natural dialogue. Follow the blueprint closely but bring it to life with sensory detail and emotional depth.`;
 

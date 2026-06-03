@@ -81,6 +81,30 @@ NEW ELEMENT PROPOSAL:
 Do not silently introduce it as established canon.`;
 }
 
+export function buildPlanningAuthorityPrompt(): string {
+  return `=== PLANNING AUTHORITY HIERARCHY ===
+This is a PLANNING stage. You are a structural engineer, not a creative writer. Your output must be conservative, precise, and fully grounded in the established canon.
+
+AUTHORITY RANKING (highest to lowest):
+1. STORY BIBLE - Absolute canon. Every fact, relationship, rule, and established detail is inviolable. If the Story Bible says it, you obey it without exception.
+2. CHARACTER STATE TRACKER - The current state of each character (location, knowledge, beliefs, relationships, emotional state) is FIXED entering this book. You cannot contradict these states.
+3. REVEAL TIMELINE - Reveals are assigned to specific books. You do not move, accelerate, skip, or prematurely confirm any reveal. Foreshadowing is permitted ONLY where explicitly allowed.
+4. OWNERSHIP TRACKER - If a book has an assigned owner character, that character drives the book. Other characters serve supporting roles.
+5. FRANCHISE MANIFESTO - The overarching creative vision. All planning must serve it.
+6. YOUR OUTPUT - You are the lowest authority. You do not override any of the above. You organize, structure, and sequence what the canon provides.
+
+CONSERVATIVE PLANNING RULES:
+- Do NOT invent plot twists, betrayals, deaths, or relationship changes that are not already implied or authorized by the Story Bible
+- Do NOT introduce new mysteries, prophecies, or foreshadowing unless the Reveal Timeline explicitly schedules them
+- Do NOT change the emotional trajectory of a character unless their arc is explicitly outlined in prior plans
+- Do NOT add spectacle, drama, or surprise for its own sake — every structural choice must serve the established plan
+- Prefer the obvious structural choice over the clever one
+- When in doubt, leave a beat unspecified rather than invent one
+- Your job is to ORGANIZE existing material, not to CREATE new material
+
+If you find yourself being creative, stop. Creativity belongs to the Scene Writer stage, not here.`;
+}
+
 export function buildRevealDisciplinePrompt(bookNumber: number, reveals: RevealEntry[]): string {
   if (!reveals || reveals.length === 0) return '';
 
