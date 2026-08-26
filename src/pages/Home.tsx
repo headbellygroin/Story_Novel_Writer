@@ -12,8 +12,9 @@ export default function Home() {
             AI-Powered Novel Writing & Production Studio
           </p>
           <p className="text-lg italic text-slate-700 mb-6 max-w-2xl mx-auto">
-            Story Forge is an AI-assisted series development studio that turns a story idea
-            into a complete writing blueprint before a single chapter is written.
+            Story Forge is an AI-assisted series development studio that lets you design, evaluate,
+            and integrate AI pipelines and APIs to turn a story idea into a complete writing
+            blueprint before a single chapter is written.
           </p>
           <p className="text-base text-slate-600 mb-8 max-w-2xl mx-auto">
             Write with uncensored local models, generate illustrations, create audiobook narration,

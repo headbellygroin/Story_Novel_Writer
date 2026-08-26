@@ -1,6 +1,6 @@
 # Story Forge - Complete Feature Reference
 
-Story Forge is an AI-assisted series development studio that turns a story idea into a complete writing blueprint before a single chapter is written.
+Story Forge is an AI-assisted series development studio that lets you design, evaluate, and integrate AI pipelines and APIs to turn a story idea into a complete writing blueprint before a single chapter is written.
 
 Write with uncensored local models, generate illustrations, create audiobook narration, and produce YouTube-ready litRPG content -- all from one workspace.
 
